@@ -1,8 +1,8 @@
 import { CircleCheck, Clock, Hourglass } from 'lucide-react';
 
-export function Card({ title, step, icon: Icon, right, children, className = '' }) {
+export function Card({ id, title, step, icon: Icon, right, children, className = '' }) {
   return (
-    <section className={`bg-white rounded-xl border border-slate-200 shadow-sm ${className}`}>
+    <section id={id} className={`scroll-mt-6 bg-white rounded-xl border border-slate-200 shadow-sm ${className}`}>
       {title && (
         <div className="flex items-center justify-between gap-3 px-5 py-3.5 border-b border-slate-100">
           <div className="flex items-center gap-2.5">

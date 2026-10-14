@@ -67,6 +67,7 @@ export default function ResultsManagement({ user, runs, setRuns, notify }) {
       </div>
 
       <Card
+        id="results-recon"
         title="회비 대사 현황"
         icon={ClipboardCheck}
         right={
@@ -124,7 +125,7 @@ export default function ResultsManagement({ user, runs, setRuns, notify }) {
         )}
       </Card>
 
-      <Card title="기관 연동 테스트 결과" icon={FlaskConical}>
+      <Card id="results-test" title="기관 연동 테스트 결과" icon={FlaskConical}>
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-xs text-slate-500">
