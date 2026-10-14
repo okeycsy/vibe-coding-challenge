@@ -23,7 +23,7 @@ export default function AdminSettings({ members, setMembers, notify }) {
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-xl font-bold text-navy-900">관리자 설정(회원승인)</h2>
+        <h2 className="text-xl font-bold text-brand-900">관리자 설정(회원승인)</h2>
         <p className="text-sm text-slate-500 mt-0.5">시스템 사용을 신청한 결제원·참가기관 담당자의 가입을 승인합니다.</p>
       </div>
 
@@ -36,7 +36,7 @@ export default function AdminSettings({ members, setMembers, notify }) {
               <button
                 key={f}
                 onClick={() => setFilter(f)}
-                className={`rounded-md px-3 py-1 ${filter === f ? 'bg-navy-700 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                className={`rounded-md px-3 py-1 ${filter === f ? 'bg-brand-700 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
               >
                 {f}
                 {f !== '전체' && ` ${members.filter((m) => m.status === f).length}`}
@@ -71,7 +71,7 @@ export default function AdminSettings({ members, setMembers, notify }) {
                       <>
                         <button
                           onClick={() => decide(m.id, '승인')}
-                          className="inline-flex items-center gap-1 rounded-md bg-navy-700 px-2.5 py-1 text-xs text-white hover:bg-navy-800"
+                          className="inline-flex items-center gap-1 rounded-md bg-brand-700 px-2.5 py-1 text-xs text-white hover:bg-brand-800"
                         >
                           <UserCheck className="w-3.5 h-3.5" /> 승인
                         </button>

@@ -9,27 +9,27 @@ export const MENUS = [
 export function Header({ user, onToggleRole }) {
   const isOperator = user.role === 'operator';
   return (
-    <header className="h-16 bg-navy-900 text-white flex items-center justify-between px-6 shadow-md z-10">
+    <header className="h-16 bg-brand-800 text-white flex items-center justify-between px-6 shadow-md z-10">
       <div className="flex items-center gap-3">
         <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center">
-          <Landmark className="w-5 h-5 text-sky-300" />
+          <Landmark className="w-5 h-5 text-accent-300" />
         </div>
         <div className="leading-tight">
-          <p className="text-[11px] text-navy-300 tracking-wide">KFTC Fee Calculation System</p>
+          <p className="text-[11px] text-brand-200 tracking-wide">KFTC Fee Calculation System</p>
           <h1 className="text-lg font-bold">금융결제원 회비자동산출시스템</h1>
         </div>
       </div>
 
       <div className="flex items-center gap-4">
         <button className="relative p-2 rounded-full hover:bg-white/10" title="알림">
-          <Bell className="w-5 h-5 text-navy-200" />
+          <Bell className="w-5 h-5 text-brand-200" />
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-400 rounded-full" />
         </button>
         <div className="text-right leading-tight">
           <p className="text-sm font-semibold">
             {user.org} {user.title} ({user.name})
           </p>
-          <p className="text-[11px] text-navy-300">{isOperator ? '운영 권한' : '참가기관 권한'}</p>
+          <p className="text-[11px] text-brand-200">{isOperator ? '운영 권한' : '참가기관 권한'}</p>
         </div>
         <button
           onClick={onToggleRole}
@@ -37,15 +37,15 @@ export function Header({ user, onToggleRole }) {
           title="권한 전환"
         >
           <ArrowLeftRight className="w-3.5 h-3.5" />
-          <span className={isOperator ? 'font-bold text-sky-300' : 'text-navy-300'}>결제원</span>
-          <span className="relative inline-flex h-4 w-8 rounded-full bg-navy-600">
+          <span className={isOperator ? 'font-bold text-accent-300' : 'text-brand-200'}>결제원</span>
+          <span className="relative inline-flex h-4 w-8 rounded-full bg-brand-600">
             <span
-              className={`absolute top-0.5 h-3 w-3 rounded-full bg-sky-300 transition-all ${
+              className={`absolute top-0.5 h-3 w-3 rounded-full bg-accent-300 transition-all ${
                 isOperator ? 'left-0.5' : 'left-[18px]'
               }`}
             />
           </span>
-          <span className={!isOperator ? 'font-bold text-sky-300' : 'text-navy-300'}>참가기관</span>
+          <span className={!isOperator ? 'font-bold text-accent-300' : 'text-brand-200'}>참가기관</span>
         </button>
       </div>
     </header>
@@ -65,7 +65,7 @@ export function Sidebar({ role, active, onSelect, pendingMembers }) {
               key={m.id}
               onClick={() => onSelect(m.id)}
               className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-left transition ${
-                on ? 'bg-navy-700 text-white shadow' : 'text-slate-600 hover:bg-navy-50'
+                on ? 'bg-brand-700 text-white shadow' : 'text-slate-600 hover:bg-brand-50'
               }`}
             >
               <span
@@ -84,7 +84,7 @@ export function Sidebar({ role, active, onSelect, pendingMembers }) {
           );
         })}
       </nav>
-      <div className="mt-auto m-3 rounded-lg bg-navy-50 p-3 text-[11px] text-navy-600 leading-relaxed">
+      <div className="mt-auto m-3 rounded-lg bg-brand-50 p-3 text-[11px] text-brand-600 leading-relaxed">
         모든 화면은 백엔드 없이 예시 데이터(Mock)로 동작합니다. 실제 실적·회비와 무관합니다.
       </div>
     </aside>
