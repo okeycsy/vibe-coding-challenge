@@ -9,6 +9,7 @@
 
 | 메뉴 | 내용 |
 |------|------|
+| 로그인 | 앱은 로그인 화면(`isLoggedIn = false`)에서 시작. 넓은 화면(1024px 이상)은 좌우 5:5 분할로 왼쪽에 CSS 3D 회전·부유·반짝임 로고, 좁은 화면은 폼만 보이고 미니 로고 표시. 시연 계정 `admin` / `1234`, 5회 연속 오입력 시 잠금(시연용 잠금 초기화 버튼 제공). 헤더의 [로그아웃]으로 돌아옴 |
 | ① 회비 산출 및 대사 | STEP 1 업무(오픈뱅킹·금거정·CMS·CD공동망·타행환)와 분기 선택(직전 분기 자동 인식), 회비분담기준 요약 → STEP 2 Excel 업로드 시뮬레이션, AI 이슈 입력·태그 히스토리, 초안 산출(로딩 애니메이션) → STEP 3 결과 테이블, 차감 행 하이라이트·사유 툴팁, Excel 2종 다운로드 |
 | ② 기관 테스트/대사 결과 관리 | 산출된 모든 업무·분기의 대사 현황(대기/확인중/완료), 기관 연동 테스트 결과와 재테스트 |
 | ③ 관리자 설정(회원승인) | 가입 신청 승인·반려 (결제원 담당자 뷰에서만 보임) |
@@ -32,7 +33,7 @@ npm run build    # dist/ 에 정적 파일 생성
 ```
 
 ## 색상·로고
-헤더 로고와 파비콘은 금융결제원 CI 심벌마크(`public/kftc-symbol.png`, 가이드 이미지에서 잘라 배경을 투명하게 처리)입니다. 색상은 심벌의 그라데이션에서 뽑았습니다. 짙은 블루 `#0E45AA`·`#0D389E`를 주색(`brand`), 밝은 블루 `#178CDC`를 보조색(`accent`)으로 쓰며 `tailwind.config.js`에서 관리합니다.
+로그인 화면·헤더 로고와 파비콘은 금융결제원 CI 심벌마크(`public/kftc-symbol.png`, 가이드 이미지에서 잘라 배경을 투명하게 처리)입니다. 색상은 심벌의 그라데이션에서 뽑았습니다. 짙은 블루 `#0E45AA`·`#0D389E`를 주색(`brand`), 밝은 블루 `#178CDC`를 보조색(`accent`)으로 쓰며 `tailwind.config.js`에서 관리합니다.
 
 ## 기술 스택
 Vite 5, React 18, Tailwind CSS 3, lucide-react, xlsx(SheetJS)
@@ -41,7 +42,8 @@ Vite 5, React 18, Tailwind CSS 3, lucide-react, xlsx(SheetJS)
 ```
 src/
   App.jsx                          레이아웃, 권한·메뉴·산출 결과 공유 상태
-  components/Layout.jsx            헤더(권한 토글), 사이드바
+  components/LoginPage.jsx         로그인 화면(로고 쇼케이스, 5회 잠금)
+  components/Layout.jsx            헤더(권한 토글·로그아웃), 사이드바
   components/FeeCalculation.jsx    메인 화면 STEP 1~3
   components/ResultsManagement.jsx 테스트/대사 결과 관리
   components/AdminSettings.jsx     회원 승인
@@ -57,6 +59,8 @@ src/
 - 업무·기간·기관을 시드로 쓰는 결정적 난수로 Mock 실적을 만들면, 분기를 바꿨다 돌아와도 같은 값이 나와 시연이 자연스럽다.
 
 ## 스크린샷
+![로그인](docs/login.png)
+
 | 결제원 담당자 뷰 | 참가기관 담당자 뷰 |
 |---|---|
 | ![결제원](docs/operator-view.png) | ![참가기관](docs/institution-view.png) |

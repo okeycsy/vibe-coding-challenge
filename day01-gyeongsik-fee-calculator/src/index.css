@@ -7,3 +7,95 @@
     @apply text-slate-800 antialiased;
   }
 }
+
+/* ── 로그인 화면: 로고 3D 회전·부유·반짝임 (외부 라이브러리 없이 CSS만 사용) ── */
+@layer components {
+  .login-grid {
+    background-image: linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(circle at center, black 30%, transparent 75%);
+  }
+
+  .logo-stage {
+    position: relative;
+    width: 15rem;
+    height: 15rem;
+    perspective: 900px;
+    animation: logo-float 6s ease-in-out infinite;
+  }
+
+  .logo-glow {
+    position: absolute;
+    inset: -18%;
+    border-radius: 9999px;
+    background: radial-gradient(circle, rgba(23, 140, 220, 0.55) 0%, rgba(14, 69, 170, 0.25) 45%, transparent 70%);
+    filter: blur(18px);
+    animation: logo-glow 6s ease-in-out infinite;
+  }
+
+  .logo-3d {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    animation: logo-spin 9s ease-in-out infinite;
+  }
+
+  .logo-layer {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    backface-visibility: visible;
+  }
+
+  .logo-layer:not(.logo-edge) {
+    filter: drop-shadow(0 0 18px rgba(23, 140, 220, 0.55));
+  }
+
+  .logo-edge {
+    filter: brightness(0.45) saturate(1.2);
+  }
+
+  .logo-shimmer {
+    position: absolute;
+    inset: 0;
+    transform: translateZ(1px);
+    mask-size: contain;
+    mask-repeat: no-repeat;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    background: linear-gradient(115deg, transparent 35%, rgba(255, 255, 255, 0.85) 50%, transparent 65%);
+    background-size: 300% 300%;
+    animation: logo-shimmer 4.5s ease-in-out infinite;
+    mix-blend-mode: screen;
+  }
+}
+
+@keyframes logo-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-16px); }
+}
+
+@keyframes logo-spin {
+  0%, 100% { transform: rotateY(-28deg) rotateX(6deg); }
+  50% { transform: rotateY(28deg) rotateX(-4deg); }
+}
+
+@keyframes logo-glow {
+  0%, 100% { opacity: 0.7; transform: scale(0.95); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+
+@keyframes logo-shimmer {
+  0% { background-position: 120% 120%; }
+  45%, 100% { background-position: -20% -20%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-stage, .logo-3d, .logo-glow, .logo-shimmer { animation: none; }
+}
