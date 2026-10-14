@@ -7,10 +7,10 @@ export function Card({ title, step, icon: Icon, right, children, className = '' 
         <div className="flex items-center justify-between gap-3 px-5 py-3.5 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
             {step && (
-              <span className="rounded-md bg-navy-700 text-white text-[11px] font-bold px-2 py-0.5">STEP {step}</span>
+              <span className="rounded-md bg-brand-700 text-white text-[11px] font-bold px-2 py-0.5">STEP {step}</span>
             )}
-            {Icon && <Icon className="w-4 h-4 text-navy-500" />}
-            <h2 className="font-semibold text-navy-900">{title}</h2>
+            {Icon && <Icon className="w-4 h-4 text-brand-500" />}
+            <h2 className="font-semibold text-brand-900">{title}</h2>
           </div>
           {right}
         </div>
@@ -35,7 +35,7 @@ export function StatusBadge({ status, onClick }) {
       onClick={onClick}
       title={onClick ? '클릭하여 상태 변경' : undefined}
       className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${s.cls} ${
-        onClick ? 'hover:ring-2 hover:ring-navy-200 cursor-pointer' : ''
+        onClick ? 'hover:ring-2 hover:ring-brand-200 cursor-pointer' : ''
       }`}
     >
       <Icon className="w-3 h-3" />
@@ -46,7 +46,7 @@ export function StatusBadge({ status, onClick }) {
 
 export function Toast({ toast }) {
   if (!toast) return null;
-  const tone = toast.tone === 'error' ? 'bg-rose-600' : 'bg-navy-800';
+  const tone = toast.tone === 'error' ? 'bg-rose-600' : 'bg-brand-800';
   return (
     <div className={`fixed bottom-6 right-6 z-50 ${tone} text-white text-sm rounded-lg shadow-lg px-4 py-3 animate-fadein`}>
       {toast.message}
@@ -62,7 +62,7 @@ export function Select({ label, value, onChange, children, disabled }) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-navy-300 disabled:bg-slate-50"
+        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300 disabled:bg-slate-50"
       >
         {children}
       </select>

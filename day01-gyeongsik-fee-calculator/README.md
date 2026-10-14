@@ -31,6 +31,9 @@ npm run dev      # http://localhost:5173
 npm run build    # dist/ 에 정적 파일 생성
 ```
 
+## 색상
+금융결제원 CI 계열의 블루(`#005BAC`)를 주색, 스카이 블루(`#00A0E9`)를 보조색으로 씁니다. 공식 CI 가이드 수치를 확인하지 못한 추정값이라, 정확한 값은 `tailwind.config.js`의 `brand`·`accent` 팔레트만 바꾸면 전체 화면에 반영됩니다.
+
 ## 기술 스택
 Vite 5, React 18, Tailwind CSS 3, lucide-react, xlsx(SheetJS)
 

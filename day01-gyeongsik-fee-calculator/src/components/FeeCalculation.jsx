@@ -124,7 +124,7 @@ export default function FeeCalculation({ user, runs, setRuns, notify }) {
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-xl font-bold text-navy-900">회비 산출 및 대사</h2>
+        <h2 className="text-xl font-bold text-brand-900">회비 산출 및 대사</h2>
         <p className="text-sm text-slate-500 mt-0.5">
           {isOperator
             ? '업무와 분기를 선택하고 Raw Data와 이슈를 반영해 회비 초안을 산출합니다.'
@@ -160,12 +160,12 @@ export default function FeeCalculation({ user, runs, setRuns, notify }) {
               </Select>
             </div>
             <div className="flex items-center gap-2 text-xs">
-              <CalendarDays className="w-3.5 h-3.5 text-navy-400" />
+              <CalendarDays className="w-3.5 h-3.5 text-brand-400" />
               {isAuto ? (
-                <span className="text-navy-600">직전 분기({detected.year}년 {detected.quarter}분기)로 자동 인식되었습니다.</span>
+                <span className="text-brand-600">직전 분기({detected.year}년 {detected.quarter}분기)로 자동 인식되었습니다.</span>
               ) : (
                 <button
-                  className="text-navy-500 underline underline-offset-2"
+                  className="text-brand-500 underline underline-offset-2"
                   onClick={() => {
                     setYear(detected.year);
                     setQuarter(detected.quarter);
@@ -177,18 +177,18 @@ export default function FeeCalculation({ user, runs, setRuns, notify }) {
             </div>
           </div>
 
-          <div className="lg:col-span-3 rounded-lg border border-navy-100 bg-navy-50/60 p-4">
+          <div className="lg:col-span-3 rounded-lg border border-brand-100 bg-brand-50/60 p-4">
             <div className="flex items-center gap-2 mb-2">
-              <Info className="w-4 h-4 text-navy-500" />
-              <p className="text-sm font-semibold text-navy-800">{business.name} 회비분담기준 요약</p>
-              <span className="ml-auto rounded bg-white border border-navy-200 px-2 py-0.5 text-[11px] text-navy-600">
+              <Info className="w-4 h-4 text-brand-500" />
+              <p className="text-sm font-semibold text-brand-800">{business.name} 회비분담기준 요약</p>
+              <span className="ml-auto rounded bg-white border border-brand-200 px-2 py-0.5 text-[11px] text-brand-600">
                 {business.method === 'unit' ? '건당 단가 방식' : '총액 분담 방식'}
               </span>
             </div>
             <ul className="space-y-1.5 text-sm text-slate-700">
               {business.summary.map((s) => (
                 <li key={s} className="flex gap-2">
-                  <span className="mt-2 w-1 h-1 rounded-full bg-navy-400 shrink-0" />
+                  <span className="mt-2 w-1 h-1 rounded-full bg-brand-400 shrink-0" />
                   {s}
                 </li>
               ))}
@@ -234,22 +234,22 @@ export default function FeeCalculation({ user, runs, setRuns, notify }) {
                     if (uploading === null) simulateUpload(e.dataTransfer.files[0]);
                   }}
                   className={`w-full h-36 rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-2 transition ${
-                    dragOver ? 'border-navy-500 bg-navy-50' : 'border-slate-300 bg-slate-50 hover:border-navy-300'
+                    dragOver ? 'border-brand-500 bg-brand-50' : 'border-slate-300 bg-slate-50 hover:border-brand-300'
                   }`}
                 >
                   {uploading !== null ? (
                     <>
-                      <LoaderCircle className="w-7 h-7 text-navy-500 animate-spin" />
+                      <LoaderCircle className="w-7 h-7 text-brand-500 animate-spin" />
                       <div className="w-48 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                        <div className="h-full bg-navy-500 transition-all" style={{ width: `${uploading}%` }} />
+                        <div className="h-full bg-brand-500 transition-all" style={{ width: `${uploading}%` }} />
                       </div>
                       <p className="text-xs text-slate-500">업로드 중… {uploading}%</p>
                     </>
                   ) : (
                     <>
-                      <CloudUpload className="w-8 h-8 text-navy-400" />
+                      <CloudUpload className="w-8 h-8 text-brand-400" />
                       <p className="text-sm text-slate-600">
-                        Excel 파일을 끌어다 놓거나 <span className="text-navy-600 font-semibold">클릭</span>하세요
+                        Excel 파일을 끌어다 놓거나 <span className="text-brand-600 font-semibold">클릭</span>하세요
                       </p>
                       <p className="text-[11px] text-slate-400">.xlsx, .xls · 최대 50MB (시연용: 실제 파일은 읽지 않습니다)</p>
                     </>
@@ -260,7 +260,7 @@ export default function FeeCalculation({ user, runs, setRuns, notify }) {
 
             <div>
               <p className="text-xs font-medium text-slate-500 mb-1">AI 에이전트 이슈 입력</p>
-              <div className="rounded-lg border border-slate-300 focus-within:ring-2 focus-within:ring-navy-300">
+              <div className="rounded-lg border border-slate-300 focus-within:ring-2 focus-within:ring-brand-300">
                 <textarea
                   value={issueText}
                   onChange={(e) => setIssueText(e.target.value)}
@@ -280,7 +280,7 @@ export default function FeeCalculation({ user, runs, setRuns, notify }) {
                       <button
                         key={ex}
                         onClick={() => setIssueText(ex)}
-                        className="shrink-0 rounded bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-navy-50"
+                        className="shrink-0 rounded bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-brand-50"
                       >
                         예시 {i + 1}
                       </button>
@@ -288,7 +288,7 @@ export default function FeeCalculation({ user, runs, setRuns, notify }) {
                   </div>
                   <button
                     onClick={addIssue}
-                    className="flex items-center gap-1 rounded-md bg-navy-700 px-3 py-1 text-xs text-white hover:bg-navy-800"
+                    className="flex items-center gap-1 rounded-md bg-brand-700 px-3 py-1 text-xs text-white hover:bg-brand-800"
                   >
                     <Send className="w-3 h-3" /> 이슈 등록
                   </button>
@@ -324,7 +324,7 @@ export default function FeeCalculation({ user, runs, setRuns, notify }) {
             <button
               onClick={runCalculation}
               disabled={!draft.file || loading}
-              className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-navy-700 to-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow hover:shadow-md disabled:from-slate-300 disabled:to-slate-300 disabled:shadow-none"
+              className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-brand-700 to-accent-500 px-5 py-2.5 text-sm font-semibold text-white shadow hover:shadow-md disabled:from-slate-300 disabled:to-slate-300 disabled:shadow-none"
             >
               {loading ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
               {run ? 'AI 회비 초안 다시 산출하기' : 'AI 회비 초안 산출하기'}
@@ -344,14 +344,14 @@ export default function FeeCalculation({ user, runs, setRuns, notify }) {
             <div className="flex gap-2">
               <button
                 onClick={downloadForInstitutions}
-                className="flex items-center gap-1.5 rounded-lg border border-navy-200 bg-white px-3 py-1.5 text-xs font-medium text-navy-700 hover:bg-navy-50"
+                className="flex items-center gap-1.5 rounded-lg border border-brand-200 bg-white px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-50"
               >
                 <Download className="w-3.5 h-3.5" /> 참가기관 송부 대사용 Excel 다운로드
               </button>
               {isOperator && (
                 <button
                   onClick={() => downloadRevenueResolution({ business, year, quarter, rows: run.rows })}
-                  className="flex items-center gap-1.5 rounded-lg bg-navy-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-navy-800"
+                  className="flex items-center gap-1.5 rounded-lg bg-brand-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-800"
                 >
                   <Download className="w-3.5 h-3.5" /> 예산회계시스템 수입결의용 Excel 다운로드
                 </button>
@@ -364,12 +364,12 @@ export default function FeeCalculation({ user, runs, setRuns, notify }) {
           <div className="py-6">
             <div className="flex flex-col items-center gap-3 mb-6">
               <div className="relative">
-                <Sparkles className="w-8 h-8 text-blue-500 animate-pulse" />
+                <Sparkles className="w-8 h-8 text-accent-500 animate-pulse" />
               </div>
-              <p className="text-sm font-medium text-navy-700">{LOADING_STEPS[loadingStep]}</p>
+              <p className="text-sm font-medium text-brand-700">{LOADING_STEPS[loadingStep]}</p>
               <div className="flex gap-1.5">
                 {LOADING_STEPS.map((s, i) => (
-                  <span key={s} className={`h-1.5 w-10 rounded-full ${i <= loadingStep ? 'bg-navy-500' : 'bg-slate-200'}`} />
+                  <span key={s} className={`h-1.5 w-10 rounded-full ${i <= loadingStep ? 'bg-brand-500' : 'bg-slate-200'}`} />
                 ))}
               </div>
             </div>
@@ -393,11 +393,11 @@ export default function FeeCalculation({ user, runs, setRuns, notify }) {
               </span>
               <span>산출일시 {run.createdAt}</span>
               <span>반영 이슈 {run.issues.length}건</span>
-              {isOperator && <span className="text-navy-500">대사 상태 배지를 누르면 상태가 바뀝니다.</span>}
+              {isOperator && <span className="text-brand-500">대사 상태 배지를 누르면 상태가 바뀝니다.</span>}
             </div>
             <div className="overflow-x-auto rounded-lg border border-slate-200">
               <table className="w-full text-sm">
-                <thead className="bg-navy-800 text-white text-xs">
+                <thead className="bg-brand-800 text-white text-xs">
                   <tr>
                     {['참가기관명', '기본 건수', 'AI 예외 차감 건수', '최종 인정 건수', '적용 단가/분담률', '산출 회비(초안)', '대사 상태'].map(
                       (h, i) => (
@@ -415,7 +415,7 @@ export default function FeeCalculation({ user, runs, setRuns, notify }) {
                     return (
                       <tr key={r.institutionId} className={`border-t border-slate-100 ${hit ? 'bg-amber-50/80' : 'hover:bg-slate-50'}`}>
                         <td className="px-4 py-2.5 whitespace-nowrap">
-                          <span className="font-medium text-navy-900">{r.name}</span>
+                          <span className="font-medium text-brand-900">{r.name}</span>
                           <span className="ml-1.5 text-[11px] text-slate-400">{r.code}</span>
                         </td>
                         <td className="px-4 py-2.5 text-right tabular-nums">{fmt(r.baseCount)}</td>
@@ -437,7 +437,7 @@ export default function FeeCalculation({ user, runs, setRuns, notify }) {
                         </td>
                         <td className="px-4 py-2.5 text-right tabular-nums font-medium">{fmt(r.finalCount)}</td>
                         <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">{r.rateLabel}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-navy-900">{fmt(r.fee)}원</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-brand-900">{fmt(r.fee)}원</td>
                         <td className="px-4 py-2.5 text-center">
                           <StatusBadge
                             status={r.status}
@@ -483,7 +483,7 @@ export default function FeeCalculation({ user, runs, setRuns, notify }) {
                       <td className="px-4 py-2.5 text-right text-slate-500 text-xs">
                         {business.method === 'unit' ? `${business.unitPrice}원/건` : '100.00%'}
                       </td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-navy-900">{fmt(totals.fee)}원</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-brand-900">{fmt(totals.fee)}원</td>
                       <td />
                     </tr>
                   </tfoot>
@@ -501,10 +501,10 @@ export default function FeeCalculation({ user, runs, setRuns, notify }) {
 
       {tooltip && (
         <div
-          className="fixed z-50 max-w-sm -translate-x-full rounded-lg bg-navy-900 px-3 py-2 text-xs text-white shadow-xl"
+          className="fixed z-50 max-w-sm -translate-x-full rounded-lg bg-brand-900 px-3 py-2 text-xs text-white shadow-xl"
           style={{ left: tooltip.x, top: tooltip.y }}
         >
-          <p className="font-semibold text-sky-300 mb-1">AI 차감 사유</p>
+          <p className="font-semibold text-accent-300 mb-1">AI 차감 사유</p>
           <ul className="space-y-1">
             {tooltip.reasons.map((t) => (
               <li key={t}>· {t}</li>

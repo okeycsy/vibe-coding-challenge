@@ -7,7 +7,7 @@ import { Card, StatusBadge } from './ui';
 const TEST_TONE = {
   성공: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   실패: 'bg-rose-50 text-rose-700 border-rose-200',
-  진행중: 'bg-sky-50 text-sky-700 border-sky-200',
+  진행중: 'bg-accent-50 text-accent-700 border-accent-200',
 };
 
 export default function ResultsManagement({ user, runs, setRuns, notify }) {
@@ -50,7 +50,7 @@ export default function ResultsManagement({ user, runs, setRuns, notify }) {
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-xl font-bold text-navy-900">기관 테스트/대사 결과 관리</h2>
+        <h2 className="text-xl font-bold text-brand-900">기관 테스트/대사 결과 관리</h2>
         <p className="text-sm text-slate-500 mt-0.5">참가기관별 연동 테스트 결과와 회비 대사 진행 현황을 확인합니다.</p>
       </div>
 
@@ -59,7 +59,7 @@ export default function ResultsManagement({ user, runs, setRuns, notify }) {
           <div key={s} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between">
             <div>
               <p className="text-xs text-slate-500">대사 {s}</p>
-              <p className="text-2xl font-bold text-navy-900 tabular-nums">{n}<span className="text-sm font-normal text-slate-400 ml-1">건</span></p>
+              <p className="text-2xl font-bold text-brand-900 tabular-nums">{n}<span className="text-sm font-normal text-slate-400 ml-1">건</span></p>
             </div>
             <StatusBadge status={s} />
           </div>
@@ -77,11 +77,11 @@ export default function ResultsManagement({ user, runs, setRuns, notify }) {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="기관·업무 검색"
-                className="rounded-lg border border-slate-300 pl-8 pr-3 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-navy-300"
+                className="rounded-lg border border-slate-300 pl-8 pr-3 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-brand-300"
               />
             </div>
             {isOperator && (
-              <button onClick={completeAll} className="rounded-lg bg-navy-700 px-3 py-1.5 text-xs text-white hover:bg-navy-800">
+              <button onClick={completeAll} className="rounded-lg bg-brand-700 px-3 py-1.5 text-xs text-white hover:bg-brand-800">
                 확인중 일괄 완료
               </button>
             )}
@@ -151,7 +151,7 @@ export default function ResultsManagement({ user, runs, setRuns, notify }) {
                   <td className="px-4 py-2 text-xs text-slate-500">{t.note}</td>
                   <td className="px-4 py-2 text-right">
                     {t.result === '실패' && (
-                      <button onClick={() => retest(t.id)} className="rounded-md border border-navy-200 px-2 py-0.5 text-xs text-navy-700 hover:bg-navy-50">
+                      <button onClick={() => retest(t.id)} className="rounded-md border border-brand-200 px-2 py-0.5 text-xs text-brand-700 hover:bg-brand-50">
                         재테스트
                       </button>
                     )}
