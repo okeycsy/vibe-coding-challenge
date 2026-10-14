@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Bell, Calculator, ClipboardCheck, Landmark, ShieldCheck } from 'lucide-react';
+import { ArrowLeftRight, Bell, Calculator, ClipboardCheck, ShieldCheck } from 'lucide-react';
 
 export const MENUS = [
   { id: 'calc', label: '회비 산출 및 대사', icon: Calculator, roles: ['operator', 'institution'] },
@@ -11,8 +11,8 @@ export function Header({ user, onToggleRole }) {
   return (
     <header className="h-16 bg-brand-800 text-white flex items-center justify-between px-6 shadow-md z-10">
       <div className="flex items-center gap-3">
-        <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center">
-          <Landmark className="w-5 h-5 text-accent-300" />
+        <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center shadow-sm">
+          <img src="kftc-symbol.png" alt="금융결제원 심벌마크" className="w-8 h-8" />
         </div>
         <div className="leading-tight">
           <p className="text-[11px] text-brand-200 tracking-wide">KFTC Fee Calculation System</p>
