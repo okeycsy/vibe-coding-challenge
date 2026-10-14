@@ -133,7 +133,7 @@ export default function FeeCalculation({ user, runs, setRuns, notify }) {
       </div>
 
       {/* STEP 1 */}
-      <Card step={1} title="업무 및 분기 선택" icon={Briefcase}>
+      <Card id="calc-period" step={1} title="업무 및 분기 선택" icon={Briefcase}>
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
           <div className="lg:col-span-2 space-y-3">
             <Select label="업무 선택" value={businessId} onChange={setBusinessId}>
@@ -199,7 +199,7 @@ export default function FeeCalculation({ user, runs, setRuns, notify }) {
 
       {/* STEP 2 */}
       {isOperator && (
-        <Card step={2} title="데이터 입력 및 AI 이슈 반영" icon={Bot}>
+        <Card id="calc-input" step={2} title="데이터 입력 및 AI 이슈 반영" icon={Bot}>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <div>
               <p className="text-xs font-medium text-slate-500 mb-1">실적 Raw Data (Excel)</p>
@@ -335,6 +335,7 @@ export default function FeeCalculation({ user, runs, setRuns, notify }) {
 
       {/* STEP 3 */}
       <Card
+        id="calc-result"
         step={isOperator ? 3 : 2}
         title="회비 산출 결과"
         icon={FileSpreadsheet}
