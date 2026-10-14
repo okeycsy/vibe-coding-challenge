@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Bell, Calculator, ClipboardCheck, ShieldCheck } from 'lucide-react';
+import { ArrowLeftRight, Bell, Calculator, ClipboardCheck, LogOut, ShieldCheck } from 'lucide-react';
 
 export const MENUS = [
   { id: 'calc', label: '회비 산출 및 대사', icon: Calculator, roles: ['operator', 'institution'] },
@@ -6,7 +6,7 @@ export const MENUS = [
   { id: 'admin', label: '관리자 설정(회원승인)', icon: ShieldCheck, roles: ['operator'] },
 ];
 
-export function Header({ user, onToggleRole }) {
+export function Header({ user, onToggleRole, onLogout }) {
   const isOperator = user.role === 'operator';
   return (
     <header className="h-16 bg-brand-800 text-white flex items-center justify-between px-6 shadow-md z-10">
@@ -31,6 +31,12 @@ export function Header({ user, onToggleRole }) {
           </p>
           <p className="text-[11px] text-brand-200">{isOperator ? '운영 권한' : '참가기관 권한'}</p>
         </div>
+        <button
+          onClick={onLogout}
+          className="flex items-center gap-1.5 rounded-md border border-white/20 px-2.5 py-1.5 text-xs hover:bg-white/15 transition"
+        >
+          <LogOut className="w-3.5 h-3.5" /> 로그아웃
+        </button>
         <button
           onClick={onToggleRole}
           className="flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-3 py-1.5 text-xs hover:bg-white/15 transition"

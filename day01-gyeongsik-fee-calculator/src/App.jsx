@@ -5,8 +5,10 @@ import FeeCalculation from './components/FeeCalculation';
 import ResultsManagement from './components/ResultsManagement';
 import AdminSettings from './components/AdminSettings';
 import { Toast } from './components/ui';
+import LoginPage from './components/LoginPage';
 
 export default function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [role, setRole] = useState('operator');
   const [menu, setMenu] = useState('calc');
   // runs: `${업무}-${연도}-${분기}` 별 산출 결과. 두 뷰와 모든 메뉴가 같은 상태를 공유한다.
@@ -30,11 +32,19 @@ export default function App() {
     notify(`${USERS[next].label}로 전환했습니다.`);
   };
 
+  const logout = () => {
+    setIsLoggedIn(false);
+    setRole('operator');
+    setMenu('calc');
+  };
+
   const shared = { user, runs, setRuns, notify };
+
+  if (!isLoggedIn) return <LoginPage onLogin={() => setIsLoggedIn(true)} />;
 
   return (
     <div className="h-screen flex flex-col">
-      <Header user={user} onToggleRole={toggleRole} />
+      <Header user={user} onToggleRole={toggleRole} onLogout={logout} />
       <div className="flex flex-1 min-h-0">
         <Sidebar
           role={role}
