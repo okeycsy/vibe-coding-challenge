@@ -7,10 +7,12 @@
 - 산출물: 아직 없음
 - [경식] `day01-gyeongsik-fee-calculator/` 회비자동산출시스템 프론트엔드 1차 구현 완료 (Mock Data, 백엔드 없음)
 - [대용] `day01-daeyong-fee-calculator/` 금융정보업무 회비 산출 2차 완료: 화면 개편 + 단일 HTML 프로그램(`release/fee-calculator.html`) + claude.ai 웹 페이지 게시
+- [우성] `day01-woosung-fee-ai/` 회비자동산출 AI툴 1차 구현 완료 (분담기준 AI 학습·버전 관리, xlsx/csv/hwp/hwpx 실적 업로드, 기관별 산출·Excel 다운로드)
 
 ## 다음 할 일
 - [ ] Day01 챌린지 과제 받아서 시작
 - [ ] [경식] 회비자동산출시스템: 실제 Excel 파싱, 백엔드 API 연동, 업무별 분담기준 실제화
+- [ ] [우성] 회비자동산출 AI툴: 실제 분담기준 문구로 Claude 학습 검증, 최저회비·상한 등 추가 산정 방식 필요 여부 확인
 
 ## 결정 사항
 - 모노레포 1개 + `dayNN-<slug>/` 폴더 구조
@@ -19,6 +21,10 @@
 - `connect-link` 저장소와는 연결하지 않는다 (서브모듈·참조·수정 모두 금지)
 
 ## 세션 로그
+### 2026-10-17 (우성)
+- `day01-woosung-fee-ai/` 추가: Express API + React/Tailwind/lucide 화면. 분담기준 문구 → Claude 구조화 출력으로 산출 규칙(JSON) 변환, 관리자 확인 후 버전 저장·되돌리기 (API 키 없으면 규칙 기반 해석기)
+- 산출은 결정적 코드(BigInt 최대잔여법, 합계 = 총회비 보장). 방식: 균등·실적비례·구간가중, 항목 가중치, 1/10/100/1000원 단위
+- 실적 파일: xlsx·csv(CP949 포함)·hwp(5.0 바이너리 표)·hwpx. 결과 Excel(회비산출내역·산출기준 시트). `npm test` 21개 통과
 ### 2026-10-17 (대용)
 - 2차: 화면 개편(요약 카드, 기관별 구성 막대, 정렬·검색 표, 끌어다 놓기, 다크 모드, 예시 데이터로 첫 화면 채움), `npm run build`로 단일 HTML 프로그램 생성, claude.ai 웹 페이지로 게시(파일 저장은 downloads 기능)
 - `day01-daeyong-fee-calculator/` 추가: Vite+React+SheetJS. 회비 총액 입력 + 건수 엑셀 업로드 → 25% 균등·75% (압류+추심+해제) 비율 안분 → 결과 엑셀(결과·산출기준 시트) 생성
