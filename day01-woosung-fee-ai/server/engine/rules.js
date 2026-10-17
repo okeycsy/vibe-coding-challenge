@@ -13,9 +13,19 @@ export const ROUNDING_UNITS = [1, 10, 100, 1000];
 export const RULE_JSON_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['summary', 'items', 'components', 'rounding', 'notes'],
+  required: ['summary', 'basis', 'items', 'components', 'rounding', 'notes'],
   properties: {
     summary: { type: 'string', description: '기준을 한 문장으로 요약' },
+    basis: {
+      type: 'object',
+      description: '어느 기간의 실적으로 산정하는지. 산출 분기에서 lag분기 전을 끝으로 count개 분기. 산출 분기 실적이면 lag 0, count 1. 직전 분기면 lag 1, count 1.',
+      additionalProperties: false,
+      required: ['lag', 'count'],
+      properties: {
+        lag: { type: 'integer', enum: [0, 1, 2, 3, 4] },
+        count: { type: 'integer', enum: [1, 2, 3, 4] },
+      },
+    },
     items: {
       type: 'array',
       description: '회비 산정에 반영할 실적 항목과 가중치. 기준에 항목 구분이 없으면 빈 배열(모든 항목 가중치 1).',
@@ -79,6 +89,7 @@ export function validateRule(input) {
   const errors = [];
   const rule = {
     summary: String(input?.summary ?? '').trim(),
+    basis: { lag: Number(input?.basis?.lag ?? 0), count: Number(input?.basis?.count ?? 1) },
     items: [],
     components: [],
     rounding: { unit: Number(input?.rounding?.unit ?? 1) },
@@ -118,6 +129,9 @@ export function validateRule(input) {
   if (!rule.components.length) errors.push('구성요소가 하나도 없습니다.');
   else if (Math.abs(ratioSum - 1) > 1e-6) errors.push(`구성요소 비율 합계가 ${round6(ratioSum * 100)}%입니다. 100%여야 합니다.`);
 
+  if (![0, 1, 2, 3, 4].includes(rule.basis.lag) || ![1, 2, 3, 4].includes(rule.basis.count)) {
+    errors.push('실적 기준 기간(basis)은 lag 0~4, count 1~4 분기여야 합니다.');
+  }
   if (!ROUNDING_UNITS.includes(rule.rounding.unit)) {
     errors.push(`금액 단위는 ${ROUNDING_UNITS.join(', ')}원 중 하나여야 합니다.`);
   }
@@ -141,6 +155,14 @@ export function describeRule(rule) {
     ? `반영 항목: ${rule.items.map((i) => `${i.name}×${i.weight}`).join(', ')}`
     : '반영 항목: 전체 항목 (가중치 1)';
   lines.push(items);
+  lines.push(`실적 기준: ${describeBasis(rule.basis)}`);
   lines.push(rule.rounding.unit === 1 ? '금액: 원 미만 절사 후 잔여액 배분' : `금액: ${rule.rounding.unit}원 단위 절사 후 잔여액 배분`);
   return lines;
+}
+
+export function describeBasis({ lag, count } = { lag: 0, count: 1 }) {
+  if (lag === 0 && count === 1) return '산출 분기 실적';
+  if (lag === 0) return `산출 분기를 포함한 최근 ${count}개 분기 실적`;
+  if (count === 1) return lag === 1 ? '직전 분기 실적' : `${lag}분기 전 실적`;
+  return `${lag}분기 전까지 ${count}개 분기 실적`;
 }

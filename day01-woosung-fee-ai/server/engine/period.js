@@ -8,9 +8,18 @@ export function quarterMonths(year, quarter) {
   return [1, 2, 3].map((i) => `${y}-${String((q - 1) * 3 + i).padStart(2, '0')}`);
 }
 
-export function monthLabel(ym) {
-  const [, m] = ym.split('-');
-  return `${Number(m)}월`;
+// 분담기준의 실적 기준 기간: 산출 분기에서 lag분기 전을 끝으로 count개 분기의 월 목록
+export function basisMonths(year, quarter, { lag = 0, count = 1 } = {}) {
+  quarterMonths(year, quarter); // 입력 검증
+  const end = Number(year) * 4 + (Number(quarter) - 1) - lag;
+  const months = [];
+  for (let k = end - count + 1; k <= end; k++) months.push(...quarterMonths(Math.floor(k / 4), (k % 4) + 1));
+  return months;
+}
+
+export function monthLabel(ym, withYear = false) {
+  const [y, m] = ym.split('-');
+  return withYear ? `${y}년 ${Number(m)}월` : `${Number(m)}월`;
 }
 
 export function periodLabel(year, quarter) {

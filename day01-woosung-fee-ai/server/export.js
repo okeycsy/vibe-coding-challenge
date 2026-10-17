@@ -16,10 +16,12 @@ export async function buildWorkbook({ work, version, result }) {
   const ws = wb.addWorksheet('회비산출내역', { views: [{ state: 'frozen', xSplit: 1, ySplit: 4 }] });
   const { period, rows, totals, components } = result;
   const showMetric = rows.some((r) => r.metric !== r.totalCount);
+  const multiYear = new Set(period.months.map((m) => m.slice(0, 4))).size > 1;
+  const mLabel = (m) => monthLabel(m, multiYear);
   const headers = [
     '금융기관명',
-    ...period.months.map((m) => `${monthLabel(m)} 실적건수`),
-    '분기 합계',
+    ...period.months.map((m) => `${mLabel(m)} 실적건수`),
+    '실적 합계',
     ...(showMetric ? ['반영실적(가중)'] : []),
     ...components.map((c) => `${c.name}(원)`),
     '산출 회비(원)',
@@ -67,7 +69,8 @@ export async function buildWorkbook({ work, version, result }) {
   const info = wb.addWorksheet('산출기준');
   const kv = [
     ['업무', work.name],
-    ['기간', `${periodLabel(period.year, period.quarter)} (${period.months.map(monthLabel).join(', ')})`],
+    ['산출 분기', periodLabel(period.year, period.quarter)],
+    ['실적 기준 기간', `${period.basisText} — ${period.months.map((m) => monthLabel(m, true)).join(', ')}`],
     ['분기 총회비(원)', result.totalFee],
     ['분담기준 버전', `v${version.version} (${version.createdAt.slice(0, 10)} 등록, ${version.engine})`],
     ['요약', version.rule.summary],

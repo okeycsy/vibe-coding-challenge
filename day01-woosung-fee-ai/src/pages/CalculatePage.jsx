@@ -167,12 +167,13 @@ function Result({ result, work, onDownload, downloading, onReset }) {
   const { period, rows, totals, components } = result;
   const showMetric = rows.some((r) => r.metric !== r.totalCount);
   const maxShare = Math.max(...rows.map((r) => r.share));
+  const multiYear = new Set(period.months.map((m) => m.slice(0, 4))).size > 1;
   return (
     <>
       <div className="grid gap-3 sm:grid-cols-4">
         <Stat label="업무 · 기간" value={`${period.year}년 ${period.quarter}분기`} sub={work?.name} />
         <Stat label="분기 총회비" value={won(result.totalFee)} sub={`산출 합계 ${won(totals.fee)}`} />
-        <Stat label="참가기관" value={`${rows.length}곳`} sub={`실적 합계 ${num(totals.totalCount)}건`} />
+        <Stat label="참가기관" value={`${rows.length}곳`} sub={`${period.basisText} 실적 합계 ${num(totals.totalCount)}건`} />
         <Stat label="적용 분담기준" value={`v${result.criteriaVersion}`} sub={components.map((c) => `${c.name} ${won(c.amount)}`).join(' · ')} />
       </div>
       <Alert kind="warn">{result.warnings.map((w) => <div key={w}>{w}</div>)}</Alert>
@@ -191,8 +192,8 @@ function Result({ result, work, onDownload, downloading, onReset }) {
             <thead>
               <tr>
                 <th className="th text-left">금융기관명</th>
-                {period.months.map((m) => <th key={m} className="th text-right">{monthLabel(m)}</th>)}
-                <th className="th text-right">분기 합계</th>
+                {period.months.map((m) => <th key={m} className="th text-right">{monthLabel(m, multiYear)}</th>)}
+                <th className="th text-right">실적 합계</th>
                 {showMetric && <th className="th text-right">반영실적</th>}
                 {components.map((c) => <th key={c.name} className="th text-right">{c.name}</th>)}
                 <th className="th text-right">산출 회비</th>

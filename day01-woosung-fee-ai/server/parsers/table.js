@@ -7,10 +7,10 @@
 // - 가로형(항목열): 금융기관명 | 항목 | 7월 | 8월 | 9월 (한 행 = 기관 × 항목)
 import { parseMonth } from '../engine/period.js';
 
-const INSTITUTION = /^(금융)?기관(명)?$|^은행(명)?$|^참가기관(명)?$|^회원(기관)?(명)?$|^기관\s*이름$/;
+const INSTITUTION = /^(금융)?기관(명)?$|^은행(명)?$|^참가기관(명)?$|^회원(기관)?(명)?$|^기관\s*이름$|^(금융)?회사(명)?$/;
 const MONTH = /^(기준)?(년)?월$|^실적\s*월$|^년월$|^기간$/;
 const ITEM = /^(실적\s*)?항목(명)?$|^구분$|^거래\s*(종류|구분)$/;
-const SKIP_ROW = /^(합\s*계|총\s*계|소\s*계|계|total)$/i;
+const SKIP_ROW = /^(전체\s*)?(합\s*계|총\s*계|소\s*계|계|total)$/i;
 const SKIP_COL = /^(합\s*계|총\s*계|계|비고|순번|번호|no\.?|연번|비율|구성비)$/i;
 
 const norm = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();

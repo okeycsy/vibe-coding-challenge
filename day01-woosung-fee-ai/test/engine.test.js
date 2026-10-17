@@ -74,3 +74,27 @@ test('총회비 입력 검증', () => {
   assert.throws(() => calculateFees({ rule, records, year: 2026, quarter: 3, totalFee: '-5' }), /정수/);
   assert.throws(() => calculateFees({ rule, records, year: 2026, quarter: 3, totalFee: '12.5' }), /정수/);
 });
+
+test('실적 기준 기간: 직전 2분기 / 최근 2개 분기', () => {
+  const records = [
+    rec('A', '2026-03', 100), rec('A', '2026-05', 100), rec('A', '2026-08', 1000),
+    rec('B', '2026-06', 300), rec('B', '2026-09', 0),
+  ];
+  const prev = parseCriteriaText('100% 실적 비례, 실적은 직전 2분기 실적');
+  assert.deepEqual(prev.basis, { lag: 1, count: 2 });
+  const r1 = calculateFees({ rule: prev, records, year: 2026, quarter: 3, totalFee: 500 });
+  assert.deepEqual(r1.period.months, ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06']);
+  assert.deepEqual(r1.rows.map((x) => x.fee), [200, 300]);
+  assert.ok(r1.warnings.some((w) => w.includes('2026-08')));
+
+  const recent = parseCriteriaText('100% 실적 비례, 최근 2개 분기 실적');
+  const r2 = calculateFees({ rule: recent, records, year: 2026, quarter: 3, totalFee: 1400 });
+  assert.deepEqual(r2.period.months.slice(0, 1), ['2026-04']);
+  assert.deepEqual(r2.rows.map((x) => x.fee), [1100, 300]);
+});
+
+test('실적 기준 기간이 해를 넘어간다', () => {
+  const rule = parseCriteriaText('100% 균등, 직전 분기 실적');
+  const r = calculateFees({ rule, records: [rec('A', '2025-11', 1)], year: 2026, quarter: 1, totalFee: 10 });
+  assert.deepEqual(r.period.months, ['2025-10', '2025-11', '2025-12']);
+});
