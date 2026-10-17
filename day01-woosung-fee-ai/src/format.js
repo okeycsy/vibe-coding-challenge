@@ -1,6 +1,6 @@
 export const won = (n) => `${Number(n).toLocaleString('ko-KR')}원`;
 export const num = (n) => Number(n).toLocaleString('ko-KR', { maximumFractionDigits: 4 });
-export const monthLabel = (ym) => `${Number(ym.split('-')[1])}월`;
+export const monthLabel = (ym, withYear = false) => `${withYear ? `${ym.slice(2, 4)}년 ` : ''}${Number(ym.split('-')[1])}월`;
 
 // 1234567 → '123만 4,567원' 식의 한글 금액 보조 표기
 export function koreanAmount(n) {

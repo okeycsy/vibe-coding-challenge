@@ -73,3 +73,23 @@ test('지원하지 않는 형식', async () => {
   await assert.rejects(parsePerformanceFile('a.xls', Buffer.from('x')), /xlsx/);
   await assert.rejects(parsePerformanceFile('a.pdf', Buffer.from('x')), /지원하지 않는/);
 });
+
+test('네임스페이스 접두사(x:)가 붙은 xlsx도 읽는다', async () => {
+  const CFB = (await import('cfb')).default;
+  const zip = CFB.utils.cfb_new();
+  const add = (n, s) => CFB.utils.cfb_add(zip, n, Buffer.from(`﻿${s}`, 'utf8'));
+  const NS = 'xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
+  add('[Content_Types].xml', '<Types/>');
+  add('xl/workbook.xml', `<x:workbook ${NS}><x:sheets><x:sheet name="실적 &amp; 건수" sheetId="1" r:id="R1" xmlns:r="r"/></x:sheets></x:workbook>`);
+  add('xl/_rels/workbook.xml.rels', '<Relationships><Relationship Type="worksheet" Target="/xl/worksheets/sheet1.xml" Id="R1"/></Relationships>');
+  add('xl/sharedStrings.xml', `<x:sst ${NS}><x:si><x:t>9월</x:t></x:si></x:sst>`);
+  add('xl/worksheets/sheet1.xml', `<x:worksheet ${NS}><x:sheetData>`
+    + '<x:row r="1"><x:c r="A1" t="str"><x:v>기관코드</x:v></x:c><x:c r="B1" t="str"><x:v>금융회사명</x:v></x:c><x:c r="C1" t="s"><x:v>0</x:v></x:c></x:row>'
+    + '<x:row r="2"><x:c r="A2" t="str"><x:v>T1</x:v></x:c><x:c r="B2" t="inlineStr"><x:is><x:t>가온은행</x:t></x:is></x:c><x:c r="C2" t="n"><x:v>12</x:v></x:c></x:row>'
+    + '<x:row r="3"><x:c r="A3" t="str"><x:v>전체 합계</x:v></x:c><x:c r="C3"><x:f>SUM(C2)</x:f><x:v>12</x:v></x:c></x:row>'
+    + '</x:sheetData></x:worksheet>');
+  const buf = Buffer.from(CFB.write(zip, { fileType: 'zip', type: 'buffer' }));
+  const out = await parsePerformanceFile('raw.xlsx', buf, { year: 2026 });
+  assert.equal(out.source, '실적 & 건수');
+  assert.deepEqual(out.records, [{ institution: '가온은행', month: '2026-09', item: '건수', count: 12 }]);
+});

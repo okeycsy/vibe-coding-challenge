@@ -1,7 +1,7 @@
 // 학습된 분담기준(규칙)으로 분기 회비를 산출한다. 계산은 전부 결정적 코드로 하고 AI는 관여하지 않는다.
 import { allocate, toScaled, WEIGHT_SCALE } from './allocate.js';
-import { quarterMonths } from './period.js';
-import { validateRule } from './rules.js';
+import { basisMonths } from './period.js';
+import { describeBasis, validateRule } from './rules.js';
 
 /**
  * @param {object} p
@@ -16,7 +16,7 @@ export function calculateFees({ rule: rawRule, records, year, quarter, totalFee 
   if (errors.length) throw new Error(`분담기준이 올바르지 않습니다: ${errors.join(' ')}`);
 
   const total = parseAmount(totalFee);
-  const months = quarterMonths(year, quarter);
+  const months = basisMonths(year, quarter, rule.basis);
   const monthSet = new Set(months);
   const warnings = [];
 
@@ -43,8 +43,12 @@ export function calculateFees({ rule: rawRule, records, year, quarter, totalFee 
     if (w > 0) row.monthly[r.month] += count;
     row.metric += BigInt(Math.round(count)) * toScaled(w);
   }
-  if (outOfPeriod.size) warnings.push(`선택한 분기 밖의 실적(${[...outOfPeriod].sort().join(', ')})은 제외했습니다.`);
-  if (!inst.size) throw new Error('선택한 분기에 해당하는 실적이 없습니다. 기간과 파일을 확인하세요.');
+  const basisText = `${describeBasis(rule.basis)}(${months[0]}~${months.at(-1)})`;
+  if (outOfPeriod.size) warnings.push(`실적 기준 기간 밖의 실적(${[...outOfPeriod].sort().join(', ')})은 제외했습니다. 기준: ${basisText}`);
+  if (!inst.size) throw new Error(`실적 기준 기간(${basisText})에 해당하는 실적이 없습니다. 기간과 파일을 확인하세요.`);
+  const seenMonths = new Set(records.map((r) => r.month));
+  const missingMonths = months.filter((m) => !seenMonths.has(m));
+  if (missingMonths.length) warnings.push(`실적 파일에 ${missingMonths.join(', ')} 실적이 없어 0건으로 봤습니다.`);
 
   const names = [...inst.keys()].sort((a, b) => a.localeCompare(b, 'ko'));
   const unit = BigInt(rule.rounding.unit);
@@ -82,7 +86,7 @@ export function calculateFees({ rule: rawRule, records, year, quarter, totalFee 
   if (sum !== total) throw new Error(`내부 오류: 산출 합계(${sum})가 총회비(${total})와 다릅니다.`);
 
   return {
-    period: { year: Number(year), quarter: Number(quarter), months },
+    period: { year: Number(year), quarter: Number(quarter), months, basis: rule.basis, basisText },
     totalFee: Number(total),
     components: perComp.map((pc) => ({ name: pc.name, method: pc.method, amount: Number(pc.amount) })),
     rows,

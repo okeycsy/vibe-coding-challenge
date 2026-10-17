@@ -13,6 +13,7 @@ const SYSTEM = `너는 금융결제원 회비자동산출시스템의 '회비 �
 - method equal: 참가기관 수로 균등 분담.
 - method proportional: 기관별 '반영실적'(= 실적 항목별 건수 × 항목 가중치의 분기 합계)에 비례.
 - method tiered: 기관별 분기 반영실적이 tiers의 min 이상인 구간 중 가장 높은 구간의 weight를 가중치로 삼아 비례 배분.
+- 반영실적은 basis가 가리키는 기간(산출 분기에서 lag분기 전을 끝으로 count개 분기)의 실적만 쓴다. 기준에 기간 언급이 없으면 lag 0, count 1(산출 분기 실적).
 - 금액은 rounding.unit 단위로 절사하고, 남는 금액은 최대잔여법으로 배분해 합계를 총회비와 정확히 맞춘다.
 규칙:
 - 기준에 적힌 내용만 옮기고, 적혀 있지 않은 숫자를 지어내지 않는다. 불가피한 가정은 notes에 적는다.
@@ -73,8 +74,14 @@ async function learnWithClaude({ workName, text, hint }) {
 //   "실적 항목: 송금 1, 조회 0.2"
 //   "30% 구간별 가중치 - 0건 이상 1, 10,000건 이상 2, 50,000건 이상 3"
 //   "10원 미만 절사"
+//   "실적은 직전 2분기 실적" / "최근 2개 분기 실적"
 export function parseCriteriaText(text) {
-  const rule = { summary: '', items: [], components: [], rounding: { unit: 1 }, notes: [] };
+  const rule = { summary: '', basis: { lag: 0, count: 1 }, items: [], components: [], rounding: { unit: 1 }, notes: [] };
+  // 실적 기준 기간: "직전 분기", "직전 2분기"(= 직전 2개 분기), "최근 2개 분기"(산출 분기 포함)
+  const prev = text.match(/직전\s*(\d)?\s*(?:개\s*)?분기/);
+  const recent = text.match(/최근\s*(\d)\s*(?:개\s*)?분기/);
+  if (prev) rule.basis = { lag: 1, count: Number(prev[1] ?? 1) };
+  else if (recent) rule.basis = { lag: 0, count: Number(recent[1]) };
   const lines = text.split(/\n+/).map((s) => s.trim()).filter(Boolean);
 
   for (const line of lines) {
@@ -90,8 +97,9 @@ export function parseCriteriaText(text) {
     for (const p of parts) {
       const pct = Number(p.match(/(\d+(?:\.\d+)?)\s*%/)[1]);
       const method = /구간|등급/.test(p) ? 'tiered'
-        : /균등|정액|동일|기본/.test(p) ? 'equal'
-          : /비례|안분|실적|건수|이용/.test(p) ? 'proportional' : null;
+        : /비례|안분/.test(p) ? 'proportional'
+          : /균등|정액|동일|기본|기관\s*수|나누/.test(p) ? 'equal'
+            : /실적|건수|이용/.test(p) ? 'proportional' : null;
       if (!method) { rule.notes.push(`해석 못 함: "${p.trim()}"`); continue; }
       const tiers = method === 'tiered'
         ? [...p.matchAll(/([\d,]+)\s*건\s*이상\s*(?:가중치\s*)?[×x*]?\s*(\d+(?:\.\d+)?)/g)].map((m) => ({ min: Number(m[1].replace(/,/g, '')), weight: Number(m[2]) }))
