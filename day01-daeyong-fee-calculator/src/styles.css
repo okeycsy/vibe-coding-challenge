@@ -210,11 +210,45 @@ tfoot td { font-weight: 700; border-bottom: 0; background: var(--surface-2); }
 tfoot td:first-child { text-align: center; font-family: var(--font-body); }
 .empty { text-align: center; color: var(--muted); font-family: var(--font-body); padding: 24px; }
 
+/* 분기별 현황 */
+details.alert summary { cursor: pointer; font-weight: 600; }
+details.alert ul { margin: 8px 0 0; padding-left: 20px; max-height: 220px; overflow-y: auto; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.quarter-table tbody tr { cursor: pointer; }
+.quarter-table tbody tr.is-selected { background: var(--accent-soft); }
+.quarter-table tbody tr.is-selected td { font-weight: 600; }
+.row-btn { border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; font-weight: 600; }
+.quarter-table th.col-name, .quarter-table td.col-name { text-align: left; font-family: var(--font-body); }
+.trend-cell { display: inline-flex; align-items: center; gap: 10px; }
+.trend { display: inline-block; width: 90px; height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+.trend-bar { display: block; height: 100%; background: var(--accent); opacity: 0.7; }
+.fee-cell {
+  width: 140px; height: 32px; padding: 0 10px; text-align: right; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--surface); font-family: var(--font-num); font-variant-numeric: tabular-nums;
+}
+.fee-cell.is-custom { font-weight: 700; border-color: var(--accent); }
+td.col-top { font-family: var(--font-body); color: var(--muted); font-size: 13px; }
+td.col-go { font-family: var(--font-body); color: var(--accent); font-size: 13px; font-weight: 600; }
+.table-note { margin: 0; padding: 10px 20px 14px; font-size: 12px; color: var(--muted); }
+
+/* 선택한 분기 상세 */
+.detail { display: flex; flex-direction: column; gap: 14px; padding-top: 6px; border-top: 2px solid var(--ink); }
+.detail-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-top: 10px; }
+.detail-head h2 { font-size: 20px; }
+.nav-btn {
+  width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface);
+  font-size: 18px; line-height: 1; cursor: pointer;
+}
+.nav-btn:disabled { opacity: 0.35; cursor: default; }
+.verify { margin-left: auto; font-size: 13px; font-weight: 600; }
+.verify.ok { color: var(--ok); }
+.verify.bad { color: var(--err); }
+
 /* 산출 방법 */
 .method { padding: 4px 2px; }
 .method h2 { font-size: 14px; color: var(--muted); margin-bottom: 8px; }
 .method dl { margin: 0; display: grid; gap: 6px; }
-.method dl div { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 12px; font-size: 13px; }
+.method dl div { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 12px; font-size: 13px; }
 .method dt { font-weight: 600; }
 .method dd { margin: 0; color: var(--muted); }
 
