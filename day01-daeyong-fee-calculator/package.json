@@ -5,10 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/build-single.js",
     "preview": "vite preview",
-    "test": "node --test",
-    "sample": "node scripts/make-sample.js"
+    "test": "node --test"
   },
   "dependencies": {
     "react": "^18.3.1",

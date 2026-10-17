@@ -6,7 +6,7 @@
 - 저장소 세팅 완료 (템플릿, GitHub 동기화 훅 — 로컬 main과 클라우드 `claude/*` 브랜치 모두 동작)
 - 산출물: 아직 없음
 - [경식] `day01-gyeongsik-fee-calculator/` 회비자동산출시스템 프론트엔드 1차 구현 완료 (Mock Data, 백엔드 없음)
-- [대용] `day01-daeyong-fee-calculator/` 금융정보업무 회비 산출 1차 구현 완료 (25% 균등 + 75% 건수 비례, 엑셀 업로드·결과 엑셀 생성)
+- [대용] `day01-daeyong-fee-calculator/` 금융정보업무 회비 산출 2차 완료: 화면 개편 + 단일 HTML 프로그램(`release/fee-calculator.html`) + claude.ai 웹 페이지 게시
 
 ## 다음 할 일
 - [ ] Day01 챌린지 과제 받아서 시작
@@ -20,6 +20,7 @@
 
 ## 세션 로그
 ### 2026-10-17 (대용)
+- 2차: 화면 개편(요약 카드, 기관별 구성 막대, 정렬·검색 표, 끌어다 놓기, 다크 모드, 예시 데이터로 첫 화면 채움), `npm run build`로 단일 HTML 프로그램 생성, claude.ai 웹 페이지로 게시(파일 저장은 downloads 기능)
 - `day01-daeyong-fee-calculator/` 추가: Vite+React+SheetJS. 회비 총액 입력 + 건수 엑셀 업로드 → 25% 균등·75% (압류+추심+해제) 비율 안분 → 결과 엑셀(결과·산출기준 시트) 생성
 - 원 단위: 풀별 원 미만 버림 후 최대잔여법으로 단수 배정, 합계 = 총액 보장. `npm test`로 검증
 ### 2026-10-14 (경식)
