@@ -1,5 +1,6 @@
 // 엑셀 읽기·쓰기 (SheetJS)
 import * as XLSX from 'xlsx';
+import { sampleSheetRows } from './sampleData.js';
 
 // 머리글 이름이 조금 달라도 찾을 수 있게 키워드로 매칭 (공백 제거 후 포함 여부)
 const COLUMNS = {
@@ -129,6 +130,25 @@ export function buildResultWorkbook(result, { sourceName = '', date = new Date()
   return wb;
 }
 
-export function downloadWorkbook(wb, filename) {
+// 예시 입력 양식 워크북
+export function buildSampleWorkbook() {
+  const ws = XLSX.utils.aoa_to_sheet(sampleSheetRows());
+  ws['!cols'] = [{ wch: 16 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '건수');
+  return wb;
+}
+
+// 파일로 저장. claude.ai 웹 페이지 안에서는 다운로드 확인 창을 거치고, 그 밖에서는 브라우저가 바로 내려받는다.
+export async function saveWorkbook(wb, filename) {
+  if (typeof window !== 'undefined' && window.claude?.use) {
+    const downloads = await window.claude.use('downloads');
+    if (downloads) {
+      const data = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+      await downloads.save({ filename, data });
+      return;
+    }
+    throw new Error('이 화면에서는 파일 저장을 쓸 수 없습니다.');
+  }
   XLSX.writeFile(wb, filename);
 }
