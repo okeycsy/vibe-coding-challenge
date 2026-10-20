@@ -11,7 +11,7 @@ const TEST_TONE = {
 };
 
 export default function ResultsManagement({ user, runs, setRuns, notify }) {
-  const isOperator = user.role === 'operator';
+  const isOperator = user.side === 'kftc';
   const [tests, setTests] = useState(TEST_RESULTS);
   const [query, setQuery] = useState('');
 

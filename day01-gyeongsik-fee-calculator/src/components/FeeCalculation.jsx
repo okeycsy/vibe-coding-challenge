@@ -7,6 +7,7 @@ import {
   Download,
   FileSpreadsheet,
   Info,
+  Plus,
   LoaderCircle,
   Send,
   Sparkles,
@@ -29,8 +30,11 @@ function detectPeriod(today = new Date()) {
   return q === 1 ? { year: today.getFullYear() - 1, quarter: 4 } : { year: today.getFullYear(), quarter: q - 1 };
 }
 
-export default function FeeCalculation({ user, runs, setRuns, notify }) {
-  const isOperator = user.role === 'operator';
+export default function FeeCalculation({ user, runs, setRuns, notify, allowedTasks, onRequestTask }) {
+  // 결제원 담당자(일반담당자·시스템관리자)는 산출, 참가기관은 조회·대사 회신만 한다.
+  const isOperator = user.side === 'kftc';
+  // 업무별 산출 권한: 일반담당자는 승인된 업무만, 시스템관리자는 전체 업무를 선택할 수 있다.
+  const canSelect = (id) => !isOperator || allowedTasks.includes(id);
   const detected = detectPeriod();
   const [businessId, setBusinessId] = useState(BUSINESSES[0].id);
   const [year, setYear] = useState(YEARS.includes(detected.year) ? detected.year : 2026);
@@ -44,6 +48,15 @@ export default function FeeCalculation({ user, runs, setRuns, notify }) {
   const timers = useRef([]);
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
+
+  // 역할이 바뀌어 지금 업무에 권한이 없어지면 선택 가능한 첫 업무로 옮긴다.
+  useEffect(() => {
+    if (!canSelect(businessId)) {
+      const first = BUSINESSES.find((b) => canSelect(b.id));
+      if (first) setBusinessId(first.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.role, allowedTasks]);
 
   const business = BUSINESSES.find((b) => b.id === businessId);
   const key = runKey(businessId, year, quarter);
@@ -136,13 +149,30 @@ export default function FeeCalculation({ user, runs, setRuns, notify }) {
       <Card id="calc-period" step={1} title="업무 및 분기 선택" icon={Briefcase}>
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
           <div className="lg:col-span-2 space-y-3">
-            <Select label="업무 선택" value={businessId} onChange={setBusinessId}>
-              {BUSINESSES.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </Select>
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Select label="업무 선택" value={businessId} onChange={setBusinessId}>
+                  {BUSINESSES.map((b) => (
+                    <option key={b.id} value={b.id} disabled={!canSelect(b.id)}>
+                      {b.name}
+                      {canSelect(b.id) ? '' : ' (권한 없음 - 신청 필요)'}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              {user.role === 'operator' && (
+                <button
+                  onClick={onRequestTask}
+                  className="shrink-0 flex items-center gap-1 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-2 text-xs font-medium text-brand-700 hover:bg-brand-100"
+                  title="내 정보 관리에서 담당 업무 권한을 신청합니다"
+                >
+                  <Plus className="w-3.5 h-3.5" /> 담당 업무 추가 신청
+                </button>
+              )}
+            </div>
+            {user.role === 'sysadmin' && (
+              <p className="text-[11px] text-brand-500">시스템관리자는 모든 업무를 제한 없이 산출할 수 있습니다.</p>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <Select label="연도" value={year} onChange={(v) => setYear(Number(v))}>
                 {YEARS.map((y) => (

@@ -5,9 +5,12 @@ import { Eye, EyeOff, Lock, LogIn, ShieldAlert, User } from 'lucide-react';
 //   지금은 금융결제원 CI 심벌마크를 기본으로 쓴다.
 const LOGO_SRC = 'kftc-symbol.png';
 
-// 시연용 테스트 계정. 실제 인증은 백엔드 연동 시 교체한다.
-const DEMO_ACCOUNT = { id: 'admin', password: '1234' };
-const MAX_ATTEMPTS = 5;
+// 시연용 계정 (기본 비밀번호 1234, 계정 정보는 data/mockData.js의 ACCOUNTS)
+const DEMO_HINTS = [
+  { id: 'hong', label: '일반담당자 (홍길동)' },
+  { id: 'admin', label: '시스템관리자' },
+  { id: 'shinhan', label: '참가기관 담당자 (신한은행)' },
+];
 
 function LogoShowcase() {
   return (
@@ -29,36 +32,32 @@ function LogoShowcase() {
   );
 }
 
-export default function LoginPage({ onLogin }) {
+export default function LoginPage({ onLogin, onResetLock, locks, maxAttempts }) {
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [failCount, setFailCount] = useState(0);
   const [error, setError] = useState('');
 
-  const locked = failCount >= MAX_ATTEMPTS;
+  // 잠금은 계정(ID)별로 관리한다. 입력한 ID가 잠겨 있으면 비밀번호·로그인 버튼이 비활성화된다.
+  const typedId = id.trim();
+  const failCount = locks[typedId]?.count ?? 0;
+  const locked = failCount >= maxAttempts;
 
   const submit = (e) => {
     e.preventDefault();
     if (locked) return;
-    if (!id.trim() || !password) {
+    if (!typedId || !password) {
       setError('ID(사번)와 비밀번호를 모두 입력해 주세요.');
       return;
     }
-    if (id.trim() === DEMO_ACCOUNT.id && password === DEMO_ACCOUNT.password) {
-      setFailCount(0);
-      setError('');
-      onLogin();
-      return;
-    }
-    const next = failCount + 1;
-    setFailCount(next);
+    const result = onLogin(typedId, password);
+    if (result.ok) return;
     setPassword('');
-    setError(next >= MAX_ATTEMPTS ? '' : 'ID 또는 비밀번호가 올바르지 않습니다.');
+    setError(result.locked ? '' : 'ID 또는 비밀번호가 올바르지 않습니다.');
   };
 
   const resetLock = () => {
-    setFailCount(0);
+    onResetLock(typedId);
     setError('');
     setPassword('');
   };
@@ -107,7 +106,6 @@ export default function LoginPage({ onLogin }) {
                   <input
                     value={id}
                     onChange={(e) => setId(e.target.value)}
-                    disabled={locked}
                     autoComplete="username"
                     autoFocus
                     placeholder="사번 입력"
@@ -146,7 +144,7 @@ export default function LoginPage({ onLogin }) {
                   <span className="text-rose-600">{error}</span>
                   {failCount > 0 && (
                     <span className="font-medium text-rose-600 tabular-nums">
-                      오류 횟수: {failCount}/{MAX_ATTEMPTS}회
+                      오류 횟수: {failCount}/{maxAttempts}회
                     </span>
                   )}
                 </div>
@@ -161,7 +159,18 @@ export default function LoginPage({ onLogin }) {
               </button>
             </form>
 
-            <p className="mt-4 text-center text-[11px] text-slate-400">시연용 계정 ID: admin / PW: 1234</p>
+            <div className="mt-5 rounded-lg bg-slate-50 px-3 py-2.5 text-[11px] text-slate-400">
+              <p className="mb-1">시연용 계정 (기본 비밀번호 1234)</p>
+              <ul className="space-y-0.5">
+                {DEMO_HINTS.map((h) => (
+                  <li key={h.id}>
+                    <button type="button" onClick={() => setId(h.id)} className="hover:text-brand-600">
+                      <span className="font-mono text-slate-500">{h.id}</span> · {h.label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
 
             {locked && (
               <div className="mt-3 text-center">
