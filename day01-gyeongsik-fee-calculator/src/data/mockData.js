@@ -1,5 +1,6 @@
 // 모든 수치는 화면 시연용 예시 데이터입니다. 실제 실적·회비와 무관합니다.
 
+// 로그인한 계정의 role이 화면을 결정한다: operator=사용자, sysadmin=관리자, institution=참가기관.
 // side: 'kftc'(금융결제원) | 'institution'(참가기관). 결제원 화면 권한은 side로, 관리자 기능은 role로 구분한다.
 export const USERS = {
   operator: {
@@ -12,8 +13,8 @@ export const USERS = {
     dept: '금융사업부 오픈뱅킹팀',
     roleLabel: '일반 사용자 (운영 담당자)',
     extension: '02-531-1234',
-    label: '금융결제원 일반담당자 뷰',
-    short: '일반담당자',
+    label: '사용자',
+    home: 'calc',
   },
   sysadmin: {
     role: 'sysadmin',
@@ -25,8 +26,8 @@ export const USERS = {
     dept: '정보시스템부 운영관리팀',
     roleLabel: '시스템 관리자',
     extension: '02-531-1100',
-    label: '금융결제원 시스템관리자 뷰',
-    short: '시스템관리자',
+    label: '관리자',
+    home: 'admin',
   },
   institution: {
     role: 'institution',
@@ -39,12 +40,10 @@ export const USERS = {
     dept: '자금결제부',
     roleLabel: '참가기관 담당자',
     extension: '02-2151-0000',
-    label: '참가기관 담당자 뷰',
-    short: '참가기관',
+    label: '참가기관',
+    home: 'calc',
   },
 };
-
-export const ROLE_ORDER = ['operator', 'sysadmin', 'institution'];
 
 // 시연용 로그인 계정 (기본 비밀번호 1234). 비밀번호는 마이페이지에서 바꿀 수 있다.
 export const ACCOUNTS = [

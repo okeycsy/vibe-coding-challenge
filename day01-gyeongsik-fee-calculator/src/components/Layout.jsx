@@ -1,23 +1,36 @@
 import { useState } from 'react';
-import { ROLE_ORDER, USERS } from '../data/mockData';
-import { ArrowLeftRight, Bell, Calculator, ChevronDown, ClipboardCheck, LogOut, Menu, ShieldCheck, UserCog } from 'lucide-react';
+import { Bell, Calculator, ChevronDown, ClipboardCheck, LogOut, Menu, ShieldCheck, UserCog } from 'lucide-react';
 
+// 메뉴는 로그인한 계정의 role로 걸러진다. labels는 역할별로 이름을 바꿀 때 쓴다.
 // children: 하위 메뉴. section은 해당 화면 안에서 스크롤할 영역의 id, roles가 없으면 상위 메뉴 권한을 따른다.
 export const MENUS = [
   {
+    id: 'admin',
+    label: '관리자 설정(회원/권한 승인)',
+    icon: ShieldCheck,
+    roles: ['sysadmin'],
+    children: [
+      { section: 'admin-tasks', label: '업무 권한 신청 승인' },
+      { section: 'admin-members', label: '회원가입 승인' },
+      { section: 'admin-locks', label: '잠금 계정 관리' },
+    ],
+  },
+  {
     id: 'calc',
     label: '회비 산출 및 대사',
+    labels: { institution: '회비 대사 확인' },
     icon: Calculator,
     roles: ['operator', 'sysadmin', 'institution'],
     children: [
       { section: 'calc-period', label: '업무 및 분기 선택' },
       { section: 'calc-input', label: '데이터 입력 및 AI 이슈', roles: ['operator', 'sysadmin'] },
-      { section: 'calc-result', label: '산출 결과 및 다운로드' },
+      { section: 'calc-result', label: '산출 결과 및 다운로드', labels: { institution: '회비 확인 및 대사 회신' } },
     ],
   },
   {
     id: 'results',
     label: '기관 테스트/대사 결과 관리',
+    labels: { institution: '테스트/대사 결과 조회' },
     icon: ClipboardCheck,
     roles: ['operator', 'sysadmin', 'institution'],
     children: [
@@ -37,20 +50,17 @@ export const MENUS = [
       { section: 'mypage-security', label: '보안 설정 및 접속 이력' },
     ],
   },
-  {
-    id: 'admin',
-    label: '관리자 설정(회원/권한 승인)',
-    icon: ShieldCheck,
-    roles: ['sysadmin'],
-    children: [
-      { section: 'admin-tasks', label: '업무 권한 신청 승인' },
-      { section: 'admin-members', label: '회원가입 승인' },
-      { section: 'admin-locks', label: '잠금 계정 관리' },
-    ],
-  },
 ];
 
-export function Header({ user, onSwitchRole, onLogout, onToggleSidebar, sidebarOpen }) {
+export const labelFor = (item, role) => item.labels?.[role] ?? item.label;
+
+const ROLE_BADGE = {
+  operator: 'bg-white/15 text-white',
+  sysadmin: 'bg-amber-400 text-amber-950',
+  institution: 'bg-emerald-400 text-emerald-950',
+};
+
+export function Header({ user, onLogout, onToggleSidebar, sidebarOpen }) {
   return (
     <header className="h-16 bg-brand-800 text-white flex items-center justify-between px-6 shadow-md z-10">
       <div className="flex items-center gap-3">
@@ -77,6 +87,7 @@ export function Header({ user, onSwitchRole, onLogout, onToggleSidebar, sidebarO
           <Bell className="w-5 h-5 text-brand-200" />
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-400 rounded-full" />
         </button>
+        <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${ROLE_BADGE[user.role]}`}>{user.label}</span>
         <div className="text-right leading-tight">
           <p className="text-sm font-semibold">
             {user.org} {user.title} ({user.name})
@@ -89,26 +100,13 @@ export function Header({ user, onSwitchRole, onLogout, onToggleSidebar, sidebarO
         >
           <LogOut className="w-3.5 h-3.5" /> 로그아웃
         </button>
-        {/* 시연용 역할 전환: 일반담당자 ↔ 시스템관리자 ↔ 참가기관 */}
-        <div className="flex items-center gap-1 rounded-full border border-white/20 bg-white/5 p-1 text-xs" role="group" aria-label="권한 전환">
-          <ArrowLeftRight className="w-3.5 h-3.5 mx-1.5 text-brand-200" />
-          {ROLE_ORDER.map((r) => (
-            <button
-              key={r}
-              onClick={() => onSwitchRole(r)}
-              aria-pressed={user.role === r}
-              className={`rounded-full px-3 py-1 transition ${
-                user.role === r ? 'bg-white text-brand-800 font-bold shadow' : 'text-brand-100 hover:bg-white/15'
-              }`}
-            >
-              {USERS[r].short}
-            </button>
-          ))}
-        </div>
+
       </div>
     </header>
   );
 }
+
+const ROLE_MENU_TITLE = { operator: '사용자 메뉴', sysadmin: '관리자 메뉴', institution: '참가기관 메뉴' };
 
 export function Sidebar({ role, active, activeSection, onSelect, adminBadge, open }) {
   const [folded, setFolded] = useState({});
@@ -119,7 +117,9 @@ export function Sidebar({ role, active, activeSection, onSelect, adminBadge, ope
       className={`${open ? 'w-72' : 'w-16'} shrink-0 bg-white border-r border-slate-200 flex flex-col transition-[width] duration-200`}
     >
       <nav className="p-3 space-y-1">
-        <p className={`px-3 pt-2 pb-1 text-[11px] font-semibold text-slate-400 tracking-wider ${open ? '' : 'invisible'}`}>MENU</p>
+        <p className={`px-3 pt-2 pb-1 text-[11px] font-semibold text-slate-400 tracking-wider ${open ? '' : 'invisible'}`}>
+          {ROLE_MENU_TITLE[role]}
+        </p>
         {MENUS.filter(visible).map((m) => {
           const Icon = m.icon;
           const on = active === m.id;
@@ -138,10 +138,10 @@ export function Sidebar({ role, active, activeSection, onSelect, adminBadge, ope
                 <button
                   onClick={() => onSelect(m.id)}
                   className={`flex-1 flex items-center gap-3 py-2.5 text-sm text-left ${open ? 'px-3' : 'justify-center px-0'}`}
-                  aria-label={m.label}
+                  aria-label={labelFor(m, role)}
                 >
                   <Icon className="w-4 h-4 shrink-0" />
-                  {open && <span className="flex-1">{m.label}</span>}
+                  {open && <span className="flex-1">{labelFor(m, role)}</span>}
                   {open && badge}
                   {!open && adminBadge > 0 && m.id === 'admin' && (
                     <span className="absolute top-1.5 right-2 w-2 h-2 rounded-full bg-rose-500" />
@@ -151,7 +151,7 @@ export function Sidebar({ role, active, activeSection, onSelect, adminBadge, ope
                   <button
                     onClick={() => setFolded((f) => ({ ...f, [m.id]: !f[m.id] }))}
                     className={`p-2 mr-1 rounded ${on ? 'hover:bg-white/15' : 'hover:bg-brand-100'}`}
-                    aria-label={`${m.label} 하위 메뉴 ${expanded ? '접기' : '펴기'}`}
+                    aria-label={`${labelFor(m, role)} 하위 메뉴 ${expanded ? '접기' : '펴기'}`}
                   >
                     <ChevronDown className={`w-4 h-4 transition-transform ${expanded ? '' : '-rotate-90'}`} />
                   </button>
@@ -170,7 +170,7 @@ export function Sidebar({ role, active, activeSection, onSelect, adminBadge, ope
                             subOn ? 'bg-brand-50 text-brand-700 font-semibold' : 'text-slate-500 hover:text-brand-700 hover:bg-slate-50'
                           }`}
                         >
-                          {c.label}
+                          {labelFor(c, role)}
                         </button>
                       </li>
                     );
@@ -186,7 +186,7 @@ export function Sidebar({ role, active, activeSection, onSelect, adminBadge, ope
                       onClick={() => onSelect(m.id)}
                       className="w-full flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-brand-900 hover:bg-brand-50"
                     >
-                      {m.label} {badge}
+                      {labelFor(m, role)} {badge}
                     </button>
                     {children.map((c) => (
                       <button
@@ -194,7 +194,7 @@ export function Sidebar({ role, active, activeSection, onSelect, adminBadge, ope
                         onClick={() => onSelect(m.id, c.section)}
                         className="w-full text-left px-5 py-1.5 text-[13px] text-slate-500 hover:text-brand-700 hover:bg-slate-50"
                       >
-                        {c.label}
+                        {labelFor(c, role)}
                       </button>
                     ))}
                   </div>
