@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { periodLabel, periodTag } from './period';
 
 function save(sheets, filename) {
   const wb = XLSX.utils.book_new();
@@ -11,13 +12,13 @@ function save(sheets, filename) {
 }
 
 // 참가기관에 보내 실적·회비를 대사(확인)받기 위한 파일
-export function downloadReconciliation({ business, year, quarter, rows, issues }) {
-  const period = `${year}년 ${quarter}분기`;
+export function downloadReconciliation({ business, from, to, rows, issues }) {
+  const period = periodLabel(from, to);
   save(
     [
       {
         name: '대사내역',
-        widths: [14, 12, 8, 14, 12, 16, 14, 16, 18, 10, 50],
+        widths: [14, 30, 8, 14, 12, 16, 14, 16, 18, 10, 50],
         rows: rows.map((r) => ({
           업무: business.name,
           산출기간: period,
@@ -48,12 +49,12 @@ export function downloadReconciliation({ business, year, quarter, rows, issues }
         })),
       },
     ],
-    `${business.name}_${year}_${quarter}Q_참가기관대사용.xlsx`,
+    `${business.name}_${periodTag(from, to)}_참가기관대사용.xlsx`,
   );
 }
 
 // 예산회계시스템에 수입결의로 올리기 위한 파일
-export function downloadRevenueResolution({ business, year, quarter, rows }) {
+export function downloadRevenueResolution({ business, from, to, rows }) {
   const today = new Date().toISOString().slice(0, 10);
   save(
     [
@@ -62,16 +63,16 @@ export function downloadRevenueResolution({ business, year, quarter, rows }) {
         widths: [12, 8, 28, 10, 16, 14, 36, 12],
         rows: rows.map((r) => ({
           결의일자: today,
-          회계연도: year,
+          회계연도: Number(to.slice(0, 4)),
           수입과목: business.revenueAccount,
           거래처코드: r.code,
           거래처명: r.name,
           '수입금액(원)': r.fee,
-          적요: `${year}년 ${quarter}분기 ${business.name} 회비`,
+          적요: `${periodLabel(from, to)} ${business.name} 회비`,
           비고: r.status === '완료' ? '대사완료' : `대사${r.status}`,
         })),
       },
     ],
-    `${business.name}_${year}_${quarter}Q_수입결의.xlsx`,
+    `${business.name}_${periodTag(from, to)}_수입결의.xlsx`,
   );
 }

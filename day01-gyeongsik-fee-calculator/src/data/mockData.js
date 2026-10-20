@@ -126,8 +126,6 @@ export const BUSINESSES = [
   },
 ];
 
-export const YEARS = [2025, 2026];
-export const QUARTERS = [1, 2, 3, 4];
 
 export const ISSUE_EXAMPLES = [
   '5월 3일 A은행 시스템 장애로 인해 중복 전송된 1,500건은 실적에서 제외하고 산출해 줘.',
@@ -147,11 +145,13 @@ function seeded(str) {
 
 const WEIGHTS = { shinhan: 1.15, kb: 1.25, woori: 1.0, hana: 0.95, nh: 1.1, ibk: 0.8, kakao: 0.7, toss: 0.45 };
 
-export function getBaseCounts(businessId, year, quarter) {
+// baseVolume은 한 분기(약 91일) 실적이다. 산출 기간이 분기가 아니면 일수에 비례해 줄이거나 늘린다(scale).
+export function getBaseCounts(businessId, from, to, scale = 1) {
   const biz = BUSINESSES.find((b) => b.id === businessId);
   return INSTITUTIONS.map((inst) => {
-    const r = seeded(`${businessId}-${year}-${quarter}-${inst.id}`);
-    const count = Math.round((biz.baseVolume * WEIGHTS[inst.id] * (0.85 + r * 0.3)) / 10) * 10;
+    const r = seeded(`${businessId}-${from}-${to}-${inst.id}`);
+    const volume = biz.baseVolume * scale * WEIGHTS[inst.id] * (0.85 + r * 0.3);
+    const count = Math.max(10, Math.round(volume / 10) * 10);
     return { institutionId: inst.id, baseCount: count };
   });
 }
