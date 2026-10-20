@@ -6,13 +6,12 @@ import { Bell, Calculator, ChevronDown, ClipboardCheck, LogOut, Menu, ShieldChec
 export const MENUS = [
   {
     id: 'admin',
-    label: '관리자 설정(회원/권한 승인)',
+    label: '관리자 설정',
     icon: ShieldCheck,
     roles: ['sysadmin'],
     children: [
-      { section: 'admin-tasks', label: '업무 권한 신청 승인' },
-      { section: 'admin-members', label: '회원가입 승인' },
-      { section: 'admin-locks', label: '잠금 계정 관리' },
+      { section: 'admin-members', label: '회원 관리' },
+      { section: 'admin-tasks', label: '업무 권한 관리' },
     ],
   },
   {
@@ -108,7 +107,7 @@ export function Header({ user, onLogout, onToggleSidebar, sidebarOpen }) {
 
 const ROLE_MENU_TITLE = { operator: '사용자 메뉴', sysadmin: '관리자 메뉴', institution: '참가기관 메뉴' };
 
-export function Sidebar({ role, active, activeSection, onSelect, adminBadge, open }) {
+export function Sidebar({ role, active, activeSection, onSelect, adminBadge, sectionBadges = {}, open }) {
   const [folded, setFolded] = useState({});
   const visible = (item) => !item.roles || item.roles.includes(role);
 
@@ -170,7 +169,14 @@ export function Sidebar({ role, active, activeSection, onSelect, adminBadge, ope
                             subOn ? 'bg-brand-50 text-brand-700 font-semibold' : 'text-slate-500 hover:text-brand-700 hover:bg-slate-50'
                           }`}
                         >
-                          {labelFor(c, role)}
+                          <span className="flex items-center justify-between gap-2">
+                            {labelFor(c, role)}
+                            {sectionBadges[c.section] > 0 && (
+                              <span className="rounded-full bg-rose-100 text-rose-600 text-[10px] font-semibold px-1.5">
+                                {sectionBadges[c.section]}
+                              </span>
+                            )}
+                          </span>
                         </button>
                       </li>
                     );

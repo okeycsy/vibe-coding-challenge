@@ -1,12 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  ACCOUNTS,
-  BUSINESSES,
-  INITIAL_APPROVED_TASKS,
-  INITIAL_LOGIN_LOCKS,
-  MEMBER_REQUESTS,
-  USERS,
-} from './data/mockData';
+import { BUSINESSES, INITIAL_LOGIN_LOCKS, INITIAL_TASK_REQUESTS, MEMBERS, ROLES } from './data/mockData';
 import { Header, MENUS, Sidebar } from './components/Layout';
 import FeeCalculation from './components/FeeCalculation';
 import ResultsManagement from './components/ResultsManagement';
@@ -16,6 +9,8 @@ import { Toast } from './components/ui';
 import LoginPage from './components/LoginPage';
 
 const MAX_ATTEMPTS = 5;
+// 하위 메뉴가 각각 한 페이지인 메뉴와 그 첫 페이지
+const PAGED_MENUS = { mypage: 'mypage-profile', admin: 'admin-members' };
 const nowLabel = () => {
   const d = new Date();
   const p = (n) => String(n).padStart(2, '0');
@@ -24,39 +19,40 @@ const nowLabel = () => {
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [role, setRole] = useState('operator');
+  const [currentId, setCurrentId] = useState(null);
   const [menu, setMenu] = useState('calc');
   const [activeSection, setActiveSection] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   // runs: `${업무}-${연도}-${분기}` 별 산출 결과. 모든 뷰와 메뉴가 같은 상태를 공유한다.
   const [runs, setRuns] = useState({});
-  const [members, setMembers] = useState(MEMBER_REQUESTS);
   const [toast, setToast] = useState(null);
   const toastTimer = useRef();
 
-  // ── 계정·로그인 잠금 ──
-  const [accounts, setAccounts] = useState(ACCOUNTS);
-  const [loginLocks, setLoginLocks] = useState(INITIAL_LOGIN_LOCKS); // { [id]: { count, name, org, lockedAt } }
+  // ── 회원(=로그인 계정)·로그인 잠금 ──
+  // 회원마다 역할(role)과 산출 가능 업무(tasks)를 가진다. 관리자가 회원 관리·업무 권한 관리에서 바꾼다.
+  const [members, setMembers] = useState(MEMBERS);
+  const [loginLocks, setLoginLocks] = useState(INITIAL_LOGIN_LOCKS); // { [id]: { count, lockedAt } }
   const [loginAt, setLoginAt] = useState(null);
 
-  // ── 담당 업무 권한(RBAC): 일반담당자(홍길동)의 승인 업무와 권한 신청 내역 ──
-  const [approvedTasks, setApprovedTasks] = useState(INITIAL_APPROVED_TASKS);
-  const [taskRequests, setTaskRequests] = useState([]); // status: 승인 대기중 | 승인 | 반려
+  // ── 업무 권한 신청 내역 ──
+  const [taskRequests, setTaskRequests] = useState(INITIAL_TASK_REQUESTS); // status: 승인 대기중 | 승인 | 반려
   const pendingRequests = taskRequests.filter((r) => r.status === '승인 대기중');
 
-  // ── 마이페이지 설정 (역할별) ──
-  const [prefs, setPrefs] = useState(() =>
-    Object.fromEntries(
-      Object.values(USERS).map((u) => [
-        u.role,
-        { extension: u.extension, webhook: '', notify: { recon: true, testError: true, permission: true } },
-      ]),
-    ),
-  );
+  // ── 마이페이지 설정 (회원별, 처음 열 때 기본값) ──
+  const [prefsById, setPrefsById] = useState({});
+  const defaultPrefs = (m) => ({
+    extension: m.extension,
+    webhook: '',
+    notify: { recon: true, testError: true, permission: true },
+  });
+  const prefsOf = (m) => prefsById[m.id] ?? defaultPrefs(m);
 
-  const user = USERS[role];
+  const member = members.find((m) => m.id === currentId);
+  const role = member?.role ?? 'operator';
+  const user = member ? { ...ROLES[member.role], ...member } : null;
   // 시스템관리자는 전체 업무, 일반담당자는 승인된 업무만 산출할 수 있다. 참가기관은 산출하지 않는다.
-  const allowedTasks = role === 'sysadmin' ? BUSINESSES.map((b) => b.id) : role === 'operator' ? approvedTasks : [];
+  const allowedTasks =
+    role === 'sysadmin' ? BUSINESSES.map((b) => b.id) : role === 'operator' ? (member?.tasks ?? []) : [];
 
   const notify = (message, tone = 'info') => {
     clearTimeout(toastTimer.current);
@@ -66,36 +62,28 @@ export default function App() {
 
   const canSee = (menuId) => MENUS.find((m) => m.id === menuId)?.roles.includes(role);
 
-
   // ── 로그인 ──
   const login = (id, password) => {
     const lock = loginLocks[id];
     if (lock?.count >= MAX_ATTEMPTS) return { locked: true };
-    const account = accounts.find((a) => a.id === id && a.password === password);
+    const account = members.find((a) => a.id === id && a.password === password);
+    if (account?.status === '승인대기') return { pending: true };
+    if (account?.status === '반려') return { rejected: true };
     if (account) {
       setLoginLocks((l) => {
         const { [id]: _, ...rest } = l;
         return rest;
       });
       // 계정의 역할이 곧 화면 권한이다. 역할별 첫 화면으로 들어간다.
-      setRole(account.role);
-      setMenu(USERS[account.role].home);
+      setCurrentId(account.id);
+      setMenu(ROLES[account.role].home);
       setActiveSection(null);
       setLoginAt(nowLabel());
       setIsLoggedIn(true);
       return { ok: true };
     }
-    const known = accounts.find((a) => a.id === id);
     const count = (lock?.count ?? 0) + 1;
-    setLoginLocks((l) => ({
-      ...l,
-      [id]: {
-        count,
-        name: known ? USERS[known.role].name : '-',
-        org: known ? USERS[known.role].org : '미등록 ID',
-        lockedAt: count >= MAX_ATTEMPTS ? nowLabel() : null,
-      },
-    }));
+    setLoginLocks((l) => ({ ...l, [id]: { count, lockedAt: count >= MAX_ATTEMPTS ? nowLabel() : null } }));
     return { count, locked: count >= MAX_ATTEMPTS };
   };
 
@@ -106,28 +94,56 @@ export default function App() {
     });
 
   const changePassword = (current, next) => {
-    const acc = accounts.find((a) => a.role === role);
-    if (!acc || acc.password !== current) return '현재 비밀번호가 올바르지 않습니다.';
-    setAccounts((as) => as.map((a) => (a.id === acc.id ? { ...a, password: next } : a)));
+    if (member.password !== current) return '현재 비밀번호가 올바르지 않습니다.';
+    updateMember(member.id, { password: next });
     return null;
   };
 
-  // ── 업무 권한 신청·승인 ──
+  // ── 회원 관리 (관리자) ──
+  const updateMember = (id, patch) => setMembers((ms) => ms.map((m) => (m.id === id ? { ...m, ...patch } : m)));
+  const addMember = (m) => setMembers((ms) => [...ms, m]);
+  const deleteMember = (id) => {
+    setMembers((ms) => ms.filter((m) => m.id !== id));
+    setTaskRequests((rs) => rs.filter((r) => r.memberId !== id));
+    unlock(id);
+  };
+
+  // ── 업무 권한 신청·승인·해제 ──
   const requestTask = (taskId, reason) =>
     setTaskRequests((rs) => [
-      { id: Date.now(), taskId, reason, requester: USERS.operator.name, requestedAt: nowLabel(), status: '승인 대기중' },
+      { id: Date.now(), memberId: member.id, taskId, reason, requestedAt: nowLabel(), status: '승인 대기중' },
       ...rs,
     ]);
 
+  const bizName = (taskId) => BUSINESSES.find((b) => b.id === taskId).name;
+  const mmNote = (m) => (prefsOf(m).notify.permission ? ' (Mattermost 알림 발송)' : '');
+
+  // 회원의 업무 권한을 켜거나 끈다. 해제하면 그 회원의 산출 화면 드롭다운에서 바로 비활성화된다.
+  const setTask = (memberId, taskId, granted) =>
+    setMembers((ms) =>
+      ms.map((m) =>
+        m.id !== memberId
+          ? m
+          : { ...m, tasks: granted ? [...new Set([...m.tasks, taskId])] : m.tasks.filter((t) => t !== taskId) },
+      ),
+    );
+
   const decideTask = (requestId, approve) => {
     const req = taskRequests.find((r) => r.id === requestId);
+    const target = members.find((m) => m.id === req.memberId);
     setTaskRequests((rs) =>
       rs.map((r) => (r.id === requestId ? { ...r, status: approve ? '승인' : '반려', decidedAt: nowLabel() } : r)),
     );
-    if (approve) setApprovedTasks((t) => (t.includes(req.taskId) ? t : [...t, req.taskId]));
-    const bizName = BUSINESSES.find((b) => b.id === req.taskId).name;
-    const mm = prefs.operator.notify.permission ? ' (Mattermost 알림 발송)' : '';
-    notify(`${req.requester}님의 ${bizName} 권한 신청을 ${approve ? '승인' : '반려'}했습니다.${mm}`);
+    if (approve) setTask(req.memberId, req.taskId, true);
+    notify(
+      `${target.name}님의 ${bizName(req.taskId)} 권한 신청을 ${approve ? '승인' : '반려'}했습니다.${mmNote(target)}`,
+    );
+  };
+
+  const toggleTask = (memberId, taskId, granted) => {
+    const target = members.find((m) => m.id === memberId);
+    setTask(memberId, taskId, granted);
+    notify(`${target.name}님의 ${bizName(taskId)} 권한을 ${granted ? '부여' : '해제'}했습니다.${mmNote(target)}`);
   };
 
   // [ 키로 사이드바 접기/펴기. 입력창에 타이핑 중이거나 조합키와 함께 누른 경우는 무시한다.
@@ -146,9 +162,9 @@ export default function App() {
 
   const selectMenu = (id, section = null) => {
     setMenu(id);
-    // 내 정보 관리는 하위 메뉴마다 별도 페이지다. 상위 메뉴를 누르면 첫 페이지(기본 정보)로 간다.
-    if (id === 'mypage') {
-      setActiveSection(section ?? 'mypage-profile');
+    // 내 정보 관리·관리자 설정은 하위 메뉴마다 별도 페이지다. 상위 메뉴를 누르면 첫 페이지로 간다.
+    if (PAGED_MENUS[id]) {
+      setActiveSection(section ?? PAGED_MENUS[id]);
       document.querySelector('main')?.scrollTo(0, 0);
       return;
     }
@@ -159,21 +175,19 @@ export default function App() {
 
   const logout = () => {
     setIsLoggedIn(false);
+    setCurrentId(null);
     setMenu('calc');
   };
 
   const shared = { user, runs, setRuns, notify };
-  const lockedCount = Object.values(loginLocks).filter((l) => l?.count >= MAX_ATTEMPTS).length;
+  const isLocked = (id) => loginLocks[id]?.count >= MAX_ATTEMPTS;
+  const adminCounts = {
+    'admin-members': members.filter((m) => m.status === '승인대기' || isLocked(m.id)).length,
+    'admin-tasks': pendingRequests.length,
+  };
 
   if (!isLoggedIn) {
-    return (
-      <LoginPage
-        maxAttempts={MAX_ATTEMPTS}
-        locks={loginLocks}
-        onLogin={login}
-        onResetLock={unlock}
-      />
-    );
+    return <LoginPage maxAttempts={MAX_ATTEMPTS} locks={loginLocks} onLogin={login} onResetLock={unlock} />;
   }
 
   return (
@@ -191,7 +205,8 @@ export default function App() {
           active={menu}
           activeSection={activeSection}
           onSelect={selectMenu}
-          adminBadge={members.filter((m) => m.status === '승인대기').length + pendingRequests.length + lockedCount}
+          adminBadge={adminCounts['admin-members'] + adminCounts['admin-tasks']}
+          sectionBadges={adminCounts}
         />
         <main className="flex-1 overflow-y-auto p-6">
           <div className="max-w-7xl mx-auto">
@@ -209,10 +224,10 @@ export default function App() {
                 page={activeSection ?? 'mypage-profile'}
                 user={user}
                 notify={notify}
-                prefs={prefs[role]}
-                setPrefs={(fn) => setPrefs((p) => ({ ...p, [role]: fn(p[role]) }))}
-                approvedTasks={approvedTasks}
-                taskRequests={taskRequests}
+                prefs={prefsOf(member)}
+                setPrefs={(fn) => setPrefsById((p) => ({ ...p, [member.id]: fn(prefsOf(member)) }))}
+                approvedTasks={member.tasks}
+                taskRequests={taskRequests.filter((r) => r.memberId === member.id)}
                 onRequestTask={requestTask}
                 onChangePassword={changePassword}
                 loginAt={loginAt}
@@ -220,17 +235,20 @@ export default function App() {
             )}
             {menu === 'admin' && canSee('admin') && (
               <AdminSettings
+                page={activeSection ?? 'admin-members'}
+                me={member}
                 members={members}
-                setMembers={setMembers}
+                onAddMember={addMember}
+                onUpdateMember={updateMember}
+                onDeleteMember={deleteMember}
                 notify={notify}
                 taskRequests={taskRequests}
                 onDecideTask={decideTask}
+                onToggleTask={toggleTask}
+                isLocked={isLocked}
                 loginLocks={loginLocks}
                 maxAttempts={MAX_ATTEMPTS}
-                onUnlock={(id) => {
-                  unlock(id);
-                  notify(`${id} 계정의 잠금을 해제했습니다.`);
-                }}
+                onUnlock={unlock}
               />
             )}
           </div>

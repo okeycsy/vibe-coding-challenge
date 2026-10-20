@@ -5,7 +5,7 @@ import { Eye, EyeOff, Lock, LogIn, ShieldAlert, User } from 'lucide-react';
 //   지금은 금융결제원 CI 심벌마크를 기본으로 쓴다.
 const LOGO_SRC = 'kftc-symbol.png';
 
-// 시연용 계정 (기본 비밀번호 1234, 계정 정보는 data/mockData.js의 ACCOUNTS)
+// 시연용 계정 (기본 비밀번호 1234, 회원·계정 정보는 data/mockData.js의 MEMBERS)
 const DEMO_HINTS = [
   { id: 'hong', label: '사용자 · 금융결제원 일반담당자 (홍길동)' },
   { id: 'admin', label: '관리자 · 금융결제원 시스템관리자' },
@@ -53,6 +53,8 @@ export default function LoginPage({ onLogin, onResetLock, locks, maxAttempts }) 
     const result = onLogin(typedId, password);
     if (result.ok) return;
     setPassword('');
+    if (result.pending) return setError('가입 승인 대기 중인 계정입니다. 관리자 승인 후 로그인할 수 있습니다.');
+    if (result.rejected) return setError('가입이 반려된 계정입니다. 관리자에게 문의하세요.');
     setError(result.locked ? '' : 'ID 또는 비밀번호가 올바르지 않습니다.');
   };
 
