@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ArrowLeftRight, Bell, Calculator, ChevronDown, ClipboardCheck, LogOut, Menu, ShieldCheck } from 'lucide-react';
+import { ROLE_ORDER, USERS } from '../data/mockData';
+import { ArrowLeftRight, Bell, Calculator, ChevronDown, ClipboardCheck, LogOut, Menu, ShieldCheck, UserCog } from 'lucide-react';
 
 // children: 하위 메뉴. section은 해당 화면 안에서 스크롤할 영역의 id, roles가 없으면 상위 메뉴 권한을 따른다.
 export const MENUS = [
@@ -7,10 +8,10 @@ export const MENUS = [
     id: 'calc',
     label: '회비 산출 및 대사',
     icon: Calculator,
-    roles: ['operator', 'institution'],
+    roles: ['operator', 'sysadmin', 'institution'],
     children: [
       { section: 'calc-period', label: '업무 및 분기 선택' },
-      { section: 'calc-input', label: '데이터 입력 및 AI 이슈', roles: ['operator'] },
+      { section: 'calc-input', label: '데이터 입력 및 AI 이슈', roles: ['operator', 'sysadmin'] },
       { section: 'calc-result', label: '산출 결과 및 다운로드' },
     ],
   },
@@ -18,17 +19,38 @@ export const MENUS = [
     id: 'results',
     label: '기관 테스트/대사 결과 관리',
     icon: ClipboardCheck,
-    roles: ['operator', 'institution'],
+    roles: ['operator', 'sysadmin', 'institution'],
     children: [
       { section: 'results-recon', label: '회비 대사 현황' },
       { section: 'results-test', label: '기관 연동 테스트 결과' },
     ],
   },
-  { id: 'admin', label: '관리자 설정(회원승인)', icon: ShieldCheck, roles: ['operator'] },
+  {
+    id: 'mypage',
+    label: '내 정보 관리',
+    icon: UserCog,
+    roles: ['operator', 'sysadmin', 'institution'],
+    children: [
+      { section: 'mypage-profile', label: '기본 정보' },
+      { section: 'mypage-tasks', label: '담당 업무 및 산출 권한', roles: ['operator', 'sysadmin'] },
+      { section: 'mypage-alert', label: 'Mattermost 알림 설정' },
+      { section: 'mypage-security', label: '보안 설정 및 접속 이력' },
+    ],
+  },
+  {
+    id: 'admin',
+    label: '관리자 설정(회원/권한 승인)',
+    icon: ShieldCheck,
+    roles: ['sysadmin'],
+    children: [
+      { section: 'admin-tasks', label: '업무 권한 신청 승인' },
+      { section: 'admin-members', label: '회원가입 승인' },
+      { section: 'admin-locks', label: '잠금 계정 관리' },
+    ],
+  },
 ];
 
-export function Header({ user, onToggleRole, onLogout, onToggleSidebar, sidebarOpen }) {
-  const isOperator = user.role === 'operator';
+export function Header({ user, onSwitchRole, onLogout, onToggleSidebar, sidebarOpen }) {
   return (
     <header className="h-16 bg-brand-800 text-white flex items-center justify-between px-6 shadow-md z-10">
       <div className="flex items-center gap-3">
@@ -59,7 +81,7 @@ export function Header({ user, onToggleRole, onLogout, onToggleSidebar, sidebarO
           <p className="text-sm font-semibold">
             {user.org} {user.title} ({user.name})
           </p>
-          <p className="text-[11px] text-brand-200">{isOperator ? '운영 권한' : '참가기관 권한'}</p>
+          <p className="text-[11px] text-brand-200">{user.roleLabel}</p>
         </div>
         <button
           onClick={onLogout}
@@ -67,28 +89,28 @@ export function Header({ user, onToggleRole, onLogout, onToggleSidebar, sidebarO
         >
           <LogOut className="w-3.5 h-3.5" /> 로그아웃
         </button>
-        <button
-          onClick={onToggleRole}
-          className="flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-3 py-1.5 text-xs hover:bg-white/15 transition"
-          title="권한 전환"
-        >
-          <ArrowLeftRight className="w-3.5 h-3.5" />
-          <span className={isOperator ? 'font-bold text-accent-300' : 'text-brand-200'}>결제원</span>
-          <span className="relative inline-flex h-4 w-8 rounded-full bg-brand-600">
-            <span
-              className={`absolute top-0.5 h-3 w-3 rounded-full bg-accent-300 transition-all ${
-                isOperator ? 'left-0.5' : 'left-[18px]'
+        {/* 시연용 역할 전환: 일반담당자 ↔ 시스템관리자 ↔ 참가기관 */}
+        <div className="flex items-center gap-1 rounded-full border border-white/20 bg-white/5 p-1 text-xs" role="group" aria-label="권한 전환">
+          <ArrowLeftRight className="w-3.5 h-3.5 mx-1.5 text-brand-200" />
+          {ROLE_ORDER.map((r) => (
+            <button
+              key={r}
+              onClick={() => onSwitchRole(r)}
+              aria-pressed={user.role === r}
+              className={`rounded-full px-3 py-1 transition ${
+                user.role === r ? 'bg-white text-brand-800 font-bold shadow' : 'text-brand-100 hover:bg-white/15'
               }`}
-            />
-          </span>
-          <span className={!isOperator ? 'font-bold text-accent-300' : 'text-brand-200'}>참가기관</span>
-        </button>
+            >
+              {USERS[r].short}
+            </button>
+          ))}
+        </div>
       </div>
     </header>
   );
 }
 
-export function Sidebar({ role, active, activeSection, onSelect, pendingMembers, open }) {
+export function Sidebar({ role, active, activeSection, onSelect, adminBadge, open }) {
   const [folded, setFolded] = useState({});
   const visible = (item) => !item.roles || item.roles.includes(role);
 
@@ -103,8 +125,8 @@ export function Sidebar({ role, active, activeSection, onSelect, pendingMembers,
           const on = active === m.id;
           const children = (m.children ?? []).filter(visible);
           const expanded = children.length > 0 && !folded[m.id];
-          const badge = m.id === 'admin' && pendingMembers > 0 && (
-            <span className="rounded-full bg-rose-500 text-white text-[10px] px-1.5 py-0.5">{pendingMembers}</span>
+          const badge = m.id === 'admin' && adminBadge > 0 && (
+            <span className="rounded-full bg-rose-500 text-white text-[10px] px-1.5 py-0.5">{adminBadge}</span>
           );
           return (
             <div key={m.id} className="relative group">
@@ -121,7 +143,7 @@ export function Sidebar({ role, active, activeSection, onSelect, pendingMembers,
                   <Icon className="w-4 h-4 shrink-0" />
                   {open && <span className="flex-1">{m.label}</span>}
                   {open && badge}
-                  {!open && pendingMembers > 0 && m.id === 'admin' && (
+                  {!open && adminBadge > 0 && m.id === 'admin' && (
                     <span className="absolute top-1.5 right-2 w-2 h-2 rounded-full bg-rose-500" />
                   )}
                 </button>

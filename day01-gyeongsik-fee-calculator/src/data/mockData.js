@@ -1,22 +1,73 @@
 // 모든 수치는 화면 시연용 예시 데이터입니다. 실제 실적·회비와 무관합니다.
 
+// side: 'kftc'(금융결제원) | 'institution'(참가기관). 결제원 화면 권한은 side로, 관리자 기능은 role로 구분한다.
 export const USERS = {
   operator: {
     role: 'operator',
+    side: 'kftc',
     org: '금융결제원',
-    title: '운영담당자',
+    title: '일반담당자',
     name: '홍길동',
-    label: '결제원 담당자 뷰',
+    empNo: 'KFTC-202601',
+    dept: '금융사업부 오픈뱅킹팀',
+    roleLabel: '일반 사용자 (운영 담당자)',
+    extension: '02-531-1234',
+    label: '금융결제원 일반담당자 뷰',
+    short: '일반담당자',
+  },
+  sysadmin: {
+    role: 'sysadmin',
+    side: 'kftc',
+    org: '금융결제원',
+    title: '시스템관리자',
+    name: '이수진',
+    empNo: 'KFTC-201804',
+    dept: '정보시스템부 운영관리팀',
+    roleLabel: '시스템 관리자',
+    extension: '02-531-1100',
+    label: '금융결제원 시스템관리자 뷰',
+    short: '시스템관리자',
   },
   institution: {
     role: 'institution',
+    side: 'institution',
     org: '신한은행',
     institutionId: 'shinhan',
     title: '회비담당자',
     name: '김철수',
+    empNo: 'SH-10234',
+    dept: '자금결제부',
+    roleLabel: '참가기관 담당자',
+    extension: '02-2151-0000',
     label: '참가기관 담당자 뷰',
+    short: '참가기관',
   },
 };
+
+export const ROLE_ORDER = ['operator', 'sysadmin', 'institution'];
+
+// 시연용 로그인 계정 (기본 비밀번호 1234). 비밀번호는 마이페이지에서 바꿀 수 있다.
+export const ACCOUNTS = [
+  { id: 'hong', password: '1234', role: 'operator' },
+  { id: 'admin', password: '1234', role: 'sysadmin' },
+  { id: 'shinhan', password: '1234', role: 'institution' },
+];
+
+// 일반담당자(홍길동)의 초기 승인 업무
+export const INITIAL_APPROVED_TASKS = ['openbanking', 'fininfo'];
+
+// 관리자 화면의 잠금 계정 예시 (실제 계정이 5회 틀리면 여기에 추가된다)
+export const INITIAL_LOGIN_LOCKS = {
+  woori01: { count: 5, name: '박지훈', org: '우리은행', lockedAt: '2026-10-19 16:42' },
+  ibk02: { count: 5, name: '오세훈', org: 'IBK기업은행', lockedAt: '2026-10-20 09:15' },
+};
+
+export const LOGIN_HISTORY = [
+  { at: '2026-10-19 18:02', ip: '192.168.10.45', device: 'Chrome / Windows', status: '로그아웃' },
+  { at: '2026-10-19 08:51', ip: '192.168.10.45', device: 'Chrome / Windows', status: '정상 로그인' },
+  { at: '2026-10-18 09:03', ip: '192.168.10.45', device: 'Chrome / Windows', status: '정상 로그인' },
+  { at: '2026-10-17 08:47', ip: '192.168.10.52', device: 'Edge / Windows', status: '비밀번호 오류' },
+];
 
 // alias: AI 이슈 문장에서 기관을 인식할 때 쓰는 별칭 (A~H은행은 시연용 가명 매핑)
 export const INSTITUTIONS = [
