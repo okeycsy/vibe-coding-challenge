@@ -21,7 +21,7 @@ export const MENUS = [
     icon: Calculator,
     roles: ['operator', 'sysadmin', 'institution'],
     children: [
-      { section: 'calc-period', label: '업무 및 분기 선택' },
+      { section: 'calc-period', label: '업무 및 기간 선택' },
       { section: 'calc-input', label: '데이터 입력 및 AI 이슈', roles: ['operator', 'sysadmin'] },
       { section: 'calc-result', label: '산출 결과 및 다운로드', labels: { institution: '회비 확인 및 대사 회신' } },
     ],

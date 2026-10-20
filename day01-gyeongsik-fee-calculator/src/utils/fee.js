@@ -1,4 +1,5 @@
 import { BUSINESSES, INSTITUTIONS, getBaseCounts } from '../data/mockData';
+import { asQuarter, daysBetween } from './period';
 
 export const fmt = (n) => Math.round(n).toLocaleString('ko-KR');
 
@@ -27,9 +28,14 @@ export function parseIssue(text) {
   };
 }
 
-export function calculateFees({ businessId, year, quarter, issues }) {
+// 분기 기준 값(실적·총액)에 곱할 비율. 정확히 한 분기면 1, 아니면 산출 기간 일수 ÷ 91일.
+export const periodScale = (from, to) => (asQuarter(from, to) ? 1 : daysBetween(from, to) / 91);
+
+export function calculateFees({ businessId, from, to, issues }) {
   const biz = BUSINESSES.find((b) => b.id === businessId);
-  const base = getBaseCounts(businessId, year, quarter);
+  const scale = periodScale(from, to);
+  const base = getBaseCounts(businessId, from, to, scale);
+  const totalFee = Math.round((biz.totalFee ?? 0) * scale);
 
   const rows = base.map(({ institutionId, baseCount }) => {
     const inst = INSTITUTIONS.find((i) => i.id === institutionId);
@@ -59,10 +65,10 @@ export function calculateFees({ businessId, year, quarter, issues }) {
     return {
       ...r,
       rateLabel: `${(share * 100).toFixed(2)}%`,
-      fee: Math.round(biz.totalFee * share),
+      fee: Math.round(totalFee * share),
       status: '대기',
     };
   });
 }
 
-export const runKey = (businessId, year, quarter) => `${businessId}-${year}-${quarter}`;
+export const runKey = (businessId, from, to) => `${businessId}-${from}-${to}`;

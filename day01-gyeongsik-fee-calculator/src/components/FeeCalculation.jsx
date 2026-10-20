@@ -16,18 +16,27 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { BUSINESSES, INSTITUTIONS, ISSUE_EXAMPLES, QUARTERS, YEARS } from '../data/mockData';
-import { calculateFees, fmt, parseIssue, runKey } from '../utils/fee';
+import { BUSINESSES, INSTITUTIONS, ISSUE_EXAMPLES } from '../data/mockData';
+import { calculateFees, fmt, parseIssue, periodScale, runKey } from '../utils/fee';
+import { daysBetween, parseDate, periodLabel, periodTag, previousQuarter, quarterRange, toISO } from '../utils/period';
 import { downloadReconciliation, downloadRevenueResolution } from '../utils/excel';
 import { Card, Select, StatusBadge } from './ui';
+import DateField from './DateField';
 
 const NEXT_STATUS = { 대기: '확인중', 확인중: '완료', 완료: '대기' };
 const LOADING_STEPS = ['Raw Data 검증 중…', 'AI 이슈 해석 및 예외 건 차감 중…', '회비분담기준 적용 중…'];
 
-// 오늘 기준 직전 분기를 산출 대상으로 자동 인식 (회비는 분기 종료 후 산출)
-function detectPeriod(today = new Date()) {
-  const q = Math.floor(today.getMonth() / 3) + 1;
-  return q === 1 ? { year: today.getFullYear() - 1, quarter: 4 } : { year: today.getFullYear(), quarter: q - 1 };
+// 기간 빠른 선택. 기본값은 오늘 기준 직전 분기(회비는 분기 종료 후 산출)다.
+function periodPresets(today = new Date()) {
+  const y = today.getFullYear();
+  const cq = Math.floor(today.getMonth() / 3) + 1;
+  const quarters = [1, 2, 3, 4].filter((q) => q < cq).map((q) => ({ label: `${y}년 ${q}분기`, ...quarterRange(y, q) }));
+  return [
+    { label: '직전 분기', ...previousQuarter(today) },
+    { label: '최근 1개월', from: toISO(new Date(y, today.getMonth() - 1, today.getDate() + 1)), to: toISO(today) },
+    { label: '올해 누적', from: `${y}-01-01`, to: toISO(today) },
+    ...quarters,
+  ];
 }
 
 export default function FeeCalculation({ user, runs, setRuns, notify, allowedTasks, onRequestTask }) {
@@ -35,10 +44,12 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
   const isOperator = user.side === 'kftc';
   // 업무별 산출 권한: 일반담당자는 승인된 업무만, 시스템관리자는 전체 업무를 선택할 수 있다.
   const canSelect = (id) => !isOperator || allowedTasks.includes(id);
-  const detected = detectPeriod();
+  const presets = periodPresets();
+  const detected = presets[0];
   const [businessId, setBusinessId] = useState(BUSINESSES[0].id);
-  const [year, setYear] = useState(YEARS.includes(detected.year) ? detected.year : 2026);
-  const [quarter, setQuarter] = useState(detected.quarter);
+  // 산출 기간: 입력 중인 문자열 그대로 두고 아래에서 검증한다.
+  const [fromText, setFromText] = useState(detected.from);
+  const [toText, setToText] = useState(detected.to);
   const [drafts, setDrafts] = useState({});
   const [issueText, setIssueText] = useState('');
   const [loadingStep, setLoadingStep] = useState(-1);
@@ -59,20 +70,41 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
   }, [user.role, allowedTasks]);
 
   const business = BUSINESSES.find((b) => b.id === businessId);
-  const key = runKey(businessId, year, quarter);
-  const draft = drafts[key] ?? { file: null, issues: [] };
-  const run = runs[key];
-  const isAuto = year === detected.year && quarter === detected.quarter;
+  // ── 기간 검증: 각 날짜가 실제 날짜인지, From이 To보다 늦지 않은지 ──
+  const fromCheck = parseDate(fromText);
+  const toCheck = parseDate(toText);
+  // 입력이 끝나지 않은 값(8자리 미만)은 경고하지 않고 산출만 막는다.
+  const fieldError = (text, check) => (text.length === 10 || !text ? check.error : null);
+  const fromError = fieldError(fromText, fromCheck);
+  const toError = fieldError(toText, toCheck);
+  const orderError =
+    fromCheck.date && toCheck.date && fromCheck.date > toCheck.date
+      ? `시작일(From) ${fromText}이 종료일(To) ${toText}보다 늦습니다. 기간을 다시 확인해 주세요.`
+      : null;
+  const periodValid = !!(fromCheck.date && toCheck.date) && !orderError;
+  const from = periodValid ? fromText : null;
+  const to = periodValid ? toText : null;
+  const setPeriod = (p) => {
+    setFromText(p.from);
+    setToText(p.to);
+  };
+
+  const key = periodValid ? runKey(businessId, from, to) : null;
+  const draft = (key && drafts[key]) ?? { file: null, issues: [] };
+  const run = key ? runs[key] : undefined;
 
   const updateDraft = (patch, k = key) =>
     setDrafts((d) => ({ ...d, [k]: { ...(d[k] ?? { file: null, issues: [] }), ...patch } }));
-  const updateRows = (fn) =>
-    setRuns((r) => ({ ...r, [key]: { ...r[key], rows: r[key].rows.map(fn) } }));
+  const updateRows = (fn) => setRuns((r) => ({ ...r, [key]: { ...r[key], rows: r[key].rows.map(fn) } }));
   const later = (fn, ms) => timers.current.push(setTimeout(fn, ms));
 
   // ── Step 2: 업로드 시뮬레이션 ──
   const simulateUpload = (file) => {
-    const name = file?.name ?? `${business.name}_${year}_${quarter}Q_RawData.xlsx`;
+    if (!periodValid) {
+      notify('산출 기간을 먼저 올바르게 입력해 주세요.', 'error');
+      return;
+    }
+    const name = file?.name ?? `${business.name}_${periodTag(from, to)}_RawData.xlsx`;
     const size = file?.size ?? 2_400_000 + Math.round(Math.random() * 800_000);
     const k = key;
     setUploading(0);
@@ -87,6 +119,10 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
   const addIssue = () => {
     const text = issueText.trim();
     if (!text) return;
+    if (!periodValid) {
+      notify('산출 기간을 먼저 올바르게 입력해 주세요.', 'error');
+      return;
+    }
     const parsed = parseIssue(text);
     if (!parsed.institutionId || !parsed.count) {
       notify('기관명과 차감 건수(예: 1,500건)를 문장에 포함해 주세요.', 'error');
@@ -103,10 +139,10 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
     later(() => setLoadingStep(1), 550);
     later(() => setLoadingStep(2), 1100);
     later(() => {
-      const rows = calculateFees({ businessId, year, quarter, issues: draft.issues });
+      const rows = calculateFees({ businessId, from, to, issues: draft.issues });
       setRuns((r) => ({
         ...r,
-        [key]: { businessId, year, quarter, rows, issues: draft.issues, createdAt: new Date().toLocaleString('ko-KR') },
+        [key]: { businessId, from, to, rows, issues: draft.issues, createdAt: new Date().toLocaleString('ko-KR') },
       }));
       setLoadingStep(-1);
       notify('AI 회비 초안 산출이 완료되었습니다.');
@@ -117,10 +153,14 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
   const setRowStatus = (institutionId, status) =>
     updateRows((row) => (row.institutionId === institutionId ? { ...row, status } : row));
 
-  const visibleRows = run ? (isOperator ? run.rows : run.rows.filter((r) => r.institutionId === user.institutionId)) : [];
+  const visibleRows = run
+    ? isOperator
+      ? run.rows
+      : run.rows.filter((r) => r.institutionId === user.institutionId)
+    : [];
 
   const downloadForInstitutions = () => {
-    downloadReconciliation({ business, year, quarter, rows: visibleRows, issues: run.issues });
+    downloadReconciliation({ business, from, to, rows: visibleRows, issues: run.issues });
     if (isOperator) {
       updateRows((row) => (row.status === '대기' ? { ...row, status: '확인중' } : row));
       notify('대사용 파일을 내려받았습니다. 대기 중인 기관은 확인중으로 바뀌었습니다.');
@@ -140,13 +180,13 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
         <h2 className="text-xl font-bold text-brand-900">{isOperator ? '회비 산출 및 대사' : '회비 대사 확인'}</h2>
         <p className="text-sm text-slate-500 mt-0.5">
           {isOperator
-            ? '업무와 분기를 선택하고 Raw Data와 이슈를 반영해 회비 초안을 산출합니다.'
+            ? '업무와 산출 기간을 선택하고 Raw Data와 이슈를 반영해 회비 초안을 산출합니다.'
             : '결제원이 산출한 우리 기관의 회비 초안을 확인하고 대사 결과를 회신합니다.'}
         </p>
       </div>
 
       {/* STEP 1 */}
-      <Card id="calc-period" step={1} title="업무 및 분기 선택" icon={Briefcase}>
+      <Card id="calc-period" step={1} title="업무 및 기간 선택" icon={Briefcase}>
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
           <div className="lg:col-span-2 space-y-3">
             <div className="flex items-end gap-2">
@@ -174,37 +214,63 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
               <p className="text-[11px] text-brand-500">시스템관리자는 모든 업무를 제한 없이 산출할 수 있습니다.</p>
             )}
             <div className="grid grid-cols-2 gap-3">
-              <Select label="연도" value={year} onChange={(v) => setYear(Number(v))}>
-                {YEARS.map((y) => (
-                  <option key={y} value={y}>
-                    {y}년
-                  </option>
-                ))}
-              </Select>
-              <Select label="분기" value={quarter} onChange={(v) => setQuarter(Number(v))}>
-                {QUARTERS.map((q) => (
-                  <option key={q} value={q}>
-                    {q}분기
-                  </option>
-                ))}
-              </Select>
+              <DateField
+                label="시작일 (From)"
+                value={fromText}
+                onChange={setFromText}
+                error={fromError}
+                rangeFrom={fromText}
+                rangeTo={toText}
+              />
+              <DateField
+                label="종료일 (To)"
+                value={toText}
+                onChange={setToText}
+                error={toError}
+                rangeFrom={fromText}
+                rangeTo={toText}
+              />
             </div>
-            <div className="flex items-center gap-2 text-xs">
+            {orderError && (
+              <div
+                role="alert"
+                className="flex gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700"
+              >
+                <TriangleAlert className="w-4 h-4 shrink-0" />
+                <span>{orderError}</span>
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
               <CalendarDays className="w-3.5 h-3.5 text-brand-400" />
-              {isAuto ? (
-                <span className="text-brand-600">직전 분기({detected.year}년 {detected.quarter}분기)로 자동 인식되었습니다.</span>
-              ) : (
-                <button
-                  className="text-brand-500 underline underline-offset-2"
-                  onClick={() => {
-                    setYear(detected.year);
-                    setQuarter(detected.quarter);
-                  }}
-                >
-                  직전 분기({detected.year}년 {detected.quarter}분기)로 되돌리기
-                </button>
-              )}
+              <span className="text-slate-400 mr-0.5">빠른 선택</span>
+              {presets.map((p) => {
+                const on = p.from === fromText && p.to === toText;
+                return (
+                  <button
+                    key={p.label}
+                    onClick={() => setPeriod(p)}
+                    className={`rounded-full border px-2 py-0.5 ${
+                      on
+                        ? 'border-brand-600 bg-brand-700 text-white'
+                        : 'border-slate-200 text-slate-500 hover:border-brand-300 hover:text-brand-700'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
             </div>
+            <p className="text-[11px] text-slate-500">
+              {periodValid ? (
+                <>
+                  산출 기간 <b className="text-brand-700">{periodLabel(from, to)}</b>
+                  {periodScale(from, to) !== 1 &&
+                    ` · 분기 기준 실적·총액을 ${daysBetween(from, to)}일 / 91일 비율로 환산합니다.`}
+                </>
+              ) : (
+                '달력 아이콘을 눌러 고르거나 숫자 8자리(예: 20260701)로 입력하세요.'
+              )}
+            </p>
           </div>
 
           <div className="lg:col-span-3 rounded-lg border border-brand-100 bg-brand-50/60 p-4">
@@ -281,7 +347,9 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
                       <p className="text-sm text-slate-600">
                         Excel 파일을 끌어다 놓거나 <span className="text-brand-600 font-semibold">클릭</span>하세요
                       </p>
-                      <p className="text-[11px] text-slate-400">.xlsx, .xls · 최대 50MB (시연용: 실제 파일은 읽지 않습니다)</p>
+                      <p className="text-[11px] text-slate-400">
+                        .xlsx, .xls · 최대 50MB (시연용: 실제 파일은 읽지 않습니다)
+                      </p>
                     </>
                   )}
                 </button>
@@ -350,10 +418,14 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
           </div>
 
           <div className="mt-5 flex items-center justify-end gap-3 border-t border-slate-100 pt-4">
-            {!draft.file && <p className="text-xs text-slate-400">Raw Data를 업로드하면 산출할 수 있습니다.</p>}
+            {!periodValid ? (
+              <p className="text-xs text-rose-500">STEP 1의 산출 기간을 올바르게 입력해야 산출할 수 있습니다.</p>
+            ) : (
+              !draft.file && <p className="text-xs text-slate-400">Raw Data를 업로드하면 산출할 수 있습니다.</p>
+            )}
             <button
               onClick={runCalculation}
-              disabled={!draft.file || loading}
+              disabled={!periodValid || !draft.file || loading}
               className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-brand-700 to-accent-500 px-5 py-2.5 text-sm font-semibold text-white shadow hover:shadow-md disabled:from-slate-300 disabled:to-slate-300 disabled:shadow-none"
             >
               {loading ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
@@ -381,7 +453,7 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
               </button>
               {isOperator && (
                 <button
-                  onClick={() => downloadRevenueResolution({ business, year, quarter, rows: run.rows })}
+                  onClick={() => downloadRevenueResolution({ business, from, to, rows: run.rows })}
                   className="flex items-center gap-1.5 rounded-lg bg-brand-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-800"
                 >
                   <Download className="w-3.5 h-3.5" /> 예산회계시스템 수입결의용 Excel 다운로드
@@ -400,7 +472,10 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
               <p className="text-sm font-medium text-brand-700">{LOADING_STEPS[loadingStep]}</p>
               <div className="flex gap-1.5">
                 {LOADING_STEPS.map((s, i) => (
-                  <span key={s} className={`h-1.5 w-10 rounded-full ${i <= loadingStep ? 'bg-brand-500' : 'bg-slate-200'}`} />
+                  <span
+                    key={s}
+                    className={`h-1.5 w-10 rounded-full ${i <= loadingStep ? 'bg-brand-500' : 'bg-slate-200'}`}
+                  />
                 ))}
               </div>
             </div>
@@ -412,15 +487,17 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
           </div>
         ) : !run ? (
           <div className="py-12 text-center text-sm text-slate-400">
-            {isOperator
-              ? '아직 산출 결과가 없습니다. STEP 2에서 AI 회비 초안을 산출해 주세요.'
-              : `${year}년 ${quarter}분기 ${business.name} 회비는 아직 결제원에서 산출하지 않았습니다.`}
+            {!periodValid
+              ? '산출 기간을 올바르게 입력하면 결과가 표시됩니다.'
+              : isOperator
+                ? '아직 산출 결과가 없습니다. STEP 2에서 AI 회비 초안을 산출해 주세요.'
+                : `${periodLabel(from, to)} ${business.name} 회비는 아직 결제원에서 산출하지 않았습니다.`}
           </div>
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-slate-500 mb-3">
               <span>
-                {year}년 {quarter}분기 · {business.name}
+                {periodLabel(from, to)} · {business.name}
               </span>
               <span>산출일시 {run.createdAt}</span>
               <span>반영 이슈 {run.issues.length}건</span>
@@ -430,13 +507,22 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
               <table className="w-full text-sm">
                 <thead className="bg-brand-800 text-white text-xs">
                   <tr>
-                    {['참가기관명', '기본 건수', 'AI 예외 차감 건수', '최종 인정 건수', '적용 단가/분담률', '산출 회비(초안)', '대사 상태'].map(
-                      (h, i) => (
-                        <th key={h} className={`px-4 py-2.5 font-medium whitespace-nowrap ${i === 0 ? 'text-left' : i === 6 ? 'text-center' : 'text-right'}`}>
-                          {h}
-                        </th>
-                      ),
-                    )}
+                    {[
+                      '참가기관명',
+                      '기본 건수',
+                      'AI 예외 차감 건수',
+                      '최종 인정 건수',
+                      '적용 단가/분담률',
+                      '산출 회비(초안)',
+                      '대사 상태',
+                    ].map((h, i) => (
+                      <th
+                        key={h}
+                        className={`px-4 py-2.5 font-medium whitespace-nowrap ${i === 0 ? 'text-left' : i === 6 ? 'text-center' : 'text-right'}`}
+                      >
+                        {h}
+                      </th>
+                    ))}
                     {!isOperator && <th className="px-4 py-2.5 font-medium text-center">대사 회신</th>}
                   </tr>
                 </thead>
@@ -444,7 +530,10 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
                   {visibleRows.map((r) => {
                     const hit = r.deduction > 0;
                     return (
-                      <tr key={r.institutionId} className={`border-t border-slate-100 ${hit ? 'bg-amber-50/80' : 'hover:bg-slate-50'}`}>
+                      <tr
+                        key={r.institutionId}
+                        className={`border-t border-slate-100 ${hit ? 'bg-amber-50/80' : 'hover:bg-slate-50'}`}
+                      >
                         <td className="px-4 py-2.5 whitespace-nowrap">
                           <span className="font-medium text-brand-900">{r.name}</span>
                           <span className="ml-1.5 text-[11px] text-slate-400">{r.code}</span>
@@ -468,11 +557,15 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
                         </td>
                         <td className="px-4 py-2.5 text-right tabular-nums font-medium">{fmt(r.finalCount)}</td>
                         <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">{r.rateLabel}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-brand-900">{fmt(r.fee)}원</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-brand-900">
+                          {fmt(r.fee)}원
+                        </td>
                         <td className="px-4 py-2.5 text-center">
                           <StatusBadge
                             status={r.status}
-                            onClick={isOperator ? () => setRowStatus(r.institutionId, NEXT_STATUS[r.status]) : undefined}
+                            onClick={
+                              isOperator ? () => setRowStatus(r.institutionId, NEXT_STATUS[r.status]) : undefined
+                            }
                           />
                         </td>
                         {!isOperator && (
@@ -523,7 +616,8 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
             </div>
             {visibleRows.some((r) => r.deduction > 0) && (
               <p className="mt-2 text-xs text-amber-700 flex items-center gap-1">
-                <TriangleAlert className="w-3.5 h-3.5" /> 노란색 행은 AI 이슈로 건수가 차감된 기관입니다. 차감 건수에 마우스를 올리면 사유가 보입니다.
+                <TriangleAlert className="w-3.5 h-3.5" /> 노란색 행은 AI 이슈로 건수가 차감된 기관입니다. 차감 건수에
+                마우스를 올리면 사유가 보입니다.
               </p>
             )}
           </>

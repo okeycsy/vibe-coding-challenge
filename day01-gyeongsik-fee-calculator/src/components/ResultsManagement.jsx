@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ClipboardCheck, FlaskConical, Search } from 'lucide-react';
 import { BUSINESSES, INSTITUTIONS, TEST_RESULTS } from '../data/mockData';
 import { fmt } from '../utils/fee';
+import { periodLabel } from '../utils/period';
 import { Card, StatusBadge } from './ui';
 
 const TEST_TONE = {
@@ -22,7 +23,7 @@ export default function ResultsManagement({ user, runs, setRuns, notify }) {
     const biz = BUSINESSES.find((b) => b.id === run.businessId);
     return run.rows
       .filter((r) => mine(r.institutionId))
-      .map((r) => ({ key, biz: biz.name, period: `${run.year}년 ${run.quarter}분기`, ...r }));
+      .map((r) => ({ key, biz: biz.name, period: periodLabel(run.from, run.to), ...r }));
   });
   const filteredRecon = reconRows.filter((r) => !query || r.name.includes(query) || r.biz.includes(query));
 
