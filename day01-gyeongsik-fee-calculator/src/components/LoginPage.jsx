@@ -7,9 +7,9 @@ const LOGO_SRC = 'kftc-symbol.png';
 
 // 시연용 계정 (기본 비밀번호 1234, 계정 정보는 data/mockData.js의 ACCOUNTS)
 const DEMO_HINTS = [
-  { id: 'hong', label: '일반담당자 (홍길동)' },
-  { id: 'admin', label: '시스템관리자' },
-  { id: 'shinhan', label: '참가기관 담당자 (신한은행)' },
+  { id: 'hong', label: '사용자 · 금융결제원 일반담당자 (홍길동)' },
+  { id: 'admin', label: '관리자 · 금융결제원 시스템관리자' },
+  { id: 'shinhan', label: '참가기관 · 신한은행 담당자 (김철수)' },
 ];
 
 function LogoShowcase() {
@@ -165,7 +165,7 @@ export default function LoginPage({ onLogin, onResetLock, locks, maxAttempts }) 
                 {DEMO_HINTS.map((h) => (
                   <li key={h.id}>
                     <button type="button" onClick={() => setId(h.id)} className="hover:text-brand-600">
-                      <span className="font-mono text-slate-500">{h.id}</span> · {h.label}
+                      <span className="font-mono text-slate-500">{h.id}</span> — {h.label}
                     </button>
                   </li>
                 ))}

@@ -50,7 +50,7 @@ export default function ResultsManagement({ user, runs, setRuns, notify }) {
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-xl font-bold text-brand-900">기관 테스트/대사 결과 관리</h2>
+        <h2 className="text-xl font-bold text-brand-900">{isOperator ? '기관 테스트/대사 결과 관리' : '테스트/대사 결과 조회'}</h2>
         <p className="text-sm text-slate-500 mt-0.5">참가기관별 연동 테스트 결과와 회비 대사 진행 현황을 확인합니다.</p>
       </div>
 

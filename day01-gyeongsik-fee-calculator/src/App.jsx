@@ -64,14 +64,8 @@ export default function App() {
     toastTimer.current = setTimeout(() => setToast(null), 2800);
   };
 
-  const canSee = (menuId, r = role) => MENUS.find((m) => m.id === menuId)?.roles.includes(r);
+  const canSee = (menuId) => MENUS.find((m) => m.id === menuId)?.roles.includes(role);
 
-  const switchRole = (next) => {
-    if (next === role) return;
-    setRole(next);
-    if (!canSee(menu, next)) setMenu('calc');
-    notify(`${USERS[next].label}로 전환했습니다.`);
-  };
 
   // ── 로그인 ──
   const login = (id, password) => {
@@ -83,8 +77,10 @@ export default function App() {
         const { [id]: _, ...rest } = l;
         return rest;
       });
+      // 계정의 역할이 곧 화면 권한이다. 역할별 첫 화면으로 들어간다.
       setRole(account.role);
-      setMenu('calc');
+      setMenu(USERS[account.role].home);
+      setActiveSection(null);
       setLoginAt(nowLabel());
       setIsLoggedIn(true);
       return { ok: true };
@@ -178,7 +174,6 @@ export default function App() {
     <div className="h-screen flex flex-col">
       <Header
         user={user}
-        onSwitchRole={switchRole}
         onLogout={logout}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((o) => !o)}
@@ -195,15 +190,15 @@ export default function App() {
         <main className="flex-1 overflow-y-auto p-6">
           <div className="max-w-7xl mx-auto">
             {/* 업로드·이슈 입력 상태를 메뉴 이동 후에도 유지하려고 숨기기만 한다 */}
-            <div className={menu === 'calc' ? '' : 'hidden'}>
+            <div className={menu === 'calc' && canSee('calc') ? '' : 'hidden'}>
               <FeeCalculation
                 {...shared}
                 allowedTasks={allowedTasks}
                 onRequestTask={() => selectMenu('mypage', 'mypage-tasks')}
               />
             </div>
-            {menu === 'results' && <ResultsManagement {...shared} />}
-            {menu === 'mypage' && (
+            {menu === 'results' && canSee('results') && <ResultsManagement {...shared} />}
+            {menu === 'mypage' && canSee('mypage') && (
               <MyPage
                 user={user}
                 notify={notify}
@@ -216,7 +211,7 @@ export default function App() {
                 loginAt={loginAt}
               />
             )}
-            {menu === 'admin' && role === 'sysadmin' && (
+            {menu === 'admin' && canSee('admin') && (
               <AdminSettings
                 members={members}
                 setMembers={setMembers}

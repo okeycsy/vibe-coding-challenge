@@ -137,7 +137,7 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-xl font-bold text-brand-900">회비 산출 및 대사</h2>
+        <h2 className="text-xl font-bold text-brand-900">{isOperator ? '회비 산출 및 대사' : '회비 대사 확인'}</h2>
         <p className="text-sm text-slate-500 mt-0.5">
           {isOperator
             ? '업무와 분기를 선택하고 Raw Data와 이슈를 반영해 회비 초안을 산출합니다.'
