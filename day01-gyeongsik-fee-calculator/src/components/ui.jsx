@@ -69,3 +69,21 @@ export function Select({ label, value, onChange, children, disabled }) {
     </label>
   );
 }
+
+export function Modal({ title, onClose, children, footer, width = 'max-w-lg' }) {
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4" onMouseDown={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className={`w-full ${width} rounded-xl bg-white shadow-xl animate-fadein`}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-3.5 border-b border-slate-100 font-semibold text-brand-900">{title}</div>
+        <div className="p-5">{children}</div>
+        {footer && <div className="flex justify-end gap-2 px-5 py-3 border-t border-slate-100 bg-slate-50 rounded-b-xl">{footer}</div>}
+      </div>
+    </div>
+  );
+}

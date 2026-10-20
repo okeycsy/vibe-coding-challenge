@@ -2,63 +2,40 @@
 
 // 로그인한 계정의 role이 화면을 결정한다: operator=사용자, sysadmin=관리자, institution=참가기관.
 // side: 'kftc'(금융결제원) | 'institution'(참가기관). 결제원 화면 권한은 side로, 관리자 기능은 role로 구분한다.
-export const USERS = {
-  operator: {
-    role: 'operator',
-    side: 'kftc',
-    org: '금융결제원',
-    title: '일반담당자',
-    name: '홍길동',
-    empNo: 'KFTC-202601',
-    dept: '금융사업부 오픈뱅킹팀',
-    roleLabel: '일반 사용자 (운영 담당자)',
-    extension: '02-531-1234',
-    label: '사용자',
-    home: 'calc',
-  },
-  sysadmin: {
-    role: 'sysadmin',
-    side: 'kftc',
-    org: '금융결제원',
-    title: '시스템관리자',
-    name: '이수진',
-    empNo: 'KFTC-201804',
-    dept: '정보시스템부 운영관리팀',
-    roleLabel: '시스템 관리자',
-    extension: '02-531-1100',
-    label: '관리자',
-    home: 'admin',
-  },
-  institution: {
-    role: 'institution',
-    side: 'institution',
-    org: '신한은행',
-    institutionId: 'shinhan',
-    title: '회비담당자',
-    name: '김철수',
-    empNo: 'SH-10234',
-    dept: '자금결제부',
-    roleLabel: '참가기관 담당자',
-    extension: '02-2151-0000',
-    label: '참가기관',
-    home: 'calc',
-  },
+export const ROLES = {
+  operator: { role: 'operator', side: 'kftc', title: '일반담당자', roleLabel: '일반 사용자 (운영 담당자)', label: '사용자', home: 'calc' },
+  sysadmin: { role: 'sysadmin', side: 'kftc', title: '시스템관리자', roleLabel: '시스템 관리자', label: '관리자', home: 'admin' },
+  institution: { role: 'institution', side: 'institution', title: '회비담당자', roleLabel: '참가기관 담당자', label: '참가기관', home: 'calc' },
 };
 
-// 시연용 로그인 계정 (기본 비밀번호 1234). 비밀번호는 마이페이지에서 바꿀 수 있다.
-export const ACCOUNTS = [
-  { id: 'hong', password: '1234', role: 'operator' },
-  { id: 'admin', password: '1234', role: 'sysadmin' },
-  { id: 'shinhan', password: '1234', role: 'institution' },
+export const DEFAULT_PASSWORD = '1234';
+
+// 회원 = 로그인 계정. 관리자가 회원 관리에서 추가·수정·삭제한다. 모두 가상의 예시 인물이다.
+// status: 정상 | 승인대기(가입 신청, 로그인 불가) | 반려
+// tasks: 산출할 수 있는 업무(사용자 권한만 의미가 있다. 관리자는 전체, 참가기관은 산출하지 않음)
+export const MEMBERS = [
+  { id: 'hong', password: '1234', role: 'operator', name: '홍길동', org: '금융결제원', dept: '금융사업부 오픈뱅킹팀', empNo: 'KFTC-202601', email: 'gildong.hong@example.com', extension: '02-531-1234', status: '정상', joinedAt: '2026-01-05', tasks: ['openbanking', 'fininfo'] },
+  { id: 'admin', password: '1234', role: 'sysadmin', name: '이수진', org: '금융결제원', dept: '정보시스템부 운영관리팀', empNo: 'KFTC-201804', email: 'sujin.lee@example.com', extension: '02-531-1100', status: '정상', joinedAt: '2018-04-02', tasks: [] },
+  { id: 'shinhan', password: '1234', role: 'institution', institutionId: 'shinhan', name: '김철수', org: '신한은행', dept: '자금결제부', empNo: 'SH-10234', email: 'cheolsu.kim@example.com', extension: '02-2151-0000', status: '정상', joinedAt: '2025-03-10', tasks: [] },
+  { id: 'kimms', password: '1234', role: 'operator', name: '김민수', org: '금융결제원', dept: '회비관리팀', empNo: 'KFTC-202203', email: 'minsu.kim@example.com', extension: '02-531-1250', status: '정상', joinedAt: '2022-03-02', tasks: ['cms', 'interbank'] },
+  { id: 'woori01', password: '1234', role: 'institution', institutionId: 'woori', name: '박지훈', org: '우리은행', dept: '자금부', empNo: 'WR-20871', email: 'jihun.park@example.com', extension: '02-2002-0000', status: '정상', joinedAt: '2025-06-16', tasks: [] },
+  { id: 'ibk02', password: '1234', role: 'institution', institutionId: 'ibk', name: '오세훈', org: 'IBK기업은행', dept: '전자금융부', empNo: 'IBK-3310', email: 'sehun.oh@example.com', extension: '02-729-0000', status: '정상', joinedAt: '2025-09-01', tasks: [] },
+  { id: 'hana01', password: '1234', role: 'institution', institutionId: 'hana', name: '이민지', org: '하나은행', dept: '자금결제부', empNo: 'HN-5521', email: 'minji.lee@example.com', extension: '02-1599-0000', status: '승인대기', joinedAt: '2026-10-13', tasks: [] },
+  { id: 'toss01', password: '1234', role: 'institution', institutionId: 'toss', name: '박준호', org: '토스뱅크', dept: '재무팀', empNo: 'TS-0192', email: 'junho.park@example.com', extension: '02-1661-0000', status: '승인대기', joinedAt: '2026-10-13', tasks: [] },
+  { id: 'choisy', password: '1234', role: 'operator', name: '최서연', org: '금융결제원', dept: '회비관리팀', empNo: 'KFTC-202609', email: 'seoyeon.choi@example.com', extension: '02-531-1260', status: '승인대기', joinedAt: '2026-10-12', tasks: [] },
+  { id: 'kakao01', password: '1234', role: 'institution', institutionId: 'kakao', name: '한지수', org: '카카오뱅크', dept: '정산팀', empNo: 'KK-0457', email: 'jisu.han@example.com', extension: '02-1599-3333', status: '반려', joinedAt: '2026-10-09', tasks: [] },
 ];
 
-// 일반담당자(홍길동)의 초기 승인 업무
-export const INITIAL_APPROVED_TASKS = ['openbanking', 'fininfo'];
+// 관리자 화면의 업무 권한 신청 예시
+export const INITIAL_TASK_REQUESTS = [
+  { id: 1, memberId: 'kimms', taskId: 'openbanking', reason: '오픈뱅킹 회비 산출 업무를 함께 맡게 되어 신청합니다.', requestedAt: '2026-10-19 10:20', status: '승인 대기중' },
+  { id: 2, memberId: 'kimms', taskId: 'cd', reason: 'CD공동망 분기 대사 지원', requestedAt: '2026-10-02 15:41', status: '반려', decidedAt: '2026-10-03 09:10' },
+];
 
-// 관리자 화면의 잠금 계정 예시 (실제 계정이 5회 틀리면 여기에 추가된다)
+// 비밀번호 5회 오류로 잠긴 계정 예시 (실제 계정이 5회 틀리면 여기에 추가된다)
 export const INITIAL_LOGIN_LOCKS = {
-  woori01: { count: 5, name: '박지훈', org: '우리은행', lockedAt: '2026-10-19 16:42' },
-  ibk02: { count: 5, name: '오세훈', org: 'IBK기업은행', lockedAt: '2026-10-20 09:15' },
+  woori01: { count: 5, lockedAt: '2026-10-19 16:42' },
+  ibk02: { count: 5, lockedAt: '2026-10-20 09:15' },
 };
 
 export const LOGIN_HISTORY = [
@@ -187,12 +164,4 @@ export const TEST_RESULTS = [
   { id: 5, institutionId: 'nh', business: 'CD공동망', item: '타행 출금 거래 대사파일', date: '2026-10-11 11:30', result: '진행중', note: '대사파일 수신 대기' },
   { id: 6, institutionId: 'toss', business: '금융거래정보(금거정)', item: '조회 전문 송수신', date: '2026-10-12 15:55', result: '실패', note: '타임아웃 3회 발생' },
   { id: 7, institutionId: 'hana', business: '타행환', item: '송금 전문 처리', date: '2026-10-13 13:00', result: '성공', note: '-' },
-];
-
-export const MEMBER_REQUESTS = [
-  { id: 1, name: '이민지', org: '하나은행', dept: '자금결제부', email: 'minji.lee@example.com', role: '참가기관 담당자', requestedAt: '2026-10-13', status: '승인대기' },
-  { id: 2, name: '박준호', org: '토스뱅크', dept: '재무팀', email: 'junho.park@example.com', role: '참가기관 담당자', requestedAt: '2026-10-13', status: '승인대기' },
-  { id: 3, name: '최서연', org: '금융결제원', dept: '회비관리팀', email: 'seoyeon.choi@example.com', role: '결제원 담당자', requestedAt: '2026-10-12', status: '승인대기' },
-  { id: 4, name: '정우성', org: 'IBK기업은행', dept: '전자금융부', email: 'woosung.jung@example.com', role: '참가기관 담당자', requestedAt: '2026-10-10', status: '승인' },
-  { id: 5, name: '한지수', org: '카카오뱅크', dept: '정산팀', email: 'jisu.han@example.com', role: '참가기관 담당자', requestedAt: '2026-10-09', status: '반려' },
 ];
