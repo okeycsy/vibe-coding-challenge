@@ -30,8 +30,12 @@ function Switch({ checked, onChange, label }) {
       className="w-full flex items-center justify-between gap-4 rounded-lg border border-slate-200 px-3 py-2.5 text-left text-sm hover:bg-slate-50"
     >
       <span className="text-slate-700">{label}</span>
-      <span className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition ${checked ? 'bg-brand-600' : 'bg-slate-300'}`}>
-        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${checked ? 'left-[18px]' : 'left-0.5'}`} />
+      <span
+        className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition ${checked ? 'bg-brand-600' : 'bg-slate-300'}`}
+      >
+        <span
+          className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${checked ? 'left-[18px]' : 'left-0.5'}`}
+        />
       </span>
     </button>
   );
@@ -46,7 +50,29 @@ function Field({ label, children }) {
   );
 }
 
-export default function MyPage({ user, notify, prefs, setPrefs, approvedTasks, taskRequests, onRequestTask, onChangePassword, loginAt }) {
+// 항목마다 한 페이지씩 보여 준다. page는 사이드바 하위 메뉴의 section id.
+export const MYPAGE_PAGES = {
+  'mypage-profile': { title: '기본 정보', desc: '인사 정보와 연락처를 확인하고 수정합니다.' },
+  'mypage-tasks': { title: '담당 업무 및 산출 권한', desc: '내 담당 업무를 확인하고 업무 권한을 추가로 신청합니다.' },
+  'mypage-alert': {
+    title: 'Mattermost 알림 설정',
+    desc: '대사·테스트 결과와 권한 처리 알림을 받을 채널과 조건을 설정합니다.',
+  },
+  'mypage-security': { title: '보안 설정 및 접속 이력', desc: '비밀번호를 변경하고 최근 접속 이력을 확인합니다.' },
+};
+
+export default function MyPage({
+  page,
+  user,
+  notify,
+  prefs,
+  setPrefs,
+  approvedTasks,
+  taskRequests,
+  onRequestTask,
+  onChangePassword,
+  loginAt,
+}) {
   const [extension, setExtension] = useState(prefs.extension);
   const [webhook, setWebhook] = useState(prefs.webhook);
   const requestable = BUSINESSES.filter(
@@ -59,7 +85,7 @@ export default function MyPage({ user, notify, prefs, setPrefs, approvedTasks, t
   const [pwError, setPwError] = useState('');
 
   const isOperator = user.role === 'operator';
-  const selectedTask = requestable.some((b) => b.id === taskId) ? taskId : requestable[0]?.id ?? '';
+  const selectedTask = requestable.some((b) => b.id === taskId) ? taskId : (requestable[0]?.id ?? '');
 
   const saveExtension = () => {
     if (!/^[\d-]{7,}$/.test(extension.trim())) {
@@ -114,49 +140,52 @@ export default function MyPage({ user, notify, prefs, setPrefs, approvedTasks, t
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-xl font-bold text-brand-900">내 정보 관리</h2>
-        <p className="text-sm text-slate-500 mt-0.5">계정 정보, 담당 업무 권한, 알림과 보안 설정을 관리합니다.</p>
+        <p className="text-xs text-slate-400">내 정보 관리</p>
+        <h2 className="text-xl font-bold text-brand-900">{MYPAGE_PAGES[page].title}</h2>
+        <p className="text-sm text-slate-500 mt-0.5">{MYPAGE_PAGES[page].desc}</p>
       </div>
 
       {/* 영역 1: 기본 인사 및 계정 정보 */}
-      <Card id="mypage-profile" title="기본 인사 및 계정 정보" icon={IdCard}>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Field label="이름 / 사번">
-            <p className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-sm">
-              <span className="font-semibold text-brand-900">{user.name}</span>
-              <span className="ml-2 font-mono text-slate-500">{user.empNo}</span>
-            </p>
-          </Field>
-          <Field label="소속 부서">
-            <p className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-sm">
-              {user.org} {user.dept}
-            </p>
-          </Field>
-          <Field label="시스템 역할">
-            <p className="py-1.5">
-              <span className="inline-flex items-center gap-1 rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700">
-                <BadgeCheck className="w-3.5 h-3.5" /> {user.roleLabel}
-              </span>
-            </p>
-          </Field>
-        </div>
-        <div className="mt-4 flex items-end gap-2 max-w-md">
-          <div className="flex-1">
-            <Field label="내선번호">
-              <input value={extension} onChange={(e) => setExtension(e.target.value)} className={inputCls} />
+      {page === 'mypage-profile' && (
+        <Card id="mypage-profile" title="기본 인사 및 계정 정보" icon={IdCard}>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Field label="이름 / 사번">
+              <p className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-sm">
+                <span className="font-semibold text-brand-900">{user.name}</span>
+                <span className="ml-2 font-mono text-slate-500">{user.empNo}</span>
+              </p>
+            </Field>
+            <Field label="소속 부서">
+              <p className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-sm">
+                {user.org} {user.dept}
+              </p>
+            </Field>
+            <Field label="시스템 역할">
+              <p className="py-1.5">
+                <span className="inline-flex items-center gap-1 rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700">
+                  <BadgeCheck className="w-3.5 h-3.5" /> {user.roleLabel}
+                </span>
+              </p>
             </Field>
           </div>
-          <button
-            onClick={saveExtension}
-            className="shrink-0 rounded-lg bg-brand-700 px-3 py-2 text-sm text-white hover:bg-brand-800"
-          >
-            연락처 수정
-          </button>
-        </div>
-      </Card>
+          <div className="mt-4 flex items-end gap-2 max-w-md">
+            <div className="flex-1">
+              <Field label="내선번호">
+                <input value={extension} onChange={(e) => setExtension(e.target.value)} className={inputCls} />
+              </Field>
+            </div>
+            <button
+              onClick={saveExtension}
+              className="shrink-0 rounded-lg bg-brand-700 px-3 py-2 text-sm text-white hover:bg-brand-800"
+            >
+              연락처 수정
+            </button>
+          </div>
+        </Card>
+      )}
 
       {/* 영역 2: 담당 업무 및 산출 권한 관리 */}
-      {user.side === 'kftc' && (
+      {page === 'mypage-tasks' && user.side === 'kftc' && (
         <Card id="mypage-tasks" title="담당 업무 및 산출 권한 관리" icon={ListChecks}>
           <p className="text-xs font-medium text-slate-500 mb-2">내 담당 업무 현황</p>
           <div className="flex flex-wrap gap-2">
@@ -166,7 +195,9 @@ export default function MyPage({ user, notify, prefs, setPrefs, approvedTasks, t
                 className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-800"
               >
                 {bizName(id)}
-                <span className="rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">산출 가능</span>
+                <span className="rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                  산출 가능
+                </span>
               </span>
             ))}
           </div>
@@ -196,7 +227,10 @@ export default function MyPage({ user, notify, prefs, setPrefs, approvedTasks, t
                         className={inputCls}
                       />
                     </Field>
-                    <button type="submit" className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800">
+                    <button
+                      type="submit"
+                      className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800"
+                    >
                       권한 신청하기
                     </button>
                   </div>
@@ -209,7 +243,9 @@ export default function MyPage({ user, notify, prefs, setPrefs, approvedTasks, t
                   <thead className="bg-slate-50 text-xs text-slate-500">
                     <tr>
                       {['신청일시', '업무', '신청 사유', '상태', '처리일시'].map((h) => (
-                        <th key={h} className="px-4 py-2 text-left font-medium">{h}</th>
+                        <th key={h} className="px-4 py-2 text-left font-medium">
+                          {h}
+                        </th>
                       ))}
                     </tr>
                   </thead>
@@ -220,14 +256,20 @@ export default function MyPage({ user, notify, prefs, setPrefs, approvedTasks, t
                         <td className="px-4 py-2 font-medium whitespace-nowrap">{bizName(r.taskId)}</td>
                         <td className="px-4 py-2 text-slate-600">{r.reason}</td>
                         <td className="px-4 py-2 whitespace-nowrap">
-                          <span className={`rounded-full border px-2 py-0.5 text-xs ${REQUEST_TONE[r.status]}`}>{r.status}</span>
+                          <span className={`rounded-full border px-2 py-0.5 text-xs ${REQUEST_TONE[r.status]}`}>
+                            {r.status}
+                          </span>
                         </td>
-                        <td className="px-4 py-2 text-slate-500 tabular-nums whitespace-nowrap">{r.decidedAt ?? '-'}</td>
+                        <td className="px-4 py-2 text-slate-500 tabular-nums whitespace-nowrap">
+                          {r.decidedAt ?? '-'}
+                        </td>
                       </tr>
                     ))}
                     {taskRequests.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-400">신청 내역이 없습니다.</td>
+                        <td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-400">
+                          신청 내역이 없습니다.
+                        </td>
                       </tr>
                     )}
                   </tbody>
@@ -235,112 +277,127 @@ export default function MyPage({ user, notify, prefs, setPrefs, approvedTasks, t
               </div>
             </>
           ) : (
-            <p className="mt-4 text-sm text-slate-500">시스템관리자는 모든 업무의 산출 권한을 가지고 있어 별도 신청이 필요 없습니다.</p>
+            <p className="mt-4 text-sm text-slate-500">
+              시스템관리자는 모든 업무의 산출 권한을 가지고 있어 별도 신청이 필요 없습니다.
+            </p>
           )}
         </Card>
       )}
 
       {/* 영역 3: Mattermost 알림 연동 */}
-      <Card id="mypage-alert" title="Mattermost 알림 연동 설정" icon={BellRing}>
-        <div className="flex flex-col md:flex-row md:items-end gap-2">
-          <div className="flex-1">
-            <Field label="Mattermost Webhook URL 또는 채널 ID">
-              <input
-                value={webhook}
-                onChange={(e) => setWebhook(e.target.value)}
-                placeholder="https://mattermost.example.com/hooks/xxxxxxxx 또는 채널 ID"
-                className={inputCls}
-              />
-            </Field>
-          </div>
-          <button
-            onClick={sendTest}
-            className="shrink-0 flex items-center justify-center gap-1.5 rounded-lg border border-brand-200 bg-white px-3 py-2 text-sm text-brand-700 hover:bg-brand-50"
-          >
-            <Send className="w-3.5 h-3.5" /> 연동 테스트 발송
-          </button>
-        </div>
-        <p className="mt-1.5 text-[11px] text-slate-400">시연용 화면이라 실제로 발송하지 않습니다.</p>
-        <div className="mt-4 space-y-2">
-          {NOTIFY_OPTIONS.map((o) => (
-            <Switch
-              key={o.key}
-              label={o.label}
-              checked={prefs.notify[o.key]}
-              onChange={(v) => setPrefs((p) => ({ ...p, notify: { ...p.notify, [o.key]: v } }))}
-            />
-          ))}
-        </div>
-      </Card>
-
-      {/* 영역 4: 보안 설정 및 최근 접속 이력 */}
-      <div id="mypage-security" className="scroll-mt-6 grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <Card title="비밀번호 변경" icon={KeyRound}>
-          <form onSubmit={submitPassword} className="space-y-3">
-            {[
-              ['current', '현재 비밀번호', 'current-password'],
-              ['next', '새 비밀번호', 'new-password'],
-              ['confirm', '새 비밀번호 확인', 'new-password'],
-            ].map(([k, label, ac]) => (
-              <Field key={k} label={label}>
+      {page === 'mypage-alert' && (
+        <Card id="mypage-alert" title="Mattermost 알림 연동 설정" icon={BellRing}>
+          <div className="flex flex-col md:flex-row md:items-end gap-2">
+            <div className="flex-1">
+              <Field label="Mattermost Webhook URL 또는 채널 ID">
                 <input
-                  type={showPw ? 'text' : 'password'}
-                  value={pw[k]}
-                  autoComplete={ac}
-                  onChange={(e) => setPw((p) => ({ ...p, [k]: e.target.value }))}
+                  value={webhook}
+                  onChange={(e) => setWebhook(e.target.value)}
+                  placeholder="https://mattermost.example.com/hooks/xxxxxxxx 또는 채널 ID"
                   className={inputCls}
                 />
               </Field>
-            ))}
-            <div className="flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setShowPw((v) => !v)}
-                className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"
-              >
-                {showPw ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                비밀번호 {showPw ? '숨기기' : '보기'}
-              </button>
-              <button type="submit" className="rounded-lg bg-brand-700 px-4 py-2 text-sm text-white hover:bg-brand-800">
-                비밀번호 변경
-              </button>
             </div>
-            {pwError && <p className="text-xs text-rose-600">{pwError}</p>}
-          </form>
-        </Card>
-
-        <Card title="최근 접속 이력" icon={History}>
-          <div className="overflow-x-auto rounded-lg border border-slate-200">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-xs text-slate-500">
-                <tr>
-                  {['일시', '접속 IP', '환경', '상태'].map((h) => (
-                    <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {history.map((h, i) => (
-                  <tr key={i} className="border-t border-slate-100">
-                    <td className="px-3 py-2 tabular-nums whitespace-nowrap text-slate-600">{h.at}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{h.ip}</td>
-                    <td className="px-3 py-2 text-xs text-slate-500">{h.device}</td>
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      <span
-                        className={`text-xs ${
-                          h.status === '비밀번호 오류' ? 'text-rose-600' : h.status === '현재 세션' ? 'text-brand-600 font-semibold' : 'text-emerald-700'
-                        }`}
-                      >
-                        {h.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <button
+              onClick={sendTest}
+              className="shrink-0 flex items-center justify-center gap-1.5 rounded-lg border border-brand-200 bg-white px-3 py-2 text-sm text-brand-700 hover:bg-brand-50"
+            >
+              <Send className="w-3.5 h-3.5" /> 연동 테스트 발송
+            </button>
+          </div>
+          <p className="mt-1.5 text-[11px] text-slate-400">시연용 화면이라 실제로 발송하지 않습니다.</p>
+          <div className="mt-4 space-y-2">
+            {NOTIFY_OPTIONS.map((o) => (
+              <Switch
+                key={o.key}
+                label={o.label}
+                checked={prefs.notify[o.key]}
+                onChange={(v) => setPrefs((p) => ({ ...p, notify: { ...p.notify, [o.key]: v } }))}
+              />
+            ))}
           </div>
         </Card>
-      </div>
+      )}
+
+      {/* 영역 4: 보안 설정 및 최근 접속 이력 */}
+      {page === 'mypage-security' && (
+        <div id="mypage-security" className="scroll-mt-6 grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <Card title="비밀번호 변경" icon={KeyRound}>
+            <form onSubmit={submitPassword} className="space-y-3">
+              {[
+                ['current', '현재 비밀번호', 'current-password'],
+                ['next', '새 비밀번호', 'new-password'],
+                ['confirm', '새 비밀번호 확인', 'new-password'],
+              ].map(([k, label, ac]) => (
+                <Field key={k} label={label}>
+                  <input
+                    type={showPw ? 'text' : 'password'}
+                    value={pw[k]}
+                    autoComplete={ac}
+                    onChange={(e) => setPw((p) => ({ ...p, [k]: e.target.value }))}
+                    className={inputCls}
+                  />
+                </Field>
+              ))}
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setShowPw((v) => !v)}
+                  className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"
+                >
+                  {showPw ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  비밀번호 {showPw ? '숨기기' : '보기'}
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-lg bg-brand-700 px-4 py-2 text-sm text-white hover:bg-brand-800"
+                >
+                  비밀번호 변경
+                </button>
+              </div>
+              {pwError && <p className="text-xs text-rose-600">{pwError}</p>}
+            </form>
+          </Card>
+
+          <Card title="최근 접속 이력" icon={History}>
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-xs text-slate-500">
+                  <tr>
+                    {['일시', '접속 IP', '환경', '상태'].map((h) => (
+                      <th key={h} className="px-3 py-2 text-left font-medium">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((h, i) => (
+                    <tr key={i} className="border-t border-slate-100">
+                      <td className="px-3 py-2 tabular-nums whitespace-nowrap text-slate-600">{h.at}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{h.ip}</td>
+                      <td className="px-3 py-2 text-xs text-slate-500">{h.device}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <span
+                          className={`text-xs ${
+                            h.status === '비밀번호 오류'
+                              ? 'text-rose-600'
+                              : h.status === '현재 세션'
+                                ? 'text-brand-600 font-semibold'
+                                : 'text-emerald-700'
+                          }`}
+                        >
+                          {h.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

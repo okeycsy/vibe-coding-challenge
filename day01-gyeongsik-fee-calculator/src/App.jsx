@@ -146,6 +146,12 @@ export default function App() {
 
   const selectMenu = (id, section = null) => {
     setMenu(id);
+    // 내 정보 관리는 하위 메뉴마다 별도 페이지다. 상위 메뉴를 누르면 첫 페이지(기본 정보)로 간다.
+    if (id === 'mypage') {
+      setActiveSection(section ?? 'mypage-profile');
+      document.querySelector('main')?.scrollTo(0, 0);
+      return;
+    }
     setActiveSection(section);
     // 화면이 바뀐 뒤 해당 하위 영역으로 스크롤
     if (section) setTimeout(() => document.getElementById(section)?.scrollIntoView({ behavior: 'smooth' }), 50);
@@ -200,6 +206,7 @@ export default function App() {
             {menu === 'results' && canSee('results') && <ResultsManagement {...shared} />}
             {menu === 'mypage' && canSee('mypage') && (
               <MyPage
+                page={activeSection ?? 'mypage-profile'}
                 user={user}
                 notify={notify}
                 prefs={prefs[role]}
