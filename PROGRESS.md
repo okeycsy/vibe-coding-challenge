@@ -6,7 +6,7 @@
 - 저장소 세팅 완료 (템플릿, GitHub 동기화 훅 — 로컬 main과 클라우드 `claude/*` 브랜치 모두 동작)
 - 산출물: 아직 없음
 - [경식] `day01-gyeongsik-fee-calculator/` 회비자동산출시스템 프론트엔드 1차 구현 완료 (Mock Data), `backend/`에 Spring Boot API 추가, 로그인·회원 승인·업무 권한 화면은 `VITE_API_BASE_URL` 설정 시 API와 연동 (Render 서비스 이름 `vibe-coding-challenge` 배포·Vercel 환경변수 설정은 John 대기)
-- [대용] `day01-daeyong-fee-calculator/` 금융정보업무 회비 산출 3차 완료: 여러 해치 건수 파일을 분기(3개월)별로 산출, 같은 기관명 합산, 단일 HTML 프로그램 + claude.ai 웹 페이지
+- [대용] `day01-daeyong-fee-calculator/` 금융정보업무 회비 산출 v4 완료(통합 요구사항): 업무별 설정, 분기 배분 방식 A/B, 균등회비 방식 A/B, 실적 인정 항목, 우체국 10원 처리, 엑셀 열 매핑·검증·미리보기, 기관별 산출 근거·검증, 단일 HTML 프로그램 + claude.ai 웹 페이지. 확인 필요 기본값 목록은 `docs/DESIGN.md` 7장
 - [우성] `day01-woosung-fee-ai/` 회비자동산출 AI툴 1차 구현 완료 (분담기준 AI 학습·버전 관리, xlsx/csv/hwp/hwpx 실적 업로드, 기관별 산출·Excel 다운로드)
 
 - [경식] 회비자동산출시스템 공개 주소: https://vibe-coding-challenge-nine.vercel.app/ (Vercel, `main` push·병합 시 자동 재배포)
@@ -44,6 +44,9 @@
 - `day01-woosung-fee-ai/` 추가: Express API + React/Tailwind/lucide 화면. 분담기준 문구 → Claude 구조화 출력으로 산출 규칙(JSON) 변환, 관리자 확인 후 버전 저장·되돌리기 (API 키 없으면 규칙 기반 해석기)
 - 산출은 결정적 코드(BigInt 최대잔여법, 합계 = 총회비 보장). 방식: 균등·실적비례·구간가중, 항목 가중치, 1/10/100/1000원 단위
 - 실적 파일: xlsx·csv(CP949 포함)·hwp(5.0 바이너리 표)·hwpx. 결과 Excel(회비산출내역·산출기준 시트). `npm test` 21개 통과
+### 2026-10-22 (대용)
+- v4: 통합 요구사항으로 재구성. 계산 엔진(`src/engine/`)을 화면과 분리, BigInt 정수 계산, 계산 중 기관별 산출 근거(trace) 기록, 검증 9종. `npm test` 14개 통과
+- 요구사항에 없는 원 단위·차액 배정 규칙은 기본값으로 계산하되 "확인 필요"로 표시하고 담당자가 업무별로 확정(목록은 `docs/DESIGN.md`)
 ### 2026-10-17 (대용)
 - 3차: 회비는 3개월마다 산출(달력 분기). 기간 열(년월·일자·분기, 연도+월, 시트 이름)을 읽어 분기별로 묶고, 같은 분기 안 같은 기관명은 합산. 분기 회비 총액은 공통 입력 + 분기별 수정. 결과 엑셀은 분기별요약·기관별분기회비·분기별 시트·산출기준
 - 2차: 화면 개편(요약 카드, 기관별 구성 막대, 정렬·검색 표, 끌어다 놓기, 다크 모드, 예시 데이터로 첫 화면 채움), `npm run build`로 단일 HTML 프로그램 생성, claude.ai 웹 페이지로 게시(파일 저장은 downloads 기능)
