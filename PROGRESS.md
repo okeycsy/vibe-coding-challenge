@@ -5,7 +5,7 @@
 ## 현재 상태
 - 저장소 세팅 완료 (템플릿, GitHub 동기화 훅 — 로컬 main과 클라우드 `claude/*` 브랜치 모두 동작)
 - 산출물: 아직 없음
-- [경식] `day01-gyeongsik-fee-calculator/` 회비자동산출시스템 프론트엔드 1차 구현 완료 (Mock Data), `backend/`에 Spring Boot API 추가, 로그인·회원 승인·업무 권한 화면은 `VITE_API_BASE_URL` 설정 시 API와 연동 (Render 배포·Vercel 환경변수 설정은 John 대기)
+- [경식] `day01-gyeongsik-fee-calculator/` 회비자동산출시스템 프론트엔드 1차 구현 완료 (Mock Data), `backend/`에 Spring Boot API 추가, 로그인·회원 승인·업무 권한 화면은 `VITE_API_BASE_URL` 설정 시 API와 연동 (Render 서비스 이름 `vibe-coding-challenge` 배포·Vercel 환경변수 설정은 John 대기)
 - [대용] `day01-daeyong-fee-calculator/` 금융정보업무 회비 산출 3차 완료: 여러 해치 건수 파일을 분기(3개월)별로 산출, 같은 기관명 합산, 단일 HTML 프로그램 + claude.ai 웹 페이지
 - [우성] `day01-woosung-fee-ai/` 회비자동산출 AI툴 1차 구현 완료 (분담기준 AI 학습·버전 관리, xlsx/csv/hwp/hwpx 실적 업로드, 기관별 산출·Excel 다운로드)
 

@@ -26,7 +26,7 @@ Docker 지원 무료 호스팅인 [Render](https://render.com)에 이 폴더의 
 3. 설정값
    | 항목 | 값 |
    |------|----|
-   | Name | `gyeongsik-fee-backend` (주소가 `https://gyeongsik-fee-backend.onrender.com`이 됨) |
+   | Name | `vibe-coding-challenge` (주소가 `https://vibe-coding-challenge.onrender.com`이 됨. 이미 쓰는 이름이면 Render가 뒤에 글자를 붙이니 실제 주소를 확인) |
    | Branch | `main` |
    | Root Directory | `day01-gyeongsik-fee-calculator/backend` |
    | Language | `Docker` (Dockerfile Path는 기본값 `./Dockerfile`) |
