@@ -9,6 +9,8 @@
 - [대용] `day01-daeyong-fee-calculator/` 금융정보업무 회비 산출 3차 완료: 여러 해치 건수 파일을 분기(3개월)별로 산출, 같은 기관명 합산, 단일 HTML 프로그램 + claude.ai 웹 페이지
 - [우성] `day01-woosung-fee-ai/` 회비자동산출 AI툴 1차 구현 완료 (분담기준 AI 학습·버전 관리, xlsx/csv/hwp/hwpx 실적 업로드, 기관별 산출·Excel 다운로드)
 
+- [경식] 회비자동산출시스템 공개 주소: https://vibe-coding-challenge-nine.vercel.app/ (Vercel, `main` push·병합 시 자동 재배포)
+
 ## 다음 할 일
 - [ ] Day01 챌린지 과제 받아서 시작
 - [ ] [경식] 회비자동산출시스템: 실제 Excel 파싱, 백엔드 API 연동, 업무별 분담기준 실제화
@@ -19,8 +21,11 @@
 - 세션 맥락은 GitHub의 `CLAUDE.md` / `PROGRESS.md`로 관리 (로컬 메모리 사용 안 함)
 - 이 저장소가 모든 프레임워크·작업의 베이스. git 서브모듈은 두지 않는다
 - `connect-link` 저장소와는 연결하지 않는다 (서브모듈·참조·수정 모두 금지)
+- 공개 배포는 Vercel Git 연결로 한다 (Root Directory `day01-gyeongsik-fee-calculator`, Production Branch `main`). 토큰·GitHub Actions 배포는 쓰지 않는다
 
 ## 세션 로그
+### 2026-10-22
+- Vercel 공개 주소(vibe-coding-challenge-nine.vercel.app)가 경식 회비자동산출시스템임을 확인. push·병합 시 자동 재배포되도록 Vercel Git 연결 설정값을 경식 README에 기록
 ### 2026-10-20 (경식)
 - 회비 산출 STEP 1을 연도·분기 선택에서 기간(From~To) 선택으로 변경: 달력 선택·숫자 직접 입력, 날짜 유효성과 From>To 경고, 분기가 아닌 기간은 일수 비례 환산
 - 관리자 설정을 회원 관리(추가·수정·삭제, 가입 승인, 잠금 해제)와 업무 권한 관리(신청 승인·반려, 회원별 권한 부여·해제) 페이지로 분리. 회원 데이터를 로그인 계정과 하나로 합침
