@@ -5,7 +5,7 @@
 ## 현재 상태
 - 저장소 세팅 완료 (템플릿, GitHub 동기화 훅 — 로컬 main과 클라우드 `claude/*` 브랜치 모두 동작)
 - 산출물: 아직 없음
-- [경식] `day01-gyeongsik-fee-calculator/` 회비자동산출시스템 프론트엔드 1차 구현 완료 (Mock Data), `backend/`에 Spring Boot API 추가, 로그인·회원 승인·업무 권한 화면은 `VITE_API_BASE_URL` 설정 시 API와 연동 (Render 서비스 이름 `vibe-coding-challenge` 배포·Vercel 환경변수 설정은 John 대기)
+- [경식] `day01-gyeongsik-fee-calculator/` 회비자동산출시스템 프론트엔드 1차 구현 완료 (Mock Data), `backend/`에 Spring Boot API 추가, 로그인·회원 승인·업무 권한 화면은 `VITE_API_BASE_URL` 설정 시 API와 연동 (백엔드 공개 주소 https://vibe-coding-challenge-bdm1.onrender.com, Render 무료 Web Service. Vercel `VITE_API_BASE_URL` 설정 완료)
 - [대용] `day01-daeyong-fee-calculator/` 금융정보업무 회비 산출 v4 완료(통합 요구사항): 업무별 설정, 분기 배분 방식 A/B, 균등회비 방식 A/B, 실적 인정 항목, 우체국 10원 처리, 엑셀 열 매핑·검증·미리보기, 기관별 산출 근거·검증, 단일 HTML 프로그램 + claude.ai 웹 페이지. 확인 필요 기본값 목록은 `docs/DESIGN.md` 7장
 - [우성] `day01-woosung-fee-ai/` 회비자동산출 AI툴 1차 구현 완료 (분담기준 AI 학습·버전 관리, xlsx/csv/hwp/hwpx 실적 업로드, 기관별 산출·Excel 다운로드)
 
@@ -13,7 +13,7 @@
 
 ## 다음 할 일
 - [ ] Day01 챌린지 과제 받아서 시작
-- [ ] [경식] 회비자동산출시스템: Render에 백엔드 Web Service 생성 후 Vercel `VITE_API_BASE_URL` 설정(절차는 `backend/README.md`), 회비 산출·대사 화면 API 연결, 인증 토큰(세션/JWT)·API 역할 검사(지금 공개 API는 인증 없음), 업무별 분담기준 실제화
+- [ ] [경식] 회비자동산출시스템: 회비 산출·대사 화면 API 연결, 인증 토큰(세션/JWT)·API 역할 검사(지금 공개 API는 인증 없음), 업무별 분담기준 실제화
 - [ ] [우성] 회비자동산출 AI툴: 실제 분담기준 문구로 Claude 학습 검증, 최저회비·상한 등 추가 산정 방식 필요 여부 확인
 
 ## 결정 사항
@@ -26,6 +26,7 @@
 ## 세션 로그
 ### 2026-10-22 (경식, 백엔드 배포)
 - `backend/Dockerfile` 추가(Render 등 Docker 무료 호스팅용), `PORT`·`CORS_ALLOWED_ORIGINS`·`H2_CONSOLE_ENABLED` 환경변수, Vercel 주소 CORS 허용, `GET /api/health`. `mvn test` 11개 통과(Docker 빌드는 이 환경에서 Docker Hub 요청 제한으로 확인 못 함)
+- Render 무료 Web Service `vibe-coding-challenge`(https://vibe-coding-challenge-bdm1.onrender.com)로 배포, Vercel에 `VITE_API_BASE_URL` 설정
 - 프론트 `src/utils/api.js`: `VITE_API_BASE_URL`이 있으면 로그인·5회 잠금·잠금 해제·가입 승인/반려·비밀번호 변경/초기화·업무 권한 신청/승인/부여/해제를 서버와 연동, 없으면 기존 Mock 동작. 로그인 화면에 서버 깨우는 중/연결됨 표시
 ### 2026-10-22 (경식)
 - `day01-gyeongsik-fee-calculator/backend/` 추가: Spring Boot 3.3 + Maven + H2, 도메인별 패키지(auth·user·fee·reconcile), 공통 응답 `ApiResponse`·전역 예외 처리, CORS(localhost:5173)

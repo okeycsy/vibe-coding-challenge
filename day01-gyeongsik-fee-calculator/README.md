@@ -57,7 +57,7 @@ npm run build    # dist/ 에 정적 파일 생성
 - Vercel 프로젝트를 이 GitHub 저장소에 Git 연결해 두면, `main`에 push·병합될 때마다 프로덕션이 자동으로 다시 배포되고 PR·`claude/*` 브랜치 push는 미리보기 배포가 만들어집니다.
 - Vercel 프로젝트 설정: Root Directory `day01-gyeongsik-fee-calculator`, Framework Preset `Vite`, Build Command `npm run build`, Output Directory `dist`, Production Branch `main`.
 - 토큰이나 비밀값은 저장소에 넣지 않습니다 (Git 연결 방식은 필요 없음).
-- 백엔드 연결: Vercel 프로젝트 Settings → Environment Variables에 `VITE_API_BASE_URL` = 백엔드 공개 주소(예: `https://vibe-coding-challenge.onrender.com`, 끝에 `/` 없이)를 넣고 다시 배포합니다. Vite는 빌드할 때 이 값을 넣으므로 값을 바꾸면 Redeploy가 필요합니다. 백엔드 배포는 [backend/README.md](backend/README.md#공개-배포-render)를 보세요.
+- 백엔드 연결(설정 완료, `VITE_API_BASE_URL=https://vibe-coding-challenge-bdm1.onrender.com`): Vercel 프로젝트 Settings → Environment Variables에 `VITE_API_BASE_URL` = 백엔드 공개 주소(예: `https://vibe-coding-challenge.onrender.com`, 끝에 `/` 없이)를 넣고 다시 배포합니다. Vite는 빌드할 때 이 값을 넣으므로 값을 바꾸면 Redeploy가 필요합니다. 백엔드 배포는 [backend/README.md](backend/README.md#공개-배포-render)를 보세요.
 
 ## 색상·로고
 로그인 화면·헤더 로고와 파비콘은 금융결제원 CI 심벌마크(`public/kftc-symbol.png`, 가이드 이미지에서 잘라 배경을 투명하게 처리)입니다. 색상은 심벌의 그라데이션에서 뽑았습니다. 짙은 블루 `#0E45AA`·`#0D389E`를 주색(`brand`), 밝은 블루 `#178CDC`를 보조색(`accent`)으로 쓰며 `tailwind.config.js`에서 관리합니다.
