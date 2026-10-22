@@ -6,7 +6,7 @@ import { computeFees } from './fee.js';
 import { sampleBusinesses } from './model.js';
 import { runBusiness } from './pipeline.js';
 import { buildPreview, guessMapping, detectHeaderRow, previewToPerf, applyPreview, extractOrgNames } from './perfImport.js';
-import { toDateRange } from './period.js';
+import { toDateRange, parsePeriodCell } from './period.js';
 
 const sumOf = (rows, k) => rows.reduce((a, r) => a + r[k], 0);
 
@@ -159,6 +159,13 @@ test('기간 값 → 날짜 범위', () => {
   assert.deepEqual(toDateRange('2026년 1분기'), { from: '2026-01-01', to: '2026-03-31', unit: 'quarter' });
   assert.deepEqual(toDateRange(20260315), { from: '2026-03-15', to: '2026-03-15', unit: 'day' });
   assert.equal(toDateRange('미정'), null);
+  for (const v of ['2026년 1/4분기', '2026년도 1분기', '2026 제1분기', 'Q1 2026', '2026-Q1', '1Q2026', '26년 1분기']) {
+    assert.deepEqual(toDateRange(v), { from: '2026-01-01', to: '2026-03-31', unit: 'quarter' }, v);
+  }
+  assert.deepEqual(toDateRange('2026.01.01 ~ 2026.03.31'), { from: '2026-01-01', to: '2026-03-31', unit: 'range' });
+  assert.deepEqual(parsePeriodCell('2분기', { year: 2025 }), { from: '2025-04-01', to: '2025-06-30', unit: 'quarter' });
+  assert.deepEqual(parsePeriodCell(3, { year: '2024년', unitHint: 'quarter' }), { from: '2024-07-01', to: '2024-09-30', unit: 'quarter' });
+  assert.deepEqual(parsePeriodCell('Q4', {}), { needYear: true });
 });
 
 test('엑셀 업로드: 열 매핑 추측, 검증, 기간 필터, 수정값, 적용', () => {
@@ -219,4 +226,32 @@ test('엑셀 업로드: 열 매핑 추측, 검증, 기간 필터, 수정값, 적
   const roster = [['참가기관 명단'], [], ['순번', '기관명', '비고'], [1, 'A기관', ''], [2, '가나 은행', ''], [3, '가나은행', '중복'], ['', '합계', '']];
   assert.equal(detectHeaderRow(roster), 2);
   assert.deepEqual(extractOrgNames(roster), ['A기관', '가나 은행']);
+});
+
+test('분기 실적 파일: 연도 열 + 분기 열, 병합된 기간 칸, 연도 없는 분기', () => {
+  const items = [{ id: 's', name: '압류건수' }];
+  const orgs = [{ id: 'a', name: 'A기관', active: true }, { id: 'b', name: 'B기관', active: true }];
+  const aoa = [
+    ['연도', '분기', '기관명', '압류건수'],
+    [2025, '4분기', 'A기관', 5],
+    ['', '', 'B기관', 6],
+    [2026, '1/4분기', 'A기관', 10],
+    ['', '', 'B기관', 20],
+    ['', '2분기', 'A기관', 99],
+  ];
+  const mapping = guessMapping(aoa[0], items);
+  assert.deepEqual(Object.values(mapping), ['year', 'period', 'org', 'item:s']);
+  const p = buildPreview({ aoa, headerIdx: 0, mapping, items, recognizedItemIds: ['s'], orgs, period: { start: '2026-01-01', end: '2026-03-31' } });
+  assert.equal(p.canApply, true, p.issues.map((i) => i.message).join('\n'));
+  assert.deepEqual(previewToPerf(p), { a: { s: 10 }, b: { s: 20 } });
+  assert.match(p.issues.map((i) => i.message).join('\n'), /바로 위 행의 기간/);
+
+  // 연도 열 없이 '1분기'만 있으면 업로드 정보의 산출 연도로 본다
+  const noYear = [['분기', '기관명', '압류건수'], ['1분기', 'A기관', 7], ['1분기', 'B기관', 8]];
+  const m2 = guessMapping(noYear[0], items);
+  const p2 = buildPreview({ aoa: noYear, headerIdx: 0, mapping: m2, items, recognizedItemIds: ['s'], orgs, period: { start: '2026-01-01', end: '2026-03-31' }, defaultYear: 2026 });
+  assert.equal(p2.canApply, true);
+  assert.deepEqual(previewToPerf(p2), { a: { s: 7 }, b: { s: 8 } });
+  const p3 = buildPreview({ aoa: noYear, headerIdx: 0, mapping: m2, items, recognizedItemIds: ['s'], orgs });
+  assert.match(p3.issues.map((i) => i.message).join('\n'), /연도가 없어/);
 });

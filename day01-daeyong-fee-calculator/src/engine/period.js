@@ -27,7 +27,21 @@ export function toDateRange(v) {
     }
     return null;
   }
-  const s = String(v).trim().replace(/\s+/g, '').toUpperCase();
+  const raw = String(v).trim();
+  // 기간 범위 ('2026.01.01 ~ 2026.03.31', '2026-01 - 2026-03'): 양 끝을 따로 읽어 합친다
+  const parts = raw.split(/\s*(?:~|〜|∼|\s-\s|부터|까지)\s*/).filter(Boolean);
+  if (parts.length === 2) {
+    const a = toDateRange(parts[0]);
+    const b = toDateRange(parts[1]);
+    return a && b && a.from <= b.to ? { from: a.from, to: b.to, unit: a.unit === 'quarter' && b.unit === 'quarter' ? 'quarter' : 'range' } : null;
+  }
+  // 표기 정리: '2026년도' → '2026년', '제1분기'·'1/4분기'·'1사분기' → '1분기', 'Q1 2026' → '2026Q1'
+  let s = raw.replace(/\s+/g, '').toUpperCase()
+    .replace(/년도/g, '년')
+    .replace(/제([1-4])/g, '$1')
+    .replace(/([1-4])(?:\/4|사)분기/g, '$1분기')
+    .replace(/^Q([1-4])[-./]?(\d{4})$/, '$2Q$1')
+    .replace(/^(\d{4})[-./]?([1-4])Q$/, '$1Q$2');
   let m;
   if ((m = s.match(/^(\d{4}|\d{2})년?[-./]?([1-4])(?:분기|Q)$/)) || (m = s.match(/^(\d{4})[-./]?Q([1-4])$/))) {
     return quarter(m[1].length === 2 ? 2000 + Number(m[1]) : Number(m[1]), Number(m[2]));
@@ -38,6 +52,38 @@ export function toDateRange(v) {
   if ((m = s.match(/^(\d{4})(\d{2})(\d{2})$/))) return day(+m[1], +m[2], +m[3]);
   if ((m = s.match(/^(\d{4})(\d{2})$/))) return month(+m[1], +m[2]);
   return null;
+}
+
+// 연도가 없는 기간 값(1분기, Q1, 3월, 숫자 1~4·1~12)을 다른 열의 연도 또는 기본 연도로 읽는다.
+// unitHint: 열 머리글로 본 단위 ('quarter' | 'month' | null). 숫자만 있을 때 분기인지 월인지 정한다.
+// 반환: 날짜 범위, 연도가 필요한데 없으면 { needYear: true }, 못 읽으면 null
+export function parsePeriodCell(v, { year = null, unitHint = null } = {}) {
+  const direct = toDateRange(v);
+  if (direct) return direct;
+  if (v instanceof Date || v === null || v === undefined || v === '') return null;
+  const y = toYear(year);
+  const s = String(v).trim().replace(/\s+/g, '').toUpperCase().replace(/^제/, '').replace(/(?:\/4|사)분기$/, '분기');
+  let m;
+  let q = null;
+  let mo = null;
+  if ((m = s.match(/^([1-4])(?:분기|Q)$/)) || (m = s.match(/^Q([1-4])$/))) q = +m[1];
+  else if ((m = s.match(/^(\d{1,2})월$/))) mo = +m[1];
+  else if ((m = s.match(/^(\d{1,2})$/))) {
+    if (unitHint === 'quarter') q = +m[1];
+    else if (unitHint === 'month') mo = +m[1];
+  }
+  if (q === null && mo === null) return null;
+  if (!y) return { needYear: true };
+  return q !== null ? quarter(y, q) : month(y, mo);
+}
+
+// '2026', 2026, '2026년', '2026년도' → 2026
+export function toYear(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (v instanceof Date) return v.getFullYear();
+  const m = String(v).trim().match(/^(\d{4})(?:년도?)?$/);
+  const y = m ? +m[1] : typeof v === 'number' ? v : NaN;
+  return validYear(y) ? y : null;
 }
 
 // 분기의 첫날과 마지막 날
