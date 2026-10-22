@@ -50,6 +50,12 @@ npm run dev      # http://localhost:5173
 npm run build    # dist/ 에 정적 파일 생성
 ```
 
+## 공개 배포 (Vercel)
+- 주소: https://vibe-coding-challenge-nine.vercel.app/
+- Vercel 프로젝트를 이 GitHub 저장소에 Git 연결해 두면, `main`에 push·병합될 때마다 프로덕션이 자동으로 다시 배포되고 PR·`claude/*` 브랜치 push는 미리보기 배포가 만들어집니다.
+- Vercel 프로젝트 설정: Root Directory `day01-gyeongsik-fee-calculator`, Framework Preset `Vite`, Build Command `npm run build`, Output Directory `dist`, Production Branch `main`.
+- 토큰이나 비밀값은 저장소에 넣지 않습니다 (Git 연결 방식은 필요 없음).
+
 ## 색상·로고
 로그인 화면·헤더 로고와 파비콘은 금융결제원 CI 심벌마크(`public/kftc-symbol.png`, 가이드 이미지에서 잘라 배경을 투명하게 처리)입니다. 색상은 심벌의 그라데이션에서 뽑았습니다. 짙은 블루 `#0E45AA`·`#0D389E`를 주색(`brand`), 밝은 블루 `#178CDC`를 보조색(`accent`)으로 쓰며 `tailwind.config.js`에서 관리합니다.
 
