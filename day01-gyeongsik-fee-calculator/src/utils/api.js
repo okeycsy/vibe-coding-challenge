@@ -1,5 +1,5 @@
 // 백엔드(Spring Boot) API 클라이언트.
-// VITE_API_BASE_URL(예: https://gyeongsik-fee-backend.onrender.com)이 있으면 회원·로그인·업무 권한을 서버와 주고받고,
+// VITE_API_BASE_URL(예: https://vibe-coding-challenge.onrender.com)이 있으면 회원·로그인·업무 권한을 서버와 주고받고,
 // 없으면 지금처럼 data/mockData.js 예시 데이터만으로 화면이 동작한다.
 const BASE = (import.meta.env.VITE_API_BASE_URL ?? '').trim().replace(/\/+$/, '');
 
