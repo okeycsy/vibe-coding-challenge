@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { apiEnabled } from '../utils/api';
 import { Bell, Calculator, ChevronDown, ClipboardCheck, LogOut, Menu, ShieldCheck, UserCog } from 'lucide-react';
 
 // 메뉴는 로그인한 계정의 role로 걸러진다. labels는 역할별로 이름을 바꿀 때 쓴다.
@@ -212,7 +213,10 @@ export function Sidebar({ role, active, activeSection, onSelect, adminBadge, sec
       </nav>
       {open && (
         <div className="mt-auto m-3 rounded-lg bg-brand-50 p-3 text-[11px] text-brand-600 leading-relaxed">
-          모든 화면은 백엔드 없이 예시 데이터(Mock)로 동작합니다. 실제 실적·회비와 무관합니다.
+          {apiEnabled
+            ? '로그인·회원·업무 권한은 백엔드 서버와 연동되고, 회비 산출 화면은 아직 예시 데이터로 동작합니다.'
+            : '모든 화면은 백엔드 없이 예시 데이터(Mock)로 동작합니다.'}{' '}
+          실제 실적·회비와 무관합니다.
         </div>
       )}
     </aside>

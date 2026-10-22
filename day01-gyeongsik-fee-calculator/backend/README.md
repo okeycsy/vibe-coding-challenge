@@ -10,12 +10,36 @@ JDK 17 이상, Maven 3.9 이상이 필요합니다.
 ```bash
 cd day01-gyeongsik-fee-calculator/backend
 mvn spring-boot:run          # http://localhost:8080
-mvn test                     # 통합 테스트 10개
+mvn test                     # 통합 테스트 11개
 mvn package                  # target/fee-calc-backend-0.0.1-SNAPSHOT.jar
 ```
 
-- CORS: `http://localhost:5173`, `http://127.0.0.1:5173`(Vite 개발 서버) 허용. `application.yml`의 `app.cors.allowed-origins`에서 바꿉니다.
-- H2 콘솔: http://localhost:8080/h2-console (JDBC URL `jdbc:h2:mem:feecalc`, 사용자 `sa`, 비밀번호 없음). 재기동하면 데이터가 초기화됩니다.
+- CORS: `http://localhost:5173`, `http://127.0.0.1:5173`(Vite 개발 서버), `https://vibe-coding-challenge-nine.vercel.app`(Vercel 공개 주소) 허용. 환경변수 `CORS_ALLOWED_ORIGINS`(쉼표 구분)로 바꿉니다.
+- H2 콘솔: http://localhost:8080/h2-console (JDBC URL `jdbc:h2:mem:feecalc`, 사용자 `sa`, 비밀번호 없음). 재기동하면 데이터가 초기화됩니다. Docker 이미지에서는 꺼져 있습니다(`H2_CONSOLE_ENABLED=false`).
+- 포트: 환경변수 `PORT`(기본 8080). 헬스 체크는 `GET /api/health`.
+
+## 공개 배포 (Render)
+Docker 지원 무료 호스팅인 [Render](https://render.com)에 이 폴더의 `Dockerfile`로 올립니다. 카드 등록 없이 무료 플랜(512MB)을 쓸 수 있고, `main`에 이 폴더 변경이 병합되면 자동으로 다시 배포됩니다.
+
+1. render.com에서 GitHub 계정으로 가입·로그인합니다.
+2. **New → Web Service** → GitHub 저장소 `okeycsy/vibe-coding-challenge`를 연결·선택합니다.
+3. 설정값
+   | 항목 | 값 |
+   |------|----|
+   | Name | `gyeongsik-fee-backend` (주소가 `https://gyeongsik-fee-backend.onrender.com`이 됨) |
+   | Branch | `main` |
+   | Root Directory | `day01-gyeongsik-fee-calculator/backend` |
+   | Language | `Docker` (Dockerfile Path는 기본값 `./Dockerfile`) |
+   | Instance Type | `Free` |
+   | Health Check Path (Advanced) | `/api/health` |
+4. **Deploy Web Service**를 누르고 로그에 `Started FeeCalcApplication`이 보이면 `https://<이름>.onrender.com/api/health`가 `{"success":true,"message":"UP"...}`를 돌려주는지 확인합니다.
+5. Vercel 프로젝트 Settings → Environment Variables에 `VITE_API_BASE_URL` = 위 주소(끝에 `/` 없이)를 넣고 Deployments에서 Redeploy합니다.
+
+주의
+- 무료 서버는 15분 동안 요청이 없으면 잠들고, 다음 첫 요청 때 깨어나는 데 1분 안팎 걸립니다. 로그인 화면에 "서버를 깨우는 중" 안내가 뜹니다.
+- DB가 인메모리 H2라 서버가 잠들거나 다시 배포되면 시연 데이터로 초기화됩니다.
+- **인증이 없습니다.** 주소를 아는 누구나 회원 목록 조회, 가입 승인, 권한 부여, 비밀번호 초기화 같은 관리자 API를 호출할 수 있습니다. 예시 데이터만 넣고, 실제 회원·실적은 절대 올리지 마세요.
+- Vercel 주소가 바뀌거나 미리보기 주소에서도 쓰려면 Render 환경변수 `CORS_ALLOWED_ORIGINS`에 쉼표로 이어 적습니다(기본값을 덮어쓰므로 localhost 주소도 함께).
 - Mattermost: 환경변수 `MATTERMOST_WEBHOOK_URL`에 Incoming Webhook 주소를 넣으면 실제로 발송하고, 비어 있으면 로그만 남깁니다.
 
 ## 기술 스택
@@ -109,6 +133,6 @@ src/main/java/com/kftc/feecalc/
 
 ## 다음 단계 (아직 안 한 것)
 - 인증 토큰(세션 또는 JWT)과 API별 역할 검사. 지금은 로그인 응답만 주고, 관리자 API도 누구나 호출할 수 있습니다
-- 프론트엔드 화면을 이 API에 연결 (현재 프론트는 Mock Data로 동작)
+- 회비 산출·대사 화면과 회원 추가·삭제·역할 변경을 API에 연결 (로그인·회원 승인·업무 권한은 연결됨)
 - AI 이슈 해석을 규칙 기반에서 LLM 기반으로 교체 (`AiIssueParser`)
 - 운영 DB(예: Oracle/PostgreSQL)와 스키마 관리(Flyway)

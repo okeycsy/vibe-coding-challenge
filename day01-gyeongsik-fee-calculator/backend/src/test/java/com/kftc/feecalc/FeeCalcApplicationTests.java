@@ -197,4 +197,17 @@ class FeeCalcApplicationTests {
                         .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET"))
                 .andExpect(status().isForbidden());
     }
+
+    @Test
+    void Vercel_공개주소_CORS와_헬스체크() throws Exception {
+        mvc.perform(options("/api/auth/login")
+                        .header(HttpHeaders.ORIGIN, "https://vibe-coding-challenge-nine.vercel.app")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN,
+                        "https://vibe-coding-challenge-nine.vercel.app"));
+        mvc.perform(get("/api/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success", is(true)));
+    }
 }

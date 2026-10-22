@@ -10,7 +10,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import lombok.RequiredArgsConstructor;
 
-/** React(Vite, localhost:5173) 연동 CORS 설정 */
+/** React 화면(Vite 개발 서버, Vercel 공개 주소) 연동 CORS 설정. 허용 주소는 app.cors.allowed-origins */
 @Configuration
 @RequiredArgsConstructor
 public class WebConfig implements WebMvcConfigurer {

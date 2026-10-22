@@ -50,17 +50,20 @@ npm run dev      # http://localhost:5173
 npm run build    # dist/ 에 정적 파일 생성
 ```
 
+백엔드와 함께 띄우려면 `backend/`에서 `mvn spring-boot:run`을 실행한 뒤 `VITE_API_BASE_URL=http://localhost:8080 npm run dev`로 화면을 띄웁니다. 이 값이 없으면 화면은 예시 데이터(Mock)만으로 동작합니다.
+
 ## 공개 배포 (Vercel)
 - 주소: https://vibe-coding-challenge-nine.vercel.app/
 - Vercel 프로젝트를 이 GitHub 저장소에 Git 연결해 두면, `main`에 push·병합될 때마다 프로덕션이 자동으로 다시 배포되고 PR·`claude/*` 브랜치 push는 미리보기 배포가 만들어집니다.
 - Vercel 프로젝트 설정: Root Directory `day01-gyeongsik-fee-calculator`, Framework Preset `Vite`, Build Command `npm run build`, Output Directory `dist`, Production Branch `main`.
 - 토큰이나 비밀값은 저장소에 넣지 않습니다 (Git 연결 방식은 필요 없음).
+- 백엔드 연결: Vercel 프로젝트 Settings → Environment Variables에 `VITE_API_BASE_URL` = 백엔드 공개 주소(예: `https://gyeongsik-fee-backend.onrender.com`, 끝에 `/` 없이)를 넣고 다시 배포합니다. Vite는 빌드할 때 이 값을 넣으므로 값을 바꾸면 Redeploy가 필요합니다. 백엔드 배포는 [backend/README.md](backend/README.md#공개-배포-render)를 보세요.
 
 ## 색상·로고
 로그인 화면·헤더 로고와 파비콘은 금융결제원 CI 심벌마크(`public/kftc-symbol.png`, 가이드 이미지에서 잘라 배경을 투명하게 처리)입니다. 색상은 심벌의 그라데이션에서 뽑았습니다. 짙은 블루 `#0E45AA`·`#0D389E`를 주색(`brand`), 밝은 블루 `#178CDC`를 보조색(`accent`)으로 쓰며 `tailwind.config.js`에서 관리합니다.
 
 ## 백엔드 API
-`backend/` 폴더에 Spring Boot API 서버(로그인·5회 잠금, 업무 권한 RBAC, 회비 산출·엑셀, 대사·수행률·Mattermost 알림)가 있습니다. 실행 방법과 API 목록은 [backend/README.md](backend/README.md)를 보세요. 화면은 아직 Mock Data로 동작하며 API 연결은 다음 단계입니다.
+`backend/` 폴더에 Spring Boot API 서버(로그인·5회 잠금, 업무 권한 RBAC, 회비 산출·엑셀, 대사·수행률·Mattermost 알림)가 있습니다. 실행 방법과 API 목록은 [backend/README.md](backend/README.md)를 보세요. `VITE_API_BASE_URL`이 설정되면 로그인(5회 잠금 포함)·회원 관리(가입 승인·반려, 잠금 해제, 비밀번호 초기화, 부서·이메일·내선 수정)·업무 권한 신청·승인·부여·해제가 서버(`src/utils/api.js`)와 연동됩니다. 회원 이름·역할 변경, 회원 추가·삭제, 회비 산출·대사 화면은 아직 화면 안의 예시 데이터로만 동작합니다.
 
 ## 기술 스택
 Vite 5, React 18, Tailwind CSS 3, lucide-react, xlsx(SheetJS)

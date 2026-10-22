@@ -1,5 +1,6 @@
 server:
-  port: 8080
+  # 클라우드 호스팅(Render 등)은 PORT 환경변수로 포트를 정해 준다
+  port: ${PORT:8080}
 
 spring:
   application:
@@ -11,7 +12,8 @@ spring:
     password:
   h2:
     console:
-      enabled: true
+      # 공개 서버(Docker 이미지)에서는 H2_CONSOLE_ENABLED=false 로 끈다. DB 콘솔이 인터넷에 열리면 안 된다.
+      enabled: ${H2_CONSOLE_ENABLED:true}
       path: /h2-console
   jpa:
     hibernate:
@@ -30,10 +32,8 @@ spring:
 
 app:
   cors:
-    # React(Vite) 개발 서버
-    allowed-origins:
-      - http://localhost:5173
-      - http://127.0.0.1:5173
+    # React(Vite) 개발 서버 + Vercel 공개 주소. 쉼표로 구분한 CORS_ALLOWED_ORIGINS 환경변수로 바꿀 수 있다.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,https://vibe-coding-challenge-nine.vercel.app}
   auth:
     max-fail-count: 5
   mattermost:
