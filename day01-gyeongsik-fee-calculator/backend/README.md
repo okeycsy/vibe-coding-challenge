@@ -69,7 +69,7 @@ src/main/java/com/kftc/feecalc/
 ## 시연 데이터
 | 구분 | 내용 |
 |------|------|
-| 계정 (비밀번호 모두 `1234`) | `hong` 사용자(오픈뱅킹·금거정 권한), `admin` 관리자, `shinhan` 참가기관, `kimms` 사용자(CMS·타행환), 잠긴 계정 `woori01`·`ibk02`, 승인대기 `hana01`·`toss01`·`choisy`, 반려 `kakao01` |
+| 계정 (비밀번호 모두 `kftc1234!!`) | `hong` 사용자(오픈뱅킹·금거정 권한), `admin` 관리자, `shinhan` 참가기관, `kimms` 사용자(CMS·타행환), 잠긴 계정 `woori01`·`ibk02`, 승인대기 `hana01`·`toss01`·`choisy`, 반려 `kakao01` |
 | 업무 5종 | 오픈뱅킹(20원/건), 금거정(분기 1.2억 분담), CMS(8원/건), CD공동망(분기 3억 분담), 타행환(12원/건) |
 | 기관 8곳 | 신한·KB국민·우리·하나·NH농협·IBK기업·카카오뱅크·토스뱅크 (A~H은행 가명 별칭) |
 | 그 밖 | 업무 권한 신청 2건, `hong` 접속 이력 4건, 연동 테스트 결과 7건, 2026년 3분기 오픈뱅킹 산출 1건(AI 이슈 2건 반영, 대사 내역 8건) |
@@ -84,7 +84,7 @@ src/main/java/com/kftc/feecalc/
 | POST | `/logout/{loginId}` | 로그아웃 이력 기록 |
 | GET | `/locks` | 잠긴 계정 목록 (관리자) |
 | DELETE | `/locks/{loginId}` | 잠금 초기화·해제 |
-| POST | `/password-reset/{loginId}` | 비밀번호를 `1234`로 초기화 (관리자) |
+| POST | `/password-reset/{loginId}` | 비밀번호를 `kftc1234!!`로 초기화 (관리자) |
 | GET | `/history/{loginId}` | 최근 접속 이력 20건 |
 
 ### user — `/api/users`, `/api/task-requests`

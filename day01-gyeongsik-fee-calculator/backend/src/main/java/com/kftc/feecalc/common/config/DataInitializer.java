@@ -44,7 +44,7 @@ import lombok.extern.slf4j.Slf4j;
 public class DataInitializer implements ApplicationRunner {
 
     /** 시연 계정 공통 기본 비밀번호 */
-    public static final String DEFAULT_PASSWORD = "1234";
+    public static final String DEFAULT_PASSWORD = "kftc1234!!";
 
     private final BusinessRepository businessRepository;
     private final InstitutionRepository institutionRepository;

@@ -56,7 +56,7 @@ public class AuthController {
         return ApiResponse.ok("잠금을 해제했습니다.");
     }
 
-    /** 관리자: 비밀번호를 기본값(1234)으로 초기화 */
+    /** 관리자: 비밀번호를 기본값(DataInitializer.DEFAULT_PASSWORD)으로 초기화 */
     @PostMapping("/password-reset/{loginId}")
     public ApiResponse<Void> resetPassword(@PathVariable String loginId) {
         authService.resetPassword(loginId, DataInitializer.DEFAULT_PASSWORD);
