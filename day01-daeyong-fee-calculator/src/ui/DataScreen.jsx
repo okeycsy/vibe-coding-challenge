@@ -61,6 +61,7 @@ export default function DataScreen({ business, run, update, setSettings, confirm
       nameMap: upload.nameMap,
       edits: upload.edits,
       autoAddOrgs,
+      defaultYear: upload.year,
     });
   }, [upload, sheet, business.items, business.recognizedItemIds, business.orgs, s.duplicatePolicy, autoAddOrgs]);
 
@@ -128,6 +129,7 @@ export default function DataScreen({ business, run, update, setSettings, confirm
     { value: 'org', label: ROLE_LABELS.org },
     { value: 'total', label: ROLE_LABELS.total },
     { value: 'period', label: ROLE_LABELS.period },
+    { value: 'year', label: ROLE_LABELS.year },
     ...business.items.map((it) => ({ value: `item:${it.id}`, label: `실적: ${it.name}` })),
     { value: 'new', label: '새 실적 항목으로 추가' },
   ];

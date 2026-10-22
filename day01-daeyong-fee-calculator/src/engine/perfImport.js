@@ -1,11 +1,12 @@
 // 엑셀 실적 데이터 → 열 매핑 → 검증 → 미리보기 → 적용 (요구사항 10장)
 // 엑셀 파일 자체는 excel.js가 2차원 배열로 읽어 넘긴다. 여기서는 배열만 다룬다.
-import { toDateRange, within } from './period.js';
+import { parsePeriodCell, within } from './period.js';
 
 const norm = (v) => String(v ?? '').replace(/\s+/g, '').toLowerCase();
 const ORG_WORDS = ['기관명', '기관', '참가기관', '회원사', '은행명', '금융기관'];
 const TOTAL_WORDS = ['합계', '총계', '총건수', '계'];
 const PERIOD_WORDS = ['기준년월', '년월', '연월', '기준일', '일자', '날짜', '기간', '기준월', '분기', 'date', 'month', 'period'];
+const YEAR_WORDS = ['연도', '년도', '년', '기준연도', '기준년도', '회계연도', 'year'];
 const TOTAL_ROW = /^(합계|총계|계|소계|total)$/i;
 
 export const ROLE_LABELS = {
@@ -13,7 +14,9 @@ export const ROLE_LABELS = {
   org: '기관명',
   total: '합계 (검증용)',
   period: '기간',
+  year: '연도 (기간 열에 연도가 없을 때)',
 };
+const ROLES = Object.keys(ROLE_LABELS);
 
 // 머리글 행: 칸 값이 '기관명' 류와 같은 첫 행 → 그런 낱말을 포함한 첫 행 → 글자 칸이 2개 이상인 첫 행
 // ('참가기관 명단' 같은 제목 행보다 실제 머리글을 먼저 찾기 위해 같은 값을 먼저 본다)
@@ -26,7 +29,7 @@ export function detectHeaderRow(aoa) {
 }
 
 // 열마다 역할을 추측한다. 저장된 매핑(머리글 이름 → 역할)이 있으면 먼저 쓴다.
-// 역할: 'ignore' | 'org' | 'total' | 'period' | 'item:<항목 id>' | 'new'(새 실적 항목으로 추가)
+// 역할: 'ignore' | 'org' | 'total' | 'period' | 'year' | 'item:<항목 id>' | 'new'(새 실적 항목으로 추가)
 export function guessMapping(headers, items, saved = {}) {
   const mapping = {};
   const used = new Set();
@@ -34,7 +37,7 @@ export function guessMapping(headers, items, saved = {}) {
     const key = String(h ?? '').trim();
     if (!key) return void (mapping[i] = 'ignore');
     const s = saved[key];
-    if (s && (s === 'ignore' || s === 'org' || s === 'total' || s === 'period' || items.some((it) => `item:${it.id}` === s))) {
+    if (s && (ROLES.includes(s) || items.some((it) => `item:${it.id}` === s))) {
       mapping[i] = s;
       used.add(s);
     }
@@ -56,7 +59,8 @@ export function guessMapping(headers, items, saved = {}) {
     });
     if (item && take(`item:${item.id}`)) return;
     if (ORG_WORDS.some((w) => n.includes(w)) && take('org')) return;
-    if (PERIOD_WORDS.some((w) => n.includes(w)) && take('period')) return;
+    if (YEAR_WORDS.includes(n) && take('year')) return;
+    if ((PERIOD_WORDS.some((w) => n.includes(w)) || n === '월') && take('period')) return;
     if (TOTAL_WORDS.some((w) => n === w || n.startsWith(w)) && take('total')) return;
     mapping[i] = 'new';
   });
@@ -80,7 +84,8 @@ const showValue = (v) => (v instanceof Date ? v.toISOString().slice(0, 10) : Str
 // orgs: 등록된 전체 기관 [{id, name, active}], items: [{id, name}], recognizedItemIds: 인정 항목
 // nameMap: { 엑셀 기관명: 등록 기관 id } (담당자가 고친 기관명 매핑, ''이면 연결 안 함), edits: { 엑셀 기관명: { 항목 id: 값 } }
 // autoAddOrgs: 등록되지 않은 기관명을 적용할 때 새 참가기관으로 등록 (entry.willAdd)
-export function buildPreview({ aoa, headerIdx, mapping, items, recognizedItemIds, orgs, period = {}, duplicatePolicy = 'sum', nameMap = {}, edits = {}, autoAddOrgs = false }) {
+// defaultYear: 기간 열에 '1분기'처럼 연도가 없고 연도 열도 없을 때 쓸 연도 (업로드 정보의 산출 연도)
+export function buildPreview({ aoa, headerIdx, mapping, items, recognizedItemIds, orgs, period = {}, duplicatePolicy = 'sum', nameMap = {}, edits = {}, autoAddOrgs = false, defaultYear = null }) {
   const issues = [];
   const add = (level, message, extra = {}) => issues.push({ level, message, ...extra });
   const header = aoa[headerIdx] ?? [];
@@ -88,6 +93,14 @@ export function buildPreview({ aoa, headerIdx, mapping, items, recognizedItemIds
   const orgCol = cols.find((c) => c.role === 'org');
   const totalCol = cols.find((c) => c.role === 'total');
   const periodCol = cols.find((c) => c.role === 'period');
+  const yearCol = cols.find((c) => c.role === 'year');
+  // 머리글로 본 기간 단위: 값이 숫자만 있을 때 분기(1~4)인지 월(1~12)인지 정한다
+  const unitHint = !periodCol ? null : periodCol.header.includes('분기') ? 'quarter' : /월|month/i.test(periodCol.header) ? 'month' : null;
+  let yearDefaulted = 0;
+  // 셀 병합이나 '위와 같음'으로 비워 둔 기간·연도 칸은 바로 위 행의 값을 이어 쓴다
+  let lastPeriod = '';
+  let lastYear = '';
+  let carried = 0;
   const itemCols = cols.filter((c) => c.role.startsWith('item:')).map((c) => ({ ...c, itemId: c.role.slice(5) }));
   const itemName = Object.fromEntries(items.map((it) => [it.id, it.name]));
 
@@ -120,11 +133,25 @@ export function buildPreview({ aoa, headerIdx, mapping, items, recognizedItemIds
         continue;
       }
       if (periodCol) {
-        const range = toDateRange(row[periodCol.i]);
-        if (!range) {
-          add('error', `${line}행(${rawName}): 기간 '${showValue(row[periodCol.i])}'을(를) 날짜로 읽지 못했습니다.`, { row: line, org: rawName, column: periodCol.header });
+        const blank = (v) => v === '' || v === null || v === undefined;
+        let cell = row[periodCol.i];
+        if (blank(cell) && !blank(lastPeriod)) {
+          cell = lastPeriod;
+          carried += 1;
+        }
+        lastPeriod = cell;
+        let rowYear = yearCol ? row[yearCol.i] : null;
+        if (yearCol) {
+          if (blank(rowYear)) rowYear = lastYear;
+          lastYear = rowYear;
+        }
+        const range = parsePeriodCell(cell, { year: rowYear || defaultYear, unitHint });
+        if (!range || range.needYear) {
+          const why = range?.needYear ? ' 연도가 없어 어느 해인지 알 수 없습니다. 연도 열을 지정하거나 업로드 정보의 산출 연도를 입력해 주세요.' : ' 2026년 1분기, 2026-Q1, 1/4분기, 2026-03, 2026-03-31 같은 형식이면 읽을 수 있습니다.';
+          add('error', `${line}행(${rawName}): 기간 '${showValue(cell)}'을(를) 날짜로 읽지 못했습니다.${why}`, { row: line, org: rawName, column: periodCol.header });
           continue;
         }
+        if (!rowYear && defaultYear && !/\d{4}/.test(showValue(cell)) && !(cell instanceof Date)) yearDefaulted += 1;
         if (!minFrom || range.from < minFrom) minFrom = range.from;
         if (!maxTo || range.to > maxTo) maxTo = range.to;
         if (!within(range, period.start, period.end)) {
@@ -198,6 +225,8 @@ export function buildPreview({ aoa, headerIdx, mapping, items, recognizedItemIds
   if (missing.length) {
     add('warn', `파일에 없는 분담 대상 기관 ${missing.length}곳: ${missing.map((o) => o.name).join(', ')} (실적 0건으로 계산)`);
   }
+  if (carried) add('info', `기간 칸이 비어 있는 ${carried}개 행은 바로 위 행의 기간으로 보았습니다(셀 병합).`);
+  if (yearDefaulted) add('info', `기간 값에 연도가 없는 ${yearDefaulted}개 행은 업로드 정보의 산출 연도(${defaultYear}년)로 보았습니다.`);
   if (periodCol && rowsOutside) add('info', `실적 적용 기간(${period.start || '처음'} ~ ${period.end || '끝'}) 밖의 ${rowsOutside}개 행은 제외했습니다.`);
   if (periodCol && !period.start && !period.end && minFrom) add('warn', `파일에 ${minFrom} ~ ${maxTo} 기간이 섞여 있습니다. 실적 적용 기간을 정하지 않으면 전체를 합산합니다.`);
   if (orgCol && list.length === 0) add('error', '실적 데이터 행이 없습니다.');
