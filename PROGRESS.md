@@ -6,7 +6,8 @@
 - 저장소 세팅 완료 (템플릿, GitHub 동기화 훅 — 로컬 main과 클라우드 `claude/*` 브랜치 모두 동작)
 - 산출물: 아직 없음
 - [경식] `day01-gyeongsik-fee-calculator/` 회비자동산출시스템 프론트엔드 1차 구현 완료 (Mock Data), `backend/`에 Spring Boot API 추가, 로그인·회원 승인·업무 권한 화면은 `VITE_API_BASE_URL` 설정 시 API와 연동 (백엔드 공개 주소 https://vibe-coding-challenge-bdm1.onrender.com, Render 무료 Web Service. Vercel `VITE_API_BASE_URL` 설정 완료)
-- [대용] `day01-daeyong-fee-calculator/` 금융정보업무 회비 산출 v4 완료(통합 요구사항): 업무별 설정, 분기 배분 방식 A/B, 균등회비 방식 A/B, 실적 인정 항목, 우체국 10원 처리, 엑셀 열 매핑·검증·미리보기, 기관별 산출 근거·검증, 단일 HTML 프로그램 + claude.ai 웹 페이지. 확인 필요 기본값 목록은 `docs/DESIGN.md` 7장
+- [대용] `day01-daeyong-fee-calculator/` 금융정보업무 회비 산출 v4 완료(통합 요구사항): 업무별 설정, 분기 배분 방식 A/B, 균등회비 방식 A/B, 실적 인정 항목, 우체국 10원 처리, 엑셀 열 매핑·검증·미리보기, 기관별 산출 근거·검증, 단일 HTML 프로그램 + claude.ai 웹 페이지. 확인 필요 기본값 목록은 `docs/DESIGN.md` 7장. 공통 규칙 초안 `docs/COMMON_RULES_DRAFT.md`(R-1~R-15, D-1~D-15)
+- [대용] `day02-daeyong-fee-rules-proto/` 공통 규칙 초안만 보고 다시 쓴 두 번째 구현 + 병행검증(화면 7탭, v4 결과 엑셀 비교, `npm run crosscheck` 무작위 500건 일치). 단일 HTML `release/fee-rules-proto.html`
 - [우성] `day01-woosung-fee-ai/` 회비자동산출 AI툴 1차 구현 완료 (분담기준 AI 학습·버전 관리, xlsx/csv/hwp/hwpx 실적 업로드, 기관별 산출·Excel 다운로드)
 
 - [경식] 회비자동산출시스템 공개 주소: https://vibe-coding-challenge-nine.vercel.app/ (Vercel, `main` push·병합 시 자동 재배포)
@@ -47,6 +48,7 @@
 - 산출은 결정적 코드(BigInt 최대잔여법, 합계 = 총회비 보장). 방식: 균등·실적비례·구간가중, 항목 가중치, 1/10/100/1000원 단위
 - 실적 파일: xlsx·csv(CP949 포함)·hwp(5.0 바이너리 표)·hwpx. 결과 Excel(회비산출내역·산출기준 시트). `npm test` 21개 통과
 ### 2026-10-22 (대용)
+- 규칙 프로토타입 `day02-daeyong-fee-rules-proto/`: 공통 규칙 초안 기준으로 엔진(rules/)을 새로 작성(규칙 번호를 코드에 표기), 순수 JS 화면, v4 엔진 복사본과 병행검증. `npm test` 21개 통과, crosscheck 502건 일치. 초안 보완점: D-8 '인정 실적 많은 기관부터' 선택지 추가
 - 분기 실적 파일 기간 인식 수정: `1/4분기`·`제1분기`·`년도`·`Q1 2026`·기간 범위 표기, 연도 열 + 분기 열, 연도 없는 분기(산출 연도 사용), 셀 병합으로 빈 기간 칸(위 행 값 사용)
 - 공통 규칙 초안 `day01-daeyong-fee-calculator/docs/COMMON_RULES_DRAFT.md` 작성(통합 요구사항 기준 R-1~R-15, 담당자 확인 항목 D-1~D-15). 공용 규칙 확정은 "공통_회비 산출" 프로젝트에서
 - 엑셀 기관명 자동 등록: 실적 업로드 시 미등록 기관을 적용할 때 참가기관으로 등록(기본 켬, 업무별 설정), 참가기관 화면에 "엑셀에서 기관명 불러오기" 추가

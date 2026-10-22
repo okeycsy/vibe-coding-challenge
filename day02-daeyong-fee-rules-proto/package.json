@@ -1,0 +1,19 @@
+{
+  "name": "daeyong-fee-rules-proto",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test": "node --test rules/rules.test.js rules/importer.test.js",
+    "crosscheck": "node scripts/crosscheck.js",
+    "sync-reference": "node scripts/sync-reference.js",
+    "build": "node scripts/build.js",
+    "dev": "node scripts/build.js --watch"
+  },
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.2"
+  }
+}
