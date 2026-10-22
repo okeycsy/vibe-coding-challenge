@@ -7,6 +7,7 @@ import AdminSettings from './components/AdminSettings';
 import MyPage from './components/MyPage';
 import { Toast } from './components/ui';
 import LoginPage from './components/LoginPage';
+import { api, apiEnabled } from './utils/api';
 
 const MAX_ATTEMPTS = 5;
 // 하위 메뉴가 각각 한 페이지인 메뉴와 그 첫 페이지
@@ -62,24 +63,77 @@ export default function App() {
 
   const canSee = (menuId) => MENUS.find((m) => m.id === menuId)?.roles.includes(role);
 
+  // ── 백엔드 연동 (VITE_API_BASE_URL이 있을 때만) ──
+  // serverStatus: off(예시 데이터만) | waking(무료 서버 깨우는 중) | up | down
+  const [serverStatus, setServerStatus] = useState(apiEnabled ? 'waking' : 'off');
+  const syncFromServer = async () => {
+    const [ms, rs, locks] = await Promise.all([api.members(), api.taskRequests(), api.locks()]);
+    setMembers(ms);
+    setTaskRequests(rs);
+    setLoginLocks(locks);
+  };
+  // 화면은 바로 바꾸고 서버에 같은 변경을 보낸다. 서버가 거절하면 알리고 서버 값으로 되돌린다.
+  const persist = (call) => {
+    if (!apiEnabled) return;
+    call().catch((e) => {
+      notify(e.message, 'error');
+      syncFromServer().catch(() => {});
+    });
+  };
+
+  // 첫 화면에서 서버를 깨우고 잠긴 계정 목록을 받아 둔다 (무료 호스팅은 잠들어 있으면 깨는 데 1분쯤 걸린다)
+  useEffect(() => {
+    if (!apiEnabled) return;
+    api
+      .locks()
+      .then((locks) => {
+        setLoginLocks(locks);
+        setServerStatus('up');
+      })
+      .catch(() => setServerStatus('down'));
+  }, []);
+
   // ── 로그인 ──
+  const enter = (account) => {
+    // 계정의 역할이 곧 화면 권한이다. 역할별 첫 화면으로 들어간다.
+    setCurrentId(account.id);
+    setMenu(ROLES[account.role].home);
+    setActiveSection(null);
+    setLoginAt(nowLabel());
+    setIsLoggedIn(true);
+  };
+
+  const loginWithServer = async (id, password) => {
+    try {
+      const account = await api.login(id, password);
+      setServerStatus('up');
+      setMembers((ms) => [...ms.filter((m) => m.id !== account.id), account]);
+      unlockLocal(id);
+      enter(account);
+      syncFromServer().catch(() => {});
+      return { ok: true };
+    } catch (e) {
+      if (e.status === 0) setServerStatus('down');
+      if (e.status === 403) return e.message.includes('반려') ? { rejected: true } : { pending: true };
+      if (e.data?.failCount != null) {
+        const { failCount: count, locked } = e.data;
+        setLoginLocks((l) => ({ ...l, [id]: { count, lockedAt: locked ? nowLabel() : null } }));
+        return { count, locked };
+      }
+      return e.status === 401 ? { count: 0, locked: false } : { error: e.message };
+    }
+  };
+
   const login = (id, password) => {
+    if (apiEnabled) return loginWithServer(id, password);
     const lock = loginLocks[id];
     if (lock?.count >= MAX_ATTEMPTS) return { locked: true };
     const account = members.find((a) => a.id === id && a.password === password);
     if (account?.status === '승인대기') return { pending: true };
     if (account?.status === '반려') return { rejected: true };
     if (account) {
-      setLoginLocks((l) => {
-        const { [id]: _, ...rest } = l;
-        return rest;
-      });
-      // 계정의 역할이 곧 화면 권한이다. 역할별 첫 화면으로 들어간다.
-      setCurrentId(account.id);
-      setMenu(ROLES[account.role].home);
-      setActiveSection(null);
-      setLoginAt(nowLabel());
-      setIsLoggedIn(true);
+      unlockLocal(id);
+      enter(account);
       return { ok: true };
     }
     const count = (lock?.count ?? 0) + 1;
@@ -87,33 +141,54 @@ export default function App() {
     return { count, locked: count >= MAX_ATTEMPTS };
   };
 
-  const unlock = (id) =>
+  const unlockLocal = (id) =>
     setLoginLocks((l) => {
       const { [id]: _, ...rest } = l;
       return rest;
     });
+  const unlock = (id) => {
+    unlockLocal(id);
+    persist(() => api.unlock(id));
+  };
 
-  const changePassword = (current, next) => {
+  const changePassword = async (current, next) => {
+    if (apiEnabled) {
+      try {
+        await api.changePassword(member.id, current, next);
+        return null;
+      } catch (e) {
+        return e.message;
+      }
+    }
     if (member.password !== current) return '현재 비밀번호가 올바르지 않습니다.';
     updateMember(member.id, { password: next });
     return null;
   };
 
   // ── 회원 관리 (관리자) ──
-  const updateMember = (id, patch) => setMembers((ms) => ms.map((m) => (m.id === id ? { ...m, ...patch } : m)));
+  // 서버에는 가입 승인·반려, 비밀번호 초기화, 부서·이메일·내선 수정만 있다. 이름·역할 변경과 회원 추가·삭제는 화면에서만 바뀐다.
+  const updateMember = (id, patch) => {
+    setMembers((ms) => ms.map((m) => (m.id === id ? { ...m, ...patch } : m)));
+    if ('status' in patch) persist(() => (patch.status === '정상' ? api.approveMember(id) : api.rejectMember(id)));
+    else if ('password' in patch) persist(() => api.resetPassword(id));
+    else persist(() => api.updateProfile(id, patch));
+  };
   const addMember = (m) => setMembers((ms) => [...ms, m]);
   const deleteMember = (id) => {
     setMembers((ms) => ms.filter((m) => m.id !== id));
     setTaskRequests((rs) => rs.filter((r) => r.memberId !== id));
-    unlock(id);
+    unlockLocal(id);
   };
 
   // ── 업무 권한 신청·승인·해제 ──
-  const requestTask = (taskId, reason) =>
+  const requestTask = (taskId, reason) => {
     setTaskRequests((rs) => [
       { id: Date.now(), memberId: member.id, taskId, reason, requestedAt: nowLabel(), status: '승인 대기중' },
       ...rs,
     ]);
+    // 관리자가 서버의 신청 번호로 승인하도록 저장 후 목록을 다시 받는다
+    persist(() => api.requestTask(member.id, taskId, reason).then(syncFromServer));
+  };
 
   const bizName = (taskId) => BUSINESSES.find((b) => b.id === taskId).name;
   const mmNote = (m) => (prefsOf(m).notify.permission ? ' (Mattermost 알림 발송)' : '');
@@ -135,6 +210,7 @@ export default function App() {
       rs.map((r) => (r.id === requestId ? { ...r, status: approve ? '승인' : '반려', decidedAt: nowLabel() } : r)),
     );
     if (approve) setTask(req.memberId, req.taskId, true);
+    persist(() => (approve ? api.approveTaskRequest(requestId) : api.rejectTaskRequest(requestId)));
     notify(
       `${target.name}님의 ${bizName(req.taskId)} 권한 신청을 ${approve ? '승인' : '반려'}했습니다.${mmNote(target)}`,
     );
@@ -143,6 +219,7 @@ export default function App() {
   const toggleTask = (memberId, taskId, granted) => {
     const target = members.find((m) => m.id === memberId);
     setTask(memberId, taskId, granted);
+    persist(() => (granted ? api.grantTask(memberId, taskId) : api.revokeTask(memberId, taskId)));
     notify(`${target.name}님의 ${bizName(taskId)} 권한을 ${granted ? '부여' : '해제'}했습니다.${mmNote(target)}`);
   };
 
@@ -174,6 +251,7 @@ export default function App() {
   };
 
   const logout = () => {
+    if (apiEnabled) api.logout(currentId).catch(() => {});
     setIsLoggedIn(false);
     setCurrentId(null);
     setMenu('calc');
@@ -187,7 +265,15 @@ export default function App() {
   };
 
   if (!isLoggedIn) {
-    return <LoginPage maxAttempts={MAX_ATTEMPTS} locks={loginLocks} onLogin={login} onResetLock={unlock} />;
+    return (
+      <LoginPage
+        maxAttempts={MAX_ATTEMPTS}
+        locks={loginLocks}
+        onLogin={login}
+        onResetLock={unlock}
+        serverStatus={serverStatus}
+      />
+    );
   }
 
   return (

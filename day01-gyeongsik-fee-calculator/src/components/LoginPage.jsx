@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Eye, EyeOff, Lock, LogIn, ShieldAlert, User } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Lock, LogIn, ShieldAlert, User } from 'lucide-react';
 
 // ▼ 로고 교체 위치: 준비한 로고 파일을 public/ 에 넣고 이 경로만 바꾸면 된다 (예: 'logo.png').
 //   지금은 금융결제원 CI 심벌마크를 기본으로 쓴다.
@@ -32,27 +32,39 @@ function LogoShowcase() {
   );
 }
 
-export default function LoginPage({ onLogin, onResetLock, locks, maxAttempts }) {
+// 백엔드 연동 시 서버 상태 안내 (무료 호스팅은 한동안 요청이 없으면 잠들었다가 첫 요청에 깨어난다)
+const SERVER_NOTICE = {
+  waking: { tone: 'text-amber-600', text: '서버를 깨우는 중입니다. 처음 접속하면 1분 정도 걸릴 수 있습니다.' },
+  up: { tone: 'text-emerald-600', text: '서버 연결됨' },
+  down: { tone: 'text-rose-600', text: '서버에 연결하지 못했습니다. 잠시 후 새로고침해 주세요.' },
+};
+
+export default function LoginPage({ onLogin, onResetLock, locks, maxAttempts, serverStatus = 'off' }) {
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const notice = SERVER_NOTICE[serverStatus];
 
   // 잠금은 계정(ID)별로 관리한다. 입력한 ID가 잠겨 있으면 비밀번호·로그인 버튼이 비활성화된다.
   const typedId = id.trim();
   const failCount = locks[typedId]?.count ?? 0;
   const locked = failCount >= maxAttempts;
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
-    if (locked) return;
+    if (locked || busy) return;
     if (!typedId || !password) {
       setError('ID(사번)와 비밀번호를 모두 입력해 주세요.');
       return;
     }
-    const result = onLogin(typedId, password);
+    setBusy(true);
+    const result = await onLogin(typedId, password);
     if (result.ok) return;
+    setBusy(false);
     setPassword('');
+    if (result.error) return setError(result.error);
     if (result.pending) return setError('가입 승인 대기 중인 계정입니다. 관리자 승인 후 로그인할 수 있습니다.');
     if (result.rejected) return setError('가입이 반려된 계정입니다. 관리자에게 문의하세요.');
     setError(result.locked ? '' : 'ID 또는 비밀번호가 올바르지 않습니다.');
@@ -154,11 +166,17 @@ export default function LoginPage({ onLogin, onResetLock, locks, maxAttempts }) 
 
               <button
                 type="submit"
-                disabled={locked}
+                disabled={locked || busy}
                 className="w-full flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-brand-700 to-accent-500 py-2.5 text-sm font-semibold text-white shadow hover:shadow-md disabled:from-slate-300 disabled:to-slate-300 disabled:shadow-none"
               >
-                <LogIn className="w-4 h-4" /> 로그인
+                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />} 로그인
               </button>
+              {notice && (
+                <p className={`flex items-center justify-center gap-1.5 text-[11px] ${notice.tone}`}>
+                  {serverStatus === 'waking' && <Loader2 className="w-3 h-3 animate-spin" />}
+                  {notice.text}
+                </p>
+              )}
             </form>
 
             <div className="mt-5 rounded-lg bg-slate-50 px-3 py-2.5 text-[11px] text-slate-400">

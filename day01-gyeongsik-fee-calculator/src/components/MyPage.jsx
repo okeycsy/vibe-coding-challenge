@@ -118,14 +118,14 @@ export default function MyPage({
     notify(`${user.name}님의 Mattermost 채널로 테스트 알림이 발송되었습니다.`);
   };
 
-  const submitPassword = (e) => {
+  const submitPassword = async (e) => {
     e.preventDefault();
     setPwError('');
     if (!pw.current || !pw.next || !pw.confirm) return setPwError('모든 항목을 입력해 주세요.');
     if (pw.next.length < 4) return setPwError('새 비밀번호는 4자 이상이어야 합니다.');
     if (pw.next !== pw.confirm) return setPwError('새 비밀번호와 확인 값이 다릅니다.');
     if (pw.next === pw.current) return setPwError('현재 비밀번호와 다른 비밀번호를 입력해 주세요.');
-    const err = onChangePassword(pw.current, pw.next);
+    const err = await onChangePassword(pw.current, pw.next);
     if (err) return setPwError(err);
     setPw({ current: '', next: '', confirm: '' });
     notify('비밀번호를 변경했습니다. 다음 로그인부터 새 비밀번호를 사용하세요.');
