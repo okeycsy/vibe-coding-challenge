@@ -5,7 +5,7 @@
 ## 현재 상태
 - 저장소 세팅 완료 (템플릿, GitHub 동기화 훅 — 로컬 main과 클라우드 `claude/*` 브랜치 모두 동작)
 - 산출물: 아직 없음
-- [경식] `day01-gyeongsik-fee-calculator/` 회비자동산출시스템 프론트엔드 1차 구현 완료 (Mock Data, 백엔드 없음)
+- [경식] `day01-gyeongsik-fee-calculator/` 회비자동산출시스템 프론트엔드 1차 구현 완료 (Mock Data), `backend/`에 Spring Boot API 골격 추가 (프론트 연동 전)
 - [대용] `day01-daeyong-fee-calculator/` 금융정보업무 회비 산출 3차 완료: 여러 해치 건수 파일을 분기(3개월)별로 산출, 같은 기관명 합산, 단일 HTML 프로그램 + claude.ai 웹 페이지
 - [우성] `day01-woosung-fee-ai/` 회비자동산출 AI툴 1차 구현 완료 (분담기준 AI 학습·버전 관리, xlsx/csv/hwp/hwpx 실적 업로드, 기관별 산출·Excel 다운로드)
 
@@ -13,7 +13,7 @@
 
 ## 다음 할 일
 - [ ] Day01 챌린지 과제 받아서 시작
-- [ ] [경식] 회비자동산출시스템: 실제 Excel 파싱, 백엔드 API 연동, 업무별 분담기준 실제화
+- [ ] [경식] 회비자동산출시스템: 프론트 화면을 `backend/` API에 연결, 인증 토큰(세션/JWT)·API 역할 검사, 업무별 분담기준 실제화
 - [ ] [우성] 회비자동산출 AI툴: 실제 분담기준 문구로 Claude 학습 검증, 최저회비·상한 등 추가 산정 방식 필요 여부 확인
 
 ## 결정 사항
@@ -24,6 +24,10 @@
 - 공개 배포는 Vercel Git 연결로 한다 (Root Directory `day01-gyeongsik-fee-calculator`, Production Branch `main`). 토큰·GitHub Actions 배포는 쓰지 않는다
 
 ## 세션 로그
+### 2026-10-22 (경식)
+- `day01-gyeongsik-fee-calculator/backend/` 추가: Spring Boot 3.3 + Maven + H2, 도메인별 패키지(auth·user·fee·reconcile), 공통 응답 `ApiResponse`·전역 예외 처리, CORS(localhost:5173)
+- 기동 시 프론트 mockData와 같은 시연 계정·업무·기관·테스트 결과와 3분기 오픈뱅킹 산출 1건을 자동 적재. 시연용 실적은 프론트와 같은 시드 해시라 같은 값이 나옴
+- 로그인 5회 오류 잠금·잠금 초기화, 업무 권한 신청·승인(RBAC), 실적 엑셀 업로드·대사용/수입결의용 엑셀 다운로드(POI), AI 이슈 차감 산출(총액 분담은 최대잔여법으로 합계 = 총액), 대사 송부·수행률 집계, Mattermost 웹훅(미설정 시 로그만). `mvn test` 10개 통과
 ### 2026-10-22
 - Vercel 공개 주소(vibe-coding-challenge-nine.vercel.app)가 경식 회비자동산출시스템임을 확인. push·병합 시 자동 재배포되도록 Vercel Git 연결 설정값을 경식 README에 기록
 ### 2026-10-20 (경식)
