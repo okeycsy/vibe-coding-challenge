@@ -56,7 +56,7 @@ class FeeCalcApplicationTests {
     @Test
     void 로그인_성공시_회원정보를_돌려준다() throws Exception {
         mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("id", "hong", "password", "1234"))))
+                        .content(json(Map.of("id", "hong", "password", "kftc1234!!"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success", is(true)))
                 .andExpect(jsonPath("$.data.role", is("operator")))
@@ -75,7 +75,7 @@ class FeeCalcApplicationTests {
                 .andExpect(status().isLocked())
                 .andExpect(jsonPath("$.data.locked", is(true)));
         // 잠긴 뒤에는 맞는 비밀번호도 거부
-        String right = json(Map.of("id", "kimms", "password", "1234"));
+        String right = json(Map.of("id", "kimms", "password", "kftc1234!!"));
         mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON).content(right))
                 .andExpect(status().isLocked());
 
@@ -88,7 +88,7 @@ class FeeCalcApplicationTests {
     @Test
     void 승인대기_계정은_로그인할_수_없다() throws Exception {
         mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("id", "hana01", "password", "1234"))))
+                        .content(json(Map.of("id", "hana01", "password", "kftc1234!!"))))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.success", is(false)));
     }

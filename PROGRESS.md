@@ -25,6 +25,7 @@
 
 ## 세션 로그
 ### 2026-10-22 (경식, 백엔드 배포)
+- 시연 계정 기본 비밀번호를 `1234`에서 `kftc1234!!`로 변경(백엔드 DataInitializer·비밀번호 초기화, 프론트 mockData·로그인 안내, README)
 - `backend/Dockerfile` 추가(Render 등 Docker 무료 호스팅용), `PORT`·`CORS_ALLOWED_ORIGINS`·`H2_CONSOLE_ENABLED` 환경변수, Vercel 주소 CORS 허용, `GET /api/health`. `mvn test` 11개 통과(Docker 빌드는 이 환경에서 Docker Hub 요청 제한으로 확인 못 함)
 - Render 무료 Web Service `vibe-coding-challenge`(https://vibe-coding-challenge-bdm1.onrender.com)로 배포, Vercel에 `VITE_API_BASE_URL` 설정
 - 프론트 `src/utils/api.js`: `VITE_API_BASE_URL`이 있으면 로그인·5회 잠금·잠금 해제·가입 승인/반려·비밀번호 변경/초기화·업무 권한 신청/승인/부여/해제를 서버와 연동, 없으면 기존 Mock 동작. 로그인 화면에 서버 깨우는 중/연결됨 표시

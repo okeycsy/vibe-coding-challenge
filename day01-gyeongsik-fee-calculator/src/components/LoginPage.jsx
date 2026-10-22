@@ -5,7 +5,7 @@ import { Eye, EyeOff, Loader2, Lock, LogIn, ShieldAlert, User } from 'lucide-rea
 //   지금은 금융결제원 CI 심벌마크를 기본으로 쓴다.
 const LOGO_SRC = 'kftc-symbol.png';
 
-// 시연용 계정 (기본 비밀번호 1234, 회원·계정 정보는 data/mockData.js의 MEMBERS)
+// 시연용 계정 (기본 비밀번호 kftc1234!!, 회원·계정 정보는 data/mockData.js의 MEMBERS)
 const DEMO_HINTS = [
   { id: 'hong', label: '사용자 · 금융결제원 일반담당자 (홍길동)' },
   { id: 'admin', label: '관리자 · 금융결제원 시스템관리자' },
@@ -180,7 +180,7 @@ export default function LoginPage({ onLogin, onResetLock, locks, maxAttempts, se
             </form>
 
             <div className="mt-5 rounded-lg bg-slate-50 px-3 py-2.5 text-[11px] text-slate-400">
-              <p className="mb-1">시연용 계정 (기본 비밀번호 1234)</p>
+              <p className="mb-1">시연용 계정 (기본 비밀번호 kftc1234!!)</p>
               <ul className="space-y-0.5">
                 {DEMO_HINTS.map((h) => (
                   <li key={h.id}>
