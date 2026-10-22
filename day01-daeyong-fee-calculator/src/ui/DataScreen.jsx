@@ -1,7 +1,7 @@
 // 화면 3. 엑셀 실적 데이터 업로드 및 관리
 // 흐름: 파일 선택 → 열 매핑 → 데이터 검증 → 미리보기(수정) → 실적 데이터 적용
 import { useMemo, useRef, useState } from 'react';
-import { buildPreview, detectHeaderRow, guessMapping, previewToPerf, ROLE_LABELS } from '../engine/perfImport.js';
+import { buildPreview, detectHeaderRow, guessMapping, applyPreview, ROLE_LABELS } from '../engine/perfImport.js';
 import { quarterRange } from '../engine/period.js';
 import { uid } from '../engine/model.js';
 import { readWorkbook, buildTemplateWorkbook, workbookBytes, saveFile } from '../excel.js';
@@ -11,6 +11,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 export default function DataScreen({ business, run, update, setSettings, confirm }) {
   const s = business.settings;
+  const autoAddOrgs = s.autoAddOrgs ?? true;
   const [upload, setUpload] = useState(null);
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
@@ -59,8 +60,9 @@ export default function DataScreen({ business, run, update, setSettings, confirm
       duplicatePolicy: s.duplicatePolicy,
       nameMap: upload.nameMap,
       edits: upload.edits,
+      autoAddOrgs,
     });
-  }, [upload, sheet, business.items, business.recognizedItemIds, business.orgs, s.duplicatePolicy]);
+  }, [upload, sheet, business.items, business.recognizedItemIds, business.orgs, s.duplicatePolicy, autoAddOrgs]);
 
   const setU = (patch) => setUpload((u) => ({ ...u, ...patch }));
   const setRole = (col, role) => {
@@ -82,7 +84,7 @@ export default function DataScreen({ business, run, update, setSettings, confirm
   };
 
   const apply = () => {
-    const perf = previewToPerf(preview);
+    const { newOrgs, perf } = applyPreview(preview, () => uid('org'));
     const saved = { ...business.columnMapping };
     if (upload.saveMapping) {
       for (const [col, role] of Object.entries(upload.mapping)) {
@@ -92,6 +94,7 @@ export default function DataScreen({ business, run, update, setSettings, confirm
     }
     update((b) => ({
       ...b,
+      orgs: [...b.orgs, ...newOrgs],
       perf,
       columnMapping: saved,
       perfMeta: {
@@ -103,12 +106,13 @@ export default function DataScreen({ business, run, update, setSettings, confirm
         year: upload.year,
         quarter: upload.quarter,
         rows: preview.stats.rowsRead,
-        orgs: preview.entries.filter((e) => e.orgId).length,
+        orgs: preview.entries.filter((e) => e.orgId || e.willAdd).length,
+        newOrgs: newOrgs.map((o) => o.name),
       },
       settings: { ...b.settings, year: upload.year, quarter: upload.quarter, perfPeriod: { start: upload.start, end: upload.end } },
     }));
     setUpload(null);
-    setMsg(`${upload.fileName}의 실적을 적용했습니다. 산출 결과에 바로 반영됩니다.`);
+    setMsg(`${upload.fileName}의 실적을 적용했습니다.${newOrgs.length ? ` 새 참가기관 ${newOrgs.length}곳(${newOrgs.map((o) => o.name).join(', ')})을 등록했습니다.` : ''} 산출 결과에 바로 반영됩니다.`);
   };
 
   const downloadTemplate = async () => {
@@ -249,11 +253,16 @@ export default function DataScreen({ business, run, update, setSettings, confirm
                 </p>
               </Field>
             </div>
+            <label className="check">
+              <input type="checkbox" checked={autoAddOrgs} onChange={(e) => setSettings({ autoAddOrgs: e.target.checked })} />
+              엑셀에만 있는 기관은 적용할 때 참가기관으로 자동 등록
+            </label>
             <div className="stats">
               <span>읽은 행 <b>{fmt(preview.stats.rowsRead)}</b></span>
               {preview.stats.rowsOutside > 0 && <span>기간 밖 제외 <b>{fmt(preview.stats.rowsOutside)}</b></span>}
               <span>파일 기관 수 <b>{fmt(preview.stats.fileOrgCount)}</b></span>
               <span>분담 대상 기관 <b>{preview.stats.matchedActive} / {preview.stats.activeOrgCount}</b></span>
+              {preview.stats.newOrgCount > 0 && <span>새로 등록 <b>{preview.stats.newOrgCount}</b></span>}
               {preview.stats.periodRange && <span>파일 기간 <b>{preview.stats.periodRange.from} ~ {preview.stats.periodRange.to}</b></span>}
               <span className={errorCount ? 'bad' : 'ok'}>{errorCount ? `오류 ${errorCount}건` : '오류 없음'}</span>
             </div>
@@ -275,17 +284,23 @@ export default function DataScreen({ business, run, update, setSettings, confirm
                 </thead>
                 <tbody>
                   {preview.entries.map((e) => (
-                    <tr key={e.rawName} className={!e.orgId ? 'is-warn' : ''}>
-                      <td className="l strong">{e.rawName}</td>
+                    <tr key={e.rawName} className={!e.orgId && !e.willAdd ? 'is-warn' : ''}>
+                      <td className="l strong">{e.rawName}{e.willAdd && <span className="tag tag-accent">신규</span>}</td>
                       <td className="l">
                         <Select
                           aria-label={`${e.rawName} 연결 기관`}
-                          value={e.orgId ?? ''}
-                          onChange={(v) => (v === '__new' ? registerOrg(e.rawName) : setU({ nameMap: { ...upload.nameMap, [e.rawName]: v } }))}
+                          value={e.willAdd ? '__auto' : e.orgId ?? ''}
+                          onChange={(v) => {
+                            if (v === '__new') return registerOrg(e.rawName);
+                            const nameMap = { ...upload.nameMap, [e.rawName]: v };
+                            if (v === '__auto') delete nameMap[e.rawName];
+                            setU({ nameMap });
+                          }}
                           options={[
+                            ...(autoAddOrgs && !business.orgs.some((o) => o.id === e.orgId) ? [{ value: '__auto', label: '새 참가기관으로 자동 등록' }] : []),
                             { value: '', label: '연결 안 함 (산출 제외)' },
                             ...business.orgs.map((o) => ({ value: o.id, label: `${o.name}${o.active ? '' : ' (제외 기관)'}` })),
-                            { value: '__new', label: `'${e.rawName}' 새 기관으로 등록` },
+                            ...(autoAddOrgs ? [] : [{ value: '__new', label: `'${e.rawName}' 새 기관으로 등록` }]),
                           ]}
                         />
                       </td>

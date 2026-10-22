@@ -44,6 +44,7 @@ export function newBusiness(name = '새 업무') {
       perfRemainder: { mode: 'largestRemainder', orgIds: [] },
       postOffice: { enabled: true, orgId: null, direction: 'up', counterpartMode: 'auto', counterpartOrgId: null },
       duplicatePolicy: 'sum',
+      autoAddOrgs: true, // 실적 엑셀에만 있는 기관명을 적용할 때 참가기관으로 등록 (John 요청 2026-10-22)
       perfPeriod: { start: '', end: '' },
     },
     columnMapping: {}, // 엑셀 머리글 → 역할 (같은 양식 재사용)

@@ -15,8 +15,11 @@ export const ROLE_LABELS = {
   period: '기간',
 };
 
-// 머리글 행: 기관명 류의 칸이 있는 첫 행, 없으면 글자 칸이 2개 이상인 첫 행
+// 머리글 행: 칸 값이 '기관명' 류와 같은 첫 행 → 그런 낱말을 포함한 첫 행 → 글자 칸이 2개 이상인 첫 행
+// ('참가기관 명단' 같은 제목 행보다 실제 머리글을 먼저 찾기 위해 같은 값을 먼저 본다)
 export function detectHeaderRow(aoa) {
+  const exact = aoa.findIndex((row) => row.some((c) => ORG_WORDS.includes(norm(c))));
+  if (exact !== -1) return exact;
   const byOrg = aoa.findIndex((row) => row.some((c) => ORG_WORDS.some((w) => norm(c).includes(w))));
   if (byOrg !== -1) return byOrg;
   return aoa.findIndex((row) => row.filter((c) => typeof c === 'string' && c.trim()).length >= 2);
@@ -75,8 +78,9 @@ const showValue = (v) => (v instanceof Date ? v.toISOString().slice(0, 10) : Str
 
 // 미리보기와 검증
 // orgs: 등록된 전체 기관 [{id, name, active}], items: [{id, name}], recognizedItemIds: 인정 항목
-// nameMap: { 엑셀 기관명: 등록 기관 id } (담당자가 고친 기관명 매핑), edits: { 엑셀 기관명: { 항목 id: 값 } }
-export function buildPreview({ aoa, headerIdx, mapping, items, recognizedItemIds, orgs, period = {}, duplicatePolicy = 'sum', nameMap = {}, edits = {} }) {
+// nameMap: { 엑셀 기관명: 등록 기관 id } (담당자가 고친 기관명 매핑, ''이면 연결 안 함), edits: { 엑셀 기관명: { 항목 id: 값 } }
+// autoAddOrgs: 등록되지 않은 기관명을 적용할 때 새 참가기관으로 등록 (entry.willAdd)
+export function buildPreview({ aoa, headerIdx, mapping, items, recognizedItemIds, orgs, period = {}, duplicatePolicy = 'sum', nameMap = {}, edits = {}, autoAddOrgs = false }) {
   const issues = [];
   const add = (level, message, extra = {}) => issues.push({ level, message, ...extra });
   const header = aoa[headerIdx] ?? [];
@@ -172,7 +176,10 @@ export function buildPreview({ aoa, headerIdx, mapping, items, recognizedItemIds
     e.orgId = org?.id ?? null;
     e.orgName = org?.name ?? null;
     e.recognized = recognizedItemIds.reduce((a, id) => a + (e.counts[id] ?? 0), 0);
-    if (!org) add('warn', `등록되지 않은 기관 '${e.rawName}': 등록 기관에 연결하거나 새 기관으로 등록해야 산출에 들어갑니다.`, { org: e.rawName });
+    e.willAdd = !org && autoAddOrgs && mapped === undefined;
+    if (e.willAdd) add('info', `'${e.rawName}'은(는) 등록되지 않은 기관이라 적용할 때 새 참가기관으로 등록합니다.`, { org: e.rawName });
+    else if (!org && mapped === '') add('warn', `'${e.rawName}'은(는) 연결 안 함으로 정해 산출에서 뺍니다.`, { org: e.rawName });
+    else if (!org) add('warn', `등록되지 않은 기관 '${e.rawName}': 등록 기관에 연결하거나 새 기관으로 등록해야 산출에 들어갑니다.`, { org: e.rawName });
     else if (!org.active) add('warn', `'${e.rawName}'은(는) 분담 대상에서 제외된 기관이라 산출에 넣지 않습니다.`, { org: e.rawName });
     if (e.rows.length > 1) {
       if (duplicatePolicy === 'error') add('error', `'${e.rawName}'이(가) ${e.rows.length}개 행(${e.rows.join(', ')}행)에 중복 입력되었습니다.`, { org: e.rawName });
@@ -205,6 +212,7 @@ export function buildPreview({ aoa, headerIdx, mapping, items, recognizedItemIds
       fileOrgCount: list.length,
       activeOrgCount: active.length,
       matchedActive,
+      newOrgCount: new Set(list.filter((e) => e.willAdd).map((e) => norm(e.rawName))).size,
       periodRange: minFrom ? { from: minFrom, to: maxTo } : null,
       itemIds: itemCols.map((c) => c.itemId),
     },
@@ -221,4 +229,40 @@ export function previewToPerf(preview) {
     for (const [itemId, v] of Object.entries(e.counts)) t[itemId] = (t[itemId] ?? 0) + v;
   }
   return perf;
+}
+
+// 미리보기 적용: 새로 등록할 기관(willAdd)을 만들고 실적을 기관 id로 묶는다.
+// 띄어쓰기만 다른 기관명은 한 기관으로 등록한다. makeId: () => 새 기관 id
+export function applyPreview(preview, makeId) {
+  const newOrgs = [];
+  const idByName = new Map();
+  const entries = preview.entries.map((e) => {
+    if (!e.willAdd) return e;
+    const key = norm(e.rawName);
+    if (!idByName.has(key)) {
+      const id = makeId();
+      idByName.set(key, id);
+      newOrgs.push({ id, name: e.rawName, active: true });
+    }
+    return { ...e, orgId: idByName.get(key) };
+  });
+  return { newOrgs, perf: previewToPerf({ entries }) };
+}
+
+// 엑셀에서 기관명만 뽑기 (참가기관 일괄 등록용). 기관명 열을 못 찾으면 첫 열을 쓴다.
+export function extractOrgNames(aoa) {
+  const h = detectHeaderRow(aoa);
+  const header = aoa[h] ?? [];
+  let col = header.findIndex((c) => ORG_WORDS.includes(norm(c)));
+  if (col === -1) col = header.findIndex((c) => ORG_WORDS.some((w) => norm(c).includes(w)));
+  if (col === -1) col = 0;
+  const seen = new Set();
+  const names = [];
+  for (let r = Math.max(h, -1) + 1; r < aoa.length; r++) {
+    const name = String(aoa[r]?.[col] ?? '').trim();
+    if (!name || TOTAL_ROW.test(norm(name)) || typeof aoa[r][col] === 'number' || seen.has(norm(name))) continue;
+    seen.add(norm(name));
+    names.push(name);
+  }
+  return names;
 }
