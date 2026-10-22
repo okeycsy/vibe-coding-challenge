@@ -19,6 +19,8 @@ mvn package                  # target/fee-calc-backend-0.0.1-SNAPSHOT.jar
 - 포트: 환경변수 `PORT`(기본 8080). 헬스 체크는 `GET /api/health`.
 
 ## 공개 배포 (Render)
+- 운영 중인 주소: https://vibe-coding-challenge-bdm1.onrender.com (서비스 이름 `vibe-coding-challenge`, 이름이 겹쳐 Render가 `-bdm1`을 붙임). Vercel `VITE_API_BASE_URL`에 이 주소가 들어가 있습니다.
+
 Docker 지원 무료 호스팅인 [Render](https://render.com)에 이 폴더의 `Dockerfile`로 올립니다. 카드 등록 없이 무료 플랜(512MB)을 쓸 수 있고, `main`에 이 폴더 변경이 병합되면 자동으로 다시 배포됩니다.
 
 1. render.com에서 GitHub 계정으로 가입·로그인합니다.
