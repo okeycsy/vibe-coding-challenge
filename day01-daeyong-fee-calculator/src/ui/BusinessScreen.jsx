@@ -1,24 +1,42 @@
 // 화면 1. 업무 및 참가기관 관리
 import { useRef, useState } from 'react';
 import { newBusiness, uid, sampleBusinesses } from '../engine/model.js';
-import { saveFile } from '../excel.js';
+import { saveFile, readWorkbook } from '../excel.js';
+import { extractOrgNames } from '../engine/perfImport.js';
 import { Section, fmt } from './common.jsx';
 
 export default function BusinessScreen({ business, run, update, state, setState }) {
   const [newOrg, setNewOrg] = useState('');
   const [bulk, setBulk] = useState('');
   const [msg, setMsg] = useState('');
+  const [orgMsg, setOrgMsg] = useState('');
   const fileRef = useRef(null);
+  const orgFileRef = useRef(null);
   const orgs = business.orgs;
   const active = orgs.filter((o) => o.active).length;
   const finalOf = Object.fromEntries((run.fee?.rows ?? []).map((r) => [r.id, r.final]));
 
   const setOrgs = (fn) => update((b) => ({ ...b, orgs: fn(b.orgs) }));
-  const addOrgs = (names) => {
-    const exists = new Set(orgs.map((o) => o.name));
-    const fresh = [...new Set(names.map((n) => n.trim()).filter((n) => n && !exists.has(n)))];
+  // 띄어쓰기만 다른 이름은 같은 기관으로 본다 (실적 업로드의 기관명 연결 기준과 같음)
+  const key = (n) => n.replace(/\s+/g, '').toLowerCase();
+  const addOrgs = (names, source = '') => {
+    const exists = new Set(orgs.map((o) => key(o.name)));
+    const fresh = [];
+    for (const n of names.map((x) => x.trim())) {
+      if (!n || exists.has(key(n))) continue;
+      exists.add(key(n));
+      fresh.push(n);
+    }
     if (fresh.length) setOrgs((list) => [...list, ...fresh.map((name) => ({ id: uid('org'), name, active: true }))]);
-    setMsg(fresh.length ? `${fresh.length}개 기관을 추가했습니다.` : '추가할 새 기관명이 없습니다(빈칸이거나 이미 있음).');
+    setOrgMsg(fresh.length ? `${source}${fresh.length}개 기관을 추가했습니다: ${fresh.join(', ')}` : `${source}추가할 새 기관명이 없습니다(빈칸이거나 이미 있음).`);
+  };
+  const importOrgs = async (file) => {
+    try {
+      const names = readWorkbook(await file.arrayBuffer()).flatMap((sh) => extractOrgNames(sh.aoa));
+      addOrgs(names, `${file.name}에서 기관명 ${names.length}개를 읽어 `);
+    } catch (err) {
+      setOrgMsg(`${file.name}을(를) 읽지 못했습니다. ${err.message}`);
+    }
   };
   const removeOrg = (id) =>
     update((b) => {
@@ -140,6 +158,12 @@ export default function BusinessScreen({ business, run, update, state, setState 
             </tbody>
           </table>
         </div>
+        <div className="btn-row">
+          <button type="button" className="btn" onClick={() => orgFileRef.current?.click()}>엑셀에서 기관명 불러오기</button>
+          <span className="field-hint">기관명 열(기관명·기관·참가기관·회원사·은행명)을 찾아 아직 없는 기관만 추가합니다. 실적 엑셀을 올려도 됩니다.</span>
+          <input ref={orgFileRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={(e) => { if (e.target.files?.[0]) importOrgs(e.target.files[0]); e.target.value = ''; }} />
+        </div>
+        {orgMsg && <p className="note">{orgMsg}</p>}
         <div className="add-grid">
           <form
             className="row-form"

@@ -5,7 +5,7 @@ import { computeQuarterSchedule } from './quarters.js';
 import { computeFees } from './fee.js';
 import { sampleBusinesses } from './model.js';
 import { runBusiness } from './pipeline.js';
-import { buildPreview, guessMapping, detectHeaderRow, previewToPerf } from './perfImport.js';
+import { buildPreview, guessMapping, detectHeaderRow, previewToPerf, applyPreview, extractOrgNames } from './perfImport.js';
 import { toDateRange } from './period.js';
 
 const sumOf = (rows, k) => rows.reduce((a, r) => a + r[k], 0);
@@ -197,4 +197,26 @@ test('엑셀 업로드: 열 매핑 추측, 검증, 기간 필터, 수정값, 적
   assert.equal(perf2['모르는기관'], undefined);
   const missingItem = buildPreview({ ...args, mapping: { ...mapping, 4: 'ignore' } });
   assert.match(missingItem.issues.map((i) => i.message).join(), /필수 실적 항목 '해제건수'/);
+
+  // 미등록 기관 자동 등록
+  const auto = buildPreview({ ...args, edits: { B기관: { s: '2000' } }, autoAddOrgs: true });
+  assert.equal(auto.canApply, true);
+  assert.equal(auto.stats.newOrgCount, 1);
+  assert.match(auto.issues.map((i) => `${i.level}:${i.message}`).join('\n'), /info:'모르는기관'.*새 참가기관으로 등록/);
+  let n = 0;
+  const applied = applyPreview(auto, () => `new_${++n}`);
+  assert.deepEqual(applied.newOrgs, [{ id: 'new_1', name: '모르는기관', active: true }]);
+  assert.deepEqual(applied.perf.new_1, { s: 1, c: 1, r: 1 });
+  assert.deepEqual(applied.perf.a, { s: 1010, c: 500, r: 300 });
+  // 담당자가 '연결 안 함'을 고르면 자동 등록하지 않는다
+  const skipped = buildPreview({ ...args, edits: { B기관: { s: '2000' } }, autoAddOrgs: true, nameMap: { 모르는기관: '' } });
+  assert.equal(skipped.stats.newOrgCount, 0);
+  assert.equal(applyPreview(skipped, () => 'x').newOrgs.length, 0);
+
+  // 기관명만 뽑기: 머리글 아래 기관명, 합계·중복 행 제외
+  assert.deepEqual(extractOrgNames(aoa), ['A기관', '모르는기관', 'B기관', 'C기관']);
+  assert.deepEqual(extractOrgNames([['가나은행'], ['다라증권'], ['가나은행']]), ['가나은행', '다라증권']);
+  const roster = [['참가기관 명단'], [], ['순번', '기관명', '비고'], [1, 'A기관', ''], [2, '가나 은행', ''], [3, '가나은행', '중복'], ['', '합계', '']];
+  assert.equal(detectHeaderRow(roster), 2);
+  assert.deepEqual(extractOrgNames(roster), ['A기관', '가나 은행']);
 });
