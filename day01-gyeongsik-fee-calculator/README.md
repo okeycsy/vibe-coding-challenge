@@ -59,6 +59,9 @@ npm run build    # dist/ 에 정적 파일 생성
 ## 색상·로고
 로그인 화면·헤더 로고와 파비콘은 금융결제원 CI 심벌마크(`public/kftc-symbol.png`, 가이드 이미지에서 잘라 배경을 투명하게 처리)입니다. 색상은 심벌의 그라데이션에서 뽑았습니다. 짙은 블루 `#0E45AA`·`#0D389E`를 주색(`brand`), 밝은 블루 `#178CDC`를 보조색(`accent`)으로 쓰며 `tailwind.config.js`에서 관리합니다.
 
+## 백엔드 API
+`backend/` 폴더에 Spring Boot API 서버(로그인·5회 잠금, 업무 권한 RBAC, 회비 산출·엑셀, 대사·수행률·Mattermost 알림)가 있습니다. 실행 방법과 API 목록은 [backend/README.md](backend/README.md)를 보세요. 화면은 아직 Mock Data로 동작하며 API 연결은 다음 단계입니다.
+
 ## 기술 스택
 Vite 5, React 18, Tailwind CSS 3, lucide-react, xlsx(SheetJS)
 

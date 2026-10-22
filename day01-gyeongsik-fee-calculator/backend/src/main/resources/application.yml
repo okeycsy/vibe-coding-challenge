@@ -1,0 +1,46 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: fee-calc-backend
+  datasource:
+    # 시연용 인메모리 DB. 서버를 재기동하면 DataInitializer가 예시 데이터를 다시 적재한다.
+    url: jdbc:h2:mem:feecalc;MODE=MySQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        default_batch_fetch_size: 100
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+  jackson:
+    time-zone: Asia/Seoul
+
+app:
+  cors:
+    # React(Vite) 개발 서버
+    allowed-origins:
+      - http://localhost:5173
+      - http://127.0.0.1:5173
+  auth:
+    max-fail-count: 5
+  mattermost:
+    # 비어 있으면 실제 발송 없이 로그만 남긴다. 예: export MATTERMOST_WEBHOOK_URL=https://mattermost.example.com/hooks/xxx
+    webhook-url: ${MATTERMOST_WEBHOOK_URL:}
+    channel: fee-calc-alert
+
+logging:
+  level:
+    com.kftc.feecalc: DEBUG
