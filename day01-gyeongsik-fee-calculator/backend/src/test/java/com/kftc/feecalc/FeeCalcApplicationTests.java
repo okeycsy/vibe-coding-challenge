@@ -35,7 +35,7 @@ import com.kftc.feecalc.domain.fee.dto.CalculationRequest;
 import com.kftc.feecalc.domain.fee.dto.CalculationResponse;
 import com.kftc.feecalc.domain.fee.service.FeeCalculationService;
 
-@SpringBootTest
+@SpringBootTest(properties = "app.skills.dir=${java.io.tmpdir}/feecalc-skills-${random.uuid}")
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class FeeCalcApplicationTests {

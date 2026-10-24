@@ -213,3 +213,57 @@ export function rateLabel(skill, fee, finalCount, feeSum) {
   }
   return `${(feeSum ? (fee / feeSum) * 100 : 0).toFixed(2)}%`;
 }
+
+// ── 서버가 없을 때(Mock): 묶어 온 원본 + 화면에서 고친 내용(overrides)으로 서버 API와 같은 모양을 만든다 ──
+export const businessIdOf = (taskCode) => Object.keys(TASK_CODES).find((id) => TASK_CODES[id] === taskCode);
+
+const contentOf = (code, overrides) => overrides[code]?.content ?? DEFAULT_SKILLS[code];
+
+export function localSkillList(businesses, allowedTasks, overrides) {
+  return businesses.map((b) => {
+    const code = TASK_CODES[b.id];
+    const content = contentOf(code, overrides);
+    return {
+      taskCode: code,
+      taskName: b.name,
+      businessId: b.id,
+      accessible: allowedTasks.includes(b.id),
+      lastModified: overrides[code]?.lastModified ?? null,
+      size: new Blob([content]).size,
+      modified: content !== DEFAULT_SKILLS[code],
+    };
+  });
+}
+
+export function localSkillDetail(businessId, taskName, overrides) {
+  const code = TASK_CODES[businessId];
+  const content = contentOf(code, overrides);
+  return {
+    ...parseSkill(code, content),
+    taskName,
+    businessId,
+    content,
+    lastModified: overrides[code]?.lastModified ?? null,
+    updatedBy: overrides[code]?.updatedBy ?? null,
+    size: new Blob([content]).size,
+    modified: content !== DEFAULT_SKILLS[code],
+  };
+}
+
+// 저장 전 검증(서버 SkillFileService.save 와 같은 순서): 섹션 → 수식 구문·시험 계산. 실패하면 Error
+export const FORMULA_SAMPLES = [
+  { rawCount: 1_000_000, deductedCount: 100_000, finalCount: 900_000, totalCount: 9_000_000, institutionCount: 8, periodScale: 1 },
+  { rawCount: 0, deductedCount: 0, finalCount: 0, totalCount: 0, institutionCount: 8, periodScale: 0.5 },
+];
+
+export function validateSkill(taskCode, content) {
+  const parsed = parseSkill(taskCode, content);
+  try {
+    FORMULA_SAMPLES.forEach((v) => evaluateFormula(parsed.formula, v));
+  } catch (e) {
+    const err = new Error(`수식(formula) 구문 오류가 발견되었습니다. (${e.message})`);
+    err.formula = true;
+    throw err;
+  }
+  return parsed;
+}

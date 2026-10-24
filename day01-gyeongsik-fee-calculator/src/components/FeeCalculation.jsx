@@ -23,20 +23,8 @@ import { daysBetween, parseDate, periodLabel, periodTag, previousQuarter, quarte
 import { downloadReconciliation, downloadRevenueResolution } from '../utils/excel';
 import { Card, Select, StatusBadge } from './ui';
 import DateField from './DateField';
-import SkillModal from './SkillModal';
 import { api, apiEnabled } from '../utils/api';
-import { DEFAULT_SKILLS, TASK_CODES, parseSkill } from '../utils/skill';
-
-// 서버가 없을 때 쓰는 skill.md: 원본 파일 + 이 화면에서 고친 내용(새로고침하면 원본으로)
-const localSkill = (businessId, overrides) => {
-  const code = TASK_CODES[businessId];
-  const markdown = overrides[code] ?? DEFAULT_SKILLS[code];
-  return {
-    ...parseSkill(code, markdown),
-    modified: markdown !== DEFAULT_SKILLS[code],
-    updatedBy: overrides[code] ? '이 브라우저' : null,
-  };
-};
+import { TASK_CODES, localSkillDetail } from '../utils/skill';
 
 const NEXT_STATUS = { 대기: '확인중', 확인중: '완료', 완료: '대기' };
 const LOADING_STEPS = ['Raw Data 검증 중…', 'AI 이슈 해석 및 예외 건 차감 중…', '회비분담기준 적용 중…'];
@@ -54,7 +42,17 @@ function periodPresets(today = new Date()) {
   ];
 }
 
-export default function FeeCalculation({ user, runs, setRuns, notify, allowedTasks, onRequestTask }) {
+export default function FeeCalculation({
+  user,
+  runs,
+  setRuns,
+  notify,
+  allowedTasks,
+  onRequestTask,
+  skillOverrides,
+  skillVersion,
+  onOpenSkill,
+}) {
   // 결제원 담당자(일반담당자·시스템관리자)는 산출, 참가기관은 조회·대사 회신만 한다.
   const isOperator = user.side === 'kftc';
   // 업무별 산출 권한: 일반담당자는 승인된 업무만, 시스템관리자는 전체 업무를 선택할 수 있다.
@@ -71,13 +69,10 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
   const [uploading, setUploading] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [tooltip, setTooltip] = useState(null);
-  // 업무별 skill.md (업무 ID → 해석 결과). 서버가 있으면 서버에서, 없으면 묶어 온 원본에서 읽는다.
+  // 업무별 skill.md (업무 ID → 해석 결과). 서버가 있으면 서버에서, 없으면 묶어 온 원본 + 화면 수정본에서 읽는다.
   const [skills, setSkills] = useState({});
   const [skillError, setSkillError] = useState(null);
-  const [localOverrides, setLocalOverrides] = useState({});
-  const [skillOpen, setSkillOpen] = useState(false);
   const timers = useRef([]);
-  const canEditSkill = user.role === 'sysadmin';
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
 
@@ -93,13 +88,18 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
   const business = BUSINESSES.find((b) => b.id === businessId);
   const skill = skills[businessId];
 
-  // Step 1에서 업무를 고르면 해당 skill.md를 불러온다
+  // Step 1에서 업무를 고르면 해당 skill.md를 불러온다. 회비기준 관리에서 저장하면(skillVersion) 다시 읽는다.
+  // 참가기관처럼 skill.md 권한이 없으면(403) 요약은 기본 문구로 보여 준다.
   useEffect(() => {
     let alive = true;
     setSkillError(null);
+    if (!canSelect(businessId)) {
+      setSkills((m) => ({ ...m, [businessId]: undefined }));
+      return undefined;
+    }
     if (!apiEnabled) {
       try {
-        setSkills((m) => ({ ...m, [businessId]: localSkill(businessId, localOverrides) }));
+        setSkills((m) => ({ ...m, [businessId]: localSkillDetail(businessId, business.name, skillOverrides) }));
       } catch (e) {
         setSkillError(e.message);
       }
@@ -108,48 +108,13 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
     api
       .skill(businessId)
       .then((data) => alive && setSkills((m) => ({ ...m, [businessId]: data })))
-      .catch((e) => alive && setSkillError(e.message));
+      .catch((e) => alive && (e.status === 403 ? setSkills((m) => ({ ...m, [businessId]: undefined })) : setSkillError(e.message)));
     return () => {
       alive = false;
     };
-  }, [businessId, localOverrides]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businessId, skillOverrides, skillVersion, user.id, allowedTasks]);
 
-  const saveSkill = async (markdown) => {
-    const code = TASK_CODES[businessId];
-    if (!apiEnabled) {
-      parseSkill(code, markdown);
-      setLocalOverrides((o) => ({ ...o, [code]: markdown }));
-      notify('회비 기준을 이 브라우저에 반영했습니다. (서버 미연결: 새로고침하면 원본으로 돌아갑니다)');
-      setSkillOpen(false);
-      return;
-    }
-    try {
-      const data = await api.saveSkill(code, markdown, user.id);
-      setSkills((m) => ({ ...m, [businessId]: data }));
-      notify('회비 기준(skill.md)을 저장했습니다. 다음 산출부터 적용됩니다.');
-      setSkillOpen(false);
-    } catch (e) {
-      notify(e.message, 'error');
-    }
-  };
-
-  const resetSkill = async () => {
-    const code = TASK_CODES[businessId];
-    if (!apiEnabled) {
-      setLocalOverrides(({ [code]: _, ...rest }) => rest);
-      notify('원본 skill.md로 되돌렸습니다.');
-      setSkillOpen(false);
-      return;
-    }
-    try {
-      const data = await api.resetSkill(code, user.id);
-      setSkills((m) => ({ ...m, [businessId]: data }));
-      notify('원본 skill.md로 되돌렸습니다.');
-      setSkillOpen(false);
-    } catch (e) {
-      notify(e.message, 'error');
-    }
-  };
   // ── 기간 검증: 각 날짜가 실제 날짜인지, From이 To보다 늦지 않은지 ──
   const fromCheck = parseDate(fromText);
   const toCheck = parseDate(toText);
@@ -378,19 +343,23 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
             <div className="flex flex-wrap items-center gap-2 mb-2">
               <Info className="w-4 h-4 text-brand-500" />
               <p className="text-sm font-semibold text-brand-800">{business.name} 회비분담기준 요약</p>
-              <span className="rounded bg-white border border-brand-200 px-2 py-0.5 text-[11px] text-brand-600">
-                {skill ? skill.calcType : '불러오는 중…'}
-              </span>
+              {skill && (
+                <span className="rounded bg-white border border-brand-200 px-2 py-0.5 text-[11px] text-brand-600">
+                  {skill.calcType}
+                </span>
+              )}
               {skill?.modified && (
                 <span className="rounded bg-amber-50 border border-amber-200 px-2 py-0.5 text-[11px] text-amber-700">수정됨</span>
               )}
-              <button
-                onClick={() => setSkillOpen(true)}
-                disabled={!skill}
-                className="ml-auto flex items-center gap-1 rounded-lg border border-brand-200 bg-white px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100 disabled:opacity-50"
-              >
-                <FileCode2 className="w-3.5 h-3.5" /> 회비기준(skill.md) 원본 보기{canEditSkill ? '/수정' : ''}
-              </button>
+              {isOperator && skill && (
+                <button
+                  onClick={() => onOpenSkill(businessId)}
+                  title="회비기준(Skill.md) 관리 화면에서 원문을 보고 고칩니다"
+                  className="ml-auto flex items-center gap-1 rounded-lg border border-brand-200 bg-white px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100"
+                >
+                  <FileCode2 className="w-3.5 h-3.5" /> 회비기준(skill.md) 보기/수정
+                </button>
+              )}
             </div>
             {skillError ? (
               <p role="alert" className="flex gap-2 text-xs text-rose-600">
@@ -420,18 +389,6 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
           </div>
         </div>
       </Card>
-
-      {skillOpen && skill && (
-        <SkillModal
-          key={`${businessId}-${skill.updatedAt ?? ''}-${skill.modified}`}
-          business={business}
-          skill={skill}
-          canEdit={canEditSkill}
-          onClose={() => setSkillOpen(false)}
-          onSave={saveSkill}
-          onReset={resetSkill}
-        />
-      )}
 
       {/* STEP 2 */}
       {isOperator && (

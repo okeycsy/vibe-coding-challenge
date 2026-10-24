@@ -7,7 +7,8 @@ import AdminSettings from './components/AdminSettings';
 import MyPage from './components/MyPage';
 import { Toast } from './components/ui';
 import LoginPage from './components/LoginPage';
-import { api, apiEnabled } from './utils/api';
+import { api, apiEnabled, setEmployeeId } from './utils/api';
+import SkillManagementPage from './components/SkillManagementPage';
 
 const MAX_ATTEMPTS = 5;
 // 하위 메뉴가 각각 한 페이지인 메뉴와 그 첫 페이지
@@ -26,6 +27,11 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   // runs: `${업무}-${연도}-${분기}` 별 산출 결과. 모든 뷰와 메뉴가 같은 상태를 공유한다.
   const [runs, setRuns] = useState({});
+  // 회비기준(skill.md): 서버 미연결 시 화면에서 고친 내용 { [업무코드]: { content, lastModified, updatedBy } },
+  // skillVersion 은 저장할 때마다 올려 산출 화면이 기준을 다시 읽게 한다.
+  const [skillOverrides, setSkillOverrides] = useState({});
+  const [skillVersion, setSkillVersion] = useState(0);
+  const [skillTarget, setSkillTarget] = useState(null);
   const [toast, setToast] = useState(null);
   const toastTimer = useRef();
 
@@ -97,6 +103,7 @@ export default function App() {
   const enter = (account) => {
     // 계정의 역할이 곧 화면 권한이다. 역할별 첫 화면으로 들어간다.
     setCurrentId(account.id);
+    setEmployeeId(account.id);
     setMenu(ROLES[account.role].home);
     setActiveSection(null);
     setLoginAt(nowLabel());
@@ -254,6 +261,7 @@ export default function App() {
     if (apiEnabled) api.logout(currentId).catch(() => {});
     setIsLoggedIn(false);
     setCurrentId(null);
+    setEmployeeId(null);
     setMenu('calc');
   };
 
@@ -302,8 +310,26 @@ export default function App() {
                 {...shared}
                 allowedTasks={allowedTasks}
                 onRequestTask={() => selectMenu('mypage', 'mypage-tasks')}
+                skillOverrides={skillOverrides}
+                skillVersion={skillVersion}
+                onOpenSkill={(businessId) => {
+                  setSkillTarget(businessId);
+                  selectMenu('skills');
+                }}
               />
             </div>
+            {menu === 'skills' && canSee('skills') && (
+              <SkillManagementPage
+                user={user}
+                notify={notify}
+                allowedTasks={allowedTasks}
+                target={skillTarget}
+                overrides={skillOverrides}
+                setOverrides={setSkillOverrides}
+                onSaved={() => setSkillVersion((v) => v + 1)}
+                onRequestTask={() => selectMenu('mypage', 'mypage-tasks')}
+              />
+            )}
             {menu === 'results' && canSee('results') && <ResultsManagement {...shared} />}
             {menu === 'mypage' && canSee('mypage') && (
               <MyPage

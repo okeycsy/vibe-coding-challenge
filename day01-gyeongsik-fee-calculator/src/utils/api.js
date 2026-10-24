@@ -14,13 +14,23 @@ export class ApiError extends Error {
   }
 }
 
+// 로그인한 사번. skill.md·산출 API는 X-Employee-Id 헤더로 권한을 확인한다.
+// 아직 로그인 토큰(JWT)이 없어 서버는 이 값을 그대로 믿는다 (시연용 한계).
+let employeeId = null;
+export const setEmployeeId = (id) => {
+  employeeId = id;
+};
+
 // 모든 응답은 { success, message, data } 형태. 실패하면 ApiError(status, message, data)를 던진다.
 async function request(method, path, body) {
   let res;
+  const headers = {};
+  if (body) headers['Content-Type'] = 'application/json';
+  if (employeeId) headers['X-Employee-Id'] = employeeId;
   try {
     res = await fetch(`${BASE}${path}`, {
       method,
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      headers,
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch {
@@ -65,11 +75,11 @@ export const api = {
   approveTaskRequest: (requestId) => request('POST', `/api/task-requests/${requestId}/approve`),
   rejectTaskRequest: (requestId) => request('POST', `/api/task-requests/${requestId}/reject`),
 
-  // 업무별 skill.md (taskCode: OPEN_BANKING 또는 업무 ID openbanking)
-  skill: (taskCode) => request('GET', `/api/v1/fees/skill/${taskCode}`),
-  saveSkill: (taskCode, markdown, updatedBy) => request('PUT', `/api/v1/fees/skill/${taskCode}`, { markdown, updatedBy }),
-  resetSkill: (taskCode, updatedBy) =>
-    request('DELETE', `/api/v1/fees/skill/${taskCode}?updatedBy=${encodeURIComponent(updatedBy)}`),
+  // 업무별 회비분담기준 skill.md (taskCode: OPEN_BANKING 또는 업무 ID openbanking). 권한 없는 업무는 403
+  skills: () => request('GET', '/api/v1/skills'),
+  skill: (taskCode) => request('GET', `/api/v1/skills/${taskCode}`),
+  saveSkill: (taskCode, content) => request('PUT', `/api/v1/skills/${taskCode}`, { content }),
+  resetSkill: (taskCode) => request('POST', `/api/v1/skills/${taskCode}/reset`),
   // skill.md 수식으로 산출 → 화면 결과 행 형태로
   calculate: async (body) => {
     const res = await request('POST', '/api/v1/fees/calculate', body);

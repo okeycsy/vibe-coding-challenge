@@ -110,13 +110,6 @@ public class UserService {
         }
     }
 
-    /** 회비 기준(skill.md) 수정 API에서 호출: 시스템관리자만 수정할 수 있다 */
-    public void checkSysadmin(String loginId) {
-        if (loginId == null || loginId.isBlank() || getMember(loginId).getRole() != MemberRole.SYSADMIN) {
-            throw new BusinessException(ErrorCode.ADMIN_ONLY);
-        }
-    }
-
     @Transactional
     public TaskRequestResponse requestTask(String loginId, TaskRequestCreateRequest req) {
         Member member = getMember(loginId);
