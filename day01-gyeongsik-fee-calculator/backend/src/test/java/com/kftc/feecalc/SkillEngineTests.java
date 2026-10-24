@@ -6,12 +6,15 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.startsWith;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -55,6 +58,11 @@ class SkillEngineTests {
 
     @Autowired
     FeeCalculationService calculationService;
+
+    private ResultActions createTask(String who, Map<String, String> body) throws Exception {
+        return mvc.perform(post("/api/v1/tasks").header(H, who).contentType(MediaType.APPLICATION_JSON)
+                .content(om.writeValueAsString(body)));
+    }
 
     private ResultActions save(String who, String code, String content) throws Exception {
         return mvc.perform(put("/api/v1/skills/" + code).header(H, who).contentType(MediaType.APPLICATION_JSON)
@@ -206,5 +214,76 @@ class SkillEngineTests {
                 LocalDate.of(2026, 7, 1), LocalDate.of(2026, 9, 30), List.of(), null, null, null));
         assertThat(res.skillCode()).isEqualTo("CMS");
         assertThat(res.items().get(0).fee()).isEqualTo(900_000 + res.items().get(0).finalCount() * 8);
+    }
+
+    @Test
+    void 관리자는_업무를_추가하면_제목만_있는_md_파일이_하나_생긴다() throws Exception {
+        mvc.perform(get("/api/v1/tasks").header(H, "admin"))
+                .andExpect(jsonPath("$.data", hasSize(5)))
+                .andExpect(jsonPath("$.data[0].fileName", is("OPEN_BANKING.md")))
+                .andExpect(jsonPath("$.data[0].ready", is(true)))
+                .andExpect(jsonPath("$.data[0].memberCount", is(1)));
+
+        createTask("admin", Map.of("taskCode", "giro_pay", "name", "지로", "fileName", "giro-payment"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.taskCode", is("GIRO_PAY")))
+                .andExpect(jsonPath("$.data.fileName", is("giro-payment.md")))
+                .andExpect(jsonPath("$.data.builtIn", is(false)))
+                .andExpect(jsonPath("$.data.ready", is(false)))
+                .andExpect(jsonPath("$.data.createdBy", is("admin")));
+        assertThat(Files.readString(files.directory().resolve("giro-payment.md"))).isEqualTo("# 지로 회비 산정 기준 (GIRO_PAY)\n");
+        assertThat(Files.readString(files.directory().resolve("tasks.json"))).contains("giro-payment.md");
+
+        // skill.md 관리 화면에도 보이고, 섹션이 비어 있어도 열린다
+        mvc.perform(get("/api/v1/skills").header(H, "admin")).andExpect(jsonPath("$.data", hasSize(6)));
+        mvc.perform(get("/api/v1/skills/GIRO_PAY").header(H, "admin"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content", is("# 지로 회비 산정 기준 (GIRO_PAY)\n")))
+                .andExpect(jsonPath("$.data.parseError", containsString("비즈니스 규칙 요약")));
+        // 섹션을 채워 저장하면 산출에 쓸 수 있다
+        String filled = files.read("CMS").replace("# CMS 회비 산정 기준 (CMS)", "# 지로 회비 산정 기준 (GIRO_PAY)");
+        save("admin", "GIRO_PAY", filled).andExpect(status().isOk());
+        assertThat(engine.calculate("GIRO_PAY", 1000, 0, 1000, 0, 1)).isEqualTo(908_000L);
+        assertThat(Files.readString(files.directory().resolve("giro-payment.md"))).isEqualTo(filled);
+    }
+
+    @Test
+    void 업무_추가는_관리자만_하고_코드_이름_파일은_겹칠_수_없다() throws Exception {
+        createTask("hong", Map.of("taskCode", "GIRO", "name", "지로")).andExpect(status().isForbidden());
+        createTask("admin", Map.of("taskCode", "GIRO", "name", "지로")).andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.fileName", is("GIRO.md")));
+        // 같은 파일(대소문자 무관)·같은 코드·같은 이름
+        createTask("admin", Map.of("taskCode", "GIRO2", "name", "지로2", "fileName", "giro.MD"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message", containsString("한 파일은 한 업무에만")));
+        createTask("admin", Map.of("taskCode", "GIRO", "name", "다른 이름")).andExpect(status().isConflict());
+        createTask("admin", Map.of("taskCode", "CMS2", "name", "CMS")).andExpect(status().isConflict());
+        createTask("admin", Map.of("taskCode", "NEW_ONE", "name", "새 업무", "fileName", "OPEN_BANKING.md"))
+                .andExpect(status().isConflict());
+        // 경로 조작·형식 오류
+        for (String bad : List.of("../evil", "a/b", "..", "x.txt", ".hidden", "tasks.json")) {
+            createTask("admin", Map.of("taskCode", "BAD_FILE", "name", "잘못된 파일", "fileName", bad))
+                    .andExpect(status().isBadRequest());
+        }
+        createTask("admin", Map.of("taskCode", "1ABC", "name", "숫자 시작")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/v1/tasks")).andExpect(jsonPath("$.data", hasSize(6)));
+    }
+
+    @Test
+    void 업무를_삭제하면_md_파일과_업무_권한도_지워진다() throws Exception {
+        mvc.perform(delete("/api/v1/tasks/CMS").header(H, "hong")).andExpect(status().isForbidden());
+        mvc.perform(delete("/api/v1/tasks/CMS").header(H, "admin"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message", is("CMS 업무와 CMS.md 파일을 삭제했습니다.")));
+        assertThat(files.directory().resolve("CMS.md")).doesNotExist();
+        mvc.perform(get("/api/v1/tasks")).andExpect(jsonPath("$.data", hasSize(4)));
+        mvc.perform(get("/api/v1/skills/CMS").header(H, "admin")).andExpect(status().isNotFound());
+        // kimms 의 CMS 권한도 사라진다
+        mvc.perform(get("/api/users/kimms")).andExpect(jsonPath("$.data.tasks", hasSize(1)));
+        mvc.perform(delete("/api/v1/tasks/CMS").header(H, "admin")).andExpect(status().isNotFound());
+
+        // 지운 파일명으로 다시 추가할 수 있다
+        createTask("admin", Map.of("taskCode", "CMS_NEW", "name", "CMS 신규", "fileName", "CMS"))
+                .andExpect(status().isCreated());
     }
 }

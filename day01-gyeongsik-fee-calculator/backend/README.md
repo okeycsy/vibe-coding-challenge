@@ -132,8 +132,17 @@ src/main/java/com/kftc/feecalc/
 | POST | `/api/v1/skills/{taskCode}/reset` | 초기 기준(`resources/skills`)으로 되돌리기 (시스템관리자만) |
 | POST | `/api/v1/fees/calculate` | skill.md 수식으로 산출. 헤더(또는 `requestedBy`)의 사번이 그 업무 권한이 있어야 함. 응답에 `skillCode`·`calcType`·`formula` |
 
+### tasks — `/api/v1/tasks` (업무 관리)
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| GET | `/api/v1/tasks` | 업무 목록: `{ taskCode, businessId, name, fileName, builtIn, createdAt, createdBy, lastModified, size, ready, memberCount }`. `ready`는 요약·수식 섹션이 있어 산출에 쓸 수 있는지 |
+| POST | `/api/v1/tasks` | `{ taskCode, name, fileName }`로 업무 추가 (시스템관리자만, `X-Employee-Id`). `fileName`은 `.md` 생략 가능, 비우면 `{업무코드}.md`. 업무 코드·업무명·파일명(대소문자 무관)이 겹치면 409. md 파일은 `# {업무명} 회비 산정 기준 ({업무코드})` 제목 한 줄로 만듦 |
+| DELETE | `/api/v1/tasks/{taskCode}` | 업무 삭제 (시스템관리자만). 연결된 md 파일 삭제, 회원의 그 업무 권한 해제, 승인 대기 신청 반려 |
+
+- 새 업무의 skill.md는 섹션이 없어 `GET /api/v1/skills/{taskCode}`에서 `parseError`와 원문만 주고, 섹션을 채워 `PUT`으로 저장해야 산출에 쓸 수 있습니다. 회비 산출 화면은 실적 예시 데이터가 있는 기본 업무만 보여 줍니다
+
 skill.md 저장 (`SkillFileService`)
-- 1업무 = 1파일: `{SKILLS_DIR}/{업무코드}.md` (기본 `./data/skills`, Docker 이미지에서는 `/app/data/skills`). 업무 코드는 `OPEN_BANKING`·`FIN_INFO`·`CMS`·`CD_NET`·`INTERBANK` 다섯 개뿐이고 그 밖의 `.md`는 읽지 않습니다(기동 로그에 경고)
+- 1업무 = 1파일: 업무 목록은 `{SKILLS_DIR}/tasks.json`(없으면 기본 5개 업무로 생성), 업무마다 md 파일 하나(기본 업무는 `{업무코드}.md`, 추가한 업무는 지정한 파일명). 기본 `./data/skills`, Docker 이미지에서는 `/app/data/skills`. 목록에 연결되지 않은 `.md`는 읽지 않습니다(기동 로그에 경고)
 - 기동 시 없는 파일은 `src/main/resources/skills/`의 초기 기준을 복사해 만듭니다
 - 경로 보호: 업무 코드는 영문·밑줄만 받고 목록에 있어야 하며, 만든 경로가 저장 폴더 바로 아래가 아니면 거부합니다. 저장은 임시 파일에 쓴 뒤 바꿔 끼웁니다
 - Render 무료 플랜은 디스크가 유지되지 않아 재배포·재기동 시 초기 기준으로 돌아갑니다. 계속 쓸 기준은 `src/main/resources/skills/`를 고쳐 배포하세요

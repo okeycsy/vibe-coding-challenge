@@ -64,11 +64,11 @@ public class SkillEngineService {
     /** 업무 코드(OPEN_BANKING) 또는 업무 ID(openbanking)로 현재 skill.md 를 읽어 해석한다 */
     public ParsedSkill getSkill(String code) {
         String taskCode = fileService.resolveTaskCode(code);
-        return parse(taskCode, SkillFileService.businessIdOf(taskCode), fileService.read(taskCode));
+        return parse(taskCode, fileService.businessIdOf(taskCode), fileService.read(taskCode));
     }
 
     public String businessIdOf(String code) {
-        return SkillFileService.businessIdOf(fileService.resolveTaskCode(code));
+        return fileService.businessIdOf(fileService.resolveTaskCode(code));
     }
 
     // ---------- 파싱·검증 ----------

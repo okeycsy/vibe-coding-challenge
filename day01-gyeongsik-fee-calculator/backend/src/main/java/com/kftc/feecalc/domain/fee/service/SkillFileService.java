@@ -22,6 +22,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import com.kftc.feecalc.common.exception.BusinessException;
 import com.kftc.feecalc.common.exception.ErrorCode;
 
@@ -29,11 +32,13 @@ import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * 업무별 skill.md 파일 I/O. 1업무 = 1파일: {app.skills.dir}/{TASK_CODE}.md 하나만 읽고 쓴다.
+ * 업무 목록과 업무별 skill.md 파일 I/O. 1업무 = 1파일: 업무마다 {app.skills.dir} 안의 md 파일 하나만 읽고 쓴다.
  * <ul>
- *   <li>기동 시 파일이 없는 업무는 classpath:skills/{TASK_CODE}.md(초기 기준)를 복사해 만든다</li>
- *   <li>업무 코드는 아래 목록에 있는 영문 대문자·밑줄만 받는다. 경로 문자(.., /, \)가 섞이면 거부하고,
- *       만든 경로가 저장 폴더 밖이면 다시 한 번 막는다 (Path Traversal 방지)</li>
+ *   <li>업무 목록(업무 코드·이름·파일명)은 같은 폴더의 tasks.json 에 둔다. 없으면 기본 5개 업무로 만든다</li>
+ *   <li>기동 시 파일이 없는 기본 업무는 classpath:skills/{TASK_CODE}.md(초기 기준)를 복사해 만든다.
+ *       관리자가 추가한 업무는 제목 한 줄만 있는 파일로 시작한다</li>
+ *   <li>업무 코드·파일명은 영문·숫자·밑줄(파일명은 - 도)만 받는다. 경로 문자(.., /, \)가 섞이면 거부하고,
+ *       만든 경로가 저장 폴더 밖이면 다시 한 번 막는다 (Path Traversal 방지). 한 파일은 한 업무에만 연결된다</li>
  *   <li>저장 전 섹션·수식 구문·시험 계산을 통과해야 하며, 임시 파일에 쓴 뒤 바꿔 끼운다</li>
  * </ul>
  */
@@ -41,21 +46,27 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 public class SkillFileService {
 
-    /** 업무 코드(= 파일명) ↔ 업무 ID(Business.code, 프론트 BUSINESSES[].id). 업무를 늘리면 여기와 skill.md 하나를 추가한다 */
-    private static final Map<String, String> TASK_TO_BUSINESS = new LinkedHashMap<>();
+    /** 기본 업무: 업무 코드, 업무 ID(Business.code, 프론트 BUSINESSES[].id), 업무명. 파일명은 {업무 코드}.md */
+    private static final List<TaskEntry> BUILT_IN = List.of(
+            builtIn("OPEN_BANKING", "openbanking", "오픈뱅킹"),
+            builtIn("FIN_INFO", "fininfo", "금융거래정보(금거정)"),
+            builtIn("CMS", "cms", "CMS"),
+            builtIn("CD_NET", "cd", "CD공동망"),
+            builtIn("INTERBANK", "interbank", "타행환"));
 
-    static {
-        TASK_TO_BUSINESS.put("OPEN_BANKING", "openbanking");
-        TASK_TO_BUSINESS.put("FIN_INFO", "fininfo");
-        TASK_TO_BUSINESS.put("CMS", "cms");
-        TASK_TO_BUSINESS.put("CD_NET", "cd");
-        TASK_TO_BUSINESS.put("INTERBANK", "interbank");
-    }
-
-    private static final Pattern SAFE_CODE = Pattern.compile("^[A-Za-z_]{1,30}$");
+    private static final Pattern SAFE_CODE = Pattern.compile("^[A-Za-z0-9_]{1,30}$");
+    /** 새 업무 코드: 영문 대문자로 시작, 대문자·숫자·밑줄 2~30자 */
+    private static final Pattern NEW_CODE = Pattern.compile("^[A-Z][A-Z0-9_]{1,29}$");
+    /** md 파일명(확장자 제외): 영문·숫자로 시작, 영문·숫자·밑줄·하이픈 50자 이하 */
+    private static final Pattern FILE_BASE = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9_-]{0,49}$");
+    static final String REGISTRY_FILE = "tasks.json";
     static final int MAX_MARKDOWN_LENGTH = 20_000;
+    static final int MAX_NAME_LENGTH = 50;
 
     private final Path dir;
+    private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
+    /** 업무 코드 → 업무. 등록 순서 유지, 변경은 synchronized 로 묶는다 */
+    private final Map<String, TaskEntry> tasks = new LinkedHashMap<>();
     /** 마지막 수정자 (파일 시스템에는 남지 않으므로 메모리에 둔다) */
     private final Map<String, String> updatedBy = new ConcurrentHashMap<>();
 
@@ -63,36 +74,181 @@ public class SkillFileService {
         this.dir = Path.of(dir).toAbsolutePath().normalize();
     }
 
+    /** 업무 한 건: 업무 코드 ↔ md 파일 1:1. builtIn 이면 초기 기준이 classpath 에 있다 */
+    public record TaskEntry(String taskCode, String businessId, String name, String fileName, boolean builtIn,
+                            LocalDateTime createdAt, String createdBy) {
+    }
+
     /** 파일 상태 요약 */
     public record SkillFileMeta(String taskCode, LocalDateTime lastModified, long size, String version,
                                 boolean modified, String updatedBy) {
     }
 
-    @PostConstruct
-    void init() throws IOException {
-        Files.createDirectories(dir);
-        for (String taskCode : TASK_TO_BUSINESS.keySet()) {
-            Path file = path(taskCode);
-            if (!Files.exists(file)) {
-                Files.writeString(file, readDefault(taskCode), StandardCharsets.UTF_8);
-            }
-        }
-        try (Stream<Path> files = Files.list(dir)) {
-            files.map(p -> p.getFileName().toString())
-                    .filter(n -> n.endsWith(".md") && !TASK_TO_BUSINESS.containsKey(n.substring(0, n.length() - 3)))
-                    .forEach(n -> log.warn("업무 코드에 없는 skill.md 는 쓰지 않습니다 (1업무 1파일): {}", n));
-        }
-        log.info("skill.md 저장 폴더: {}", dir);
+    private static TaskEntry builtIn(String code, String businessId, String name) {
+        return new TaskEntry(code, businessId, name, code + ".md", true, null, null);
     }
 
-    // ---------- 업무 코드 ----------
+    @PostConstruct
+    synchronized void init() throws IOException {
+        Files.createDirectories(dir);
+        Path registry = dir.resolve(REGISTRY_FILE);
+        if (Files.exists(registry)) {
+            for (TaskEntry t : json.readValue(registry.toFile(), new TypeReference<List<TaskEntry>>() { })) {
+                // 손으로 고친 목록이라도 경로 규칙을 벗어난 항목은 쓰지 않는다
+                if (SAFE_CODE.matcher(t.taskCode()).matches() && validFileName(t.fileName())) {
+                    tasks.put(t.taskCode(), t);
+                }
+            }
+        } else {
+            BUILT_IN.forEach(t -> tasks.put(t.taskCode(), t));
+            saveRegistry();
+        }
+        for (TaskEntry t : tasks.values()) {
+            Path file = path(t.taskCode());
+            if (!Files.exists(file)) {
+                Files.writeString(file, readDefault(t), StandardCharsets.UTF_8);
+            }
+        }
+        List<String> mapped = tasks.values().stream().map(TaskEntry::fileName).toList();
+        try (Stream<Path> files = Files.list(dir)) {
+            files.map(p -> p.getFileName().toString())
+                    .filter(n -> n.endsWith(".md") && !mapped.contains(n))
+                    .forEach(n -> log.warn("업무에 연결되지 않은 md 파일은 쓰지 않습니다 (1업무 1파일): {}", n));
+        }
+        log.info("skill.md 저장 폴더: {} (업무 {}개)", dir, tasks.size());
+    }
 
-    public static String businessIdOf(String taskCode) {
-        return TASK_TO_BUSINESS.get(taskCode);
+    /** skill.md 저장 폴더 */
+    public Path directory() {
+        return dir;
+    }
+
+    // ---------- 업무 목록 ----------
+
+    public synchronized List<TaskEntry> tasks() {
+        return List.copyOf(tasks.values());
+    }
+
+    public synchronized TaskEntry task(String taskCode) {
+        TaskEntry t = tasks.get(taskCode);
+        if (t == null) {
+            throw new BusinessException(ErrorCode.BUSINESS_NOT_FOUND);
+        }
+        return t;
+    }
+
+    public String businessIdOf(String taskCode) {
+        return task(taskCode).businessId();
     }
 
     public List<String> taskCodes() {
-        return List.copyOf(TASK_TO_BUSINESS.keySet());
+        return tasks().stream().map(TaskEntry::taskCode).toList();
+    }
+
+    /**
+     * 업무 추가. 업무 코드·업무명·파일명이 다른 업무와 겹치면 409, 형식이 틀리면 400.
+     * md 파일은 기본 템플릿의 제목 한 줄만 쓴 채로 만든다.
+     */
+    public synchronized TaskEntry create(String taskCode, String name, String fileName, String employeeId) {
+        String code = taskCode == null ? "" : taskCode.trim().toUpperCase();
+        if (!NEW_CODE.matcher(code).matches()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "업무 코드는 영문 대문자로 시작하는 영문 대문자·숫자·밑줄(_) 2~30자로 입력해 주세요.");
+        }
+        String taskName = name == null ? "" : name.strip();
+        if (taskName.isEmpty() || taskName.length() > MAX_NAME_LENGTH) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "업무명은 1~" + MAX_NAME_LENGTH + "자로 입력해 주세요.");
+        }
+        String file = normalizeFileName(fileName == null || fileName.isBlank() ? code : fileName);
+        String businessId = code.toLowerCase();
+        for (TaskEntry t : tasks.values()) {
+            if (t.taskCode().equals(code) || t.businessId().equalsIgnoreCase(businessId)) {
+                throw new BusinessException(ErrorCode.DUPLICATE_TASK, "이미 있는 업무 코드입니다: " + code);
+            }
+            if (t.name().equals(taskName)) {
+                throw new BusinessException(ErrorCode.DUPLICATE_TASK, "이미 있는 업무명입니다: " + taskName);
+            }
+            if (t.fileName().equalsIgnoreCase(file)) {
+                throw new BusinessException(ErrorCode.DUPLICATE_TASK,
+                        file + " 파일은 이미 " + t.name() + " 업무에 연결되어 있습니다. 한 파일은 한 업무에만 연결할 수 있습니다.");
+            }
+        }
+        Path target = resolveInDir(file);
+        if (Files.exists(target)) {
+            throw new BusinessException(ErrorCode.DUPLICATE_TASK, "저장 폴더에 같은 이름의 파일이 이미 있습니다: " + file);
+        }
+        TaskEntry entry = new TaskEntry(code, businessId, taskName, file, false,
+                LocalDateTime.now(ZoneId.of("Asia/Seoul")).withNano(0), employeeId);
+        write(target, titleTemplate(entry));
+        tasks.put(code, entry);
+        try {
+            saveRegistry();
+        } catch (BusinessException e) {
+            tasks.remove(code);
+            deleteQuietly(target);
+            throw e;
+        }
+        updatedBy.put(code, employeeId);
+        log.info("업무 추가: {} ({}) → {} by {}", code, taskName, file, employeeId);
+        return entry;
+    }
+
+    /** 업무 삭제: 목록에서 빼고 연결된 md 파일도 지운다 */
+    public synchronized TaskEntry delete(String taskCode, String employeeId) {
+        TaskEntry entry = task(taskCode);
+        Path file = path(taskCode);
+        tasks.remove(taskCode);
+        try {
+            saveRegistry();
+        } catch (BusinessException e) {
+            tasks.put(taskCode, entry);
+            throw e;
+        }
+        deleteQuietly(file);
+        updatedBy.remove(taskCode);
+        log.info("업무 삭제: {} ({}) , {} 삭제 by {}", taskCode, entry.name(), entry.fileName(), employeeId);
+        return entry;
+    }
+
+    /** 파일명 검사: 확장자(.md)는 붙여도 안 붙여도 되고, 결과는 항상 {이름}.md */
+    static String normalizeFileName(String fileName) {
+        String base = fileName.trim();
+        if (base.toLowerCase().endsWith(".md")) {
+            base = base.substring(0, base.length() - 3);
+        }
+        if (!FILE_BASE.matcher(base).matches()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "md 파일명은 영문·숫자로 시작하는 영문·숫자·밑줄(_)·하이픈(-) 50자 이하로 입력해 주세요. (예: NEW_TASK.md)");
+        }
+        return base + ".md";
+    }
+
+    private static boolean validFileName(String fileName) {
+        return fileName != null && fileName.endsWith(".md")
+                && FILE_BASE.matcher(fileName.substring(0, fileName.length() - 3)).matches();
+    }
+
+    /** 처음 만든 업무의 skill.md: 기본 템플릿 중 제목만 */
+    static String titleTemplate(TaskEntry t) {
+        return "# " + t.name() + " 회비 산정 기준 (" + t.taskCode() + ")\n";
+    }
+
+    private void saveRegistry() {
+        try {
+            Path tmp = Files.createTempFile(dir, REGISTRY_FILE, ".tmp");
+            json.writerWithDefaultPrettyPrinter().writeValue(tmp.toFile(), List.copyOf(tasks.values()));
+            Files.move(tmp, dir.resolve(REGISTRY_FILE), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "업무 목록을 저장하지 못했습니다.");
+        }
+    }
+
+    private static void deleteQuietly(Path file) {
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException e) {
+            log.warn("md 파일을 지우지 못했습니다: {}", file, e);
+        }
     }
 
     /** 업무 코드(OPEN_BANKING) 또는 업무 ID(openbanking)를 검증해 업무 코드로 바꾼다 */
@@ -102,23 +258,22 @@ public class SkillFileService {
         }
         String trimmed = code.trim();
         String upper = trimmed.toUpperCase();
-        if (TASK_TO_BUSINESS.containsKey(upper)) {
-            return upper;
-        }
-        return TASK_TO_BUSINESS.entrySet().stream()
-                .filter(e -> e.getValue().equalsIgnoreCase(trimmed))
-                .map(Map.Entry::getKey)
+        List<TaskEntry> all = tasks();
+        return all.stream()
+                .filter(t -> t.taskCode().equals(upper) || t.businessId().equalsIgnoreCase(trimmed))
+                .map(TaskEntry::taskCode)
                 .findFirst()
                 .orElseThrow(() -> new BusinessException(ErrorCode.BUSINESS_NOT_FOUND, "skill.md 가 없는 업무입니다: " + trimmed));
     }
 
-    /** 저장 폴더 안의 {taskCode}.md. 목록에 있는 업무 코드만 받고, 결과가 폴더 밖이면 거부한다 */
+    /** 저장 폴더 안의 업무 md 파일. 목록에 있는 업무 코드만 받고, 결과가 폴더 밖이면 거부한다 */
     private Path path(String taskCode) {
-        if (!TASK_TO_BUSINESS.containsKey(taskCode)) {
-            throw new BusinessException(ErrorCode.BUSINESS_NOT_FOUND);
-        }
-        Path file = dir.resolve(taskCode + ".md").normalize();
-        if (!file.getParent().equals(dir)) {
+        return resolveInDir(task(taskCode).fileName());
+    }
+
+    private Path resolveInDir(String fileName) {
+        Path file = dir.resolve(fileName).normalize();
+        if (!dir.equals(file.getParent())) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "잘못된 파일 경로입니다.");
         }
         return file;
@@ -132,7 +287,7 @@ public class SkillFileService {
             return Files.readString(file, StandardCharsets.UTF_8).replace("\r\n", "\n");
         } catch (IOException e) {
             log.warn("skill.md 를 읽지 못해 초기 기준으로 다시 만듭니다: {}", file, e);
-            String markdown = readDefault(taskCode);
+            String markdown = readDefault(task(taskCode));
             write(file, markdown);
             return markdown;
         }
@@ -151,7 +306,7 @@ public class SkillFileService {
             size = content.getBytes(StandardCharsets.UTF_8).length;
         }
         return new SkillFileMeta(taskCode, lastModified, size, version(content),
-                !content.equals(readDefault(taskCode)), updatedBy.get(taskCode));
+                !content.equals(readDefault(task(taskCode))), updatedBy.get(taskCode));
     }
 
     /** 검증(섹션 → 수식 구문 → 시험 계산)을 통과하면 파일을 덮어쓴다. 실패하면 파일은 그대로다 */
@@ -171,9 +326,9 @@ public class SkillFileService {
         log.info("skill.md 저장: {} by {}", taskCode, employeeId);
     }
 
-    /** 초기 기준(classpath)으로 되돌린다 */
+    /** 초기 기준(기본 업무는 classpath, 추가한 업무는 제목 한 줄)으로 되돌린다 */
     public synchronized void reset(String taskCode, String employeeId) {
-        write(path(taskCode), readDefault(taskCode));
+        write(path(taskCode), readDefault(task(taskCode)));
         updatedBy.put(taskCode, employeeId);
         log.info("skill.md 초기 기준 복원: {} by {}", taskCode, employeeId);
     }
@@ -188,7 +343,11 @@ public class SkillFileService {
         }
     }
 
-    private static String readDefault(String taskCode) {
+    private static String readDefault(TaskEntry t) {
+        if (!t.builtIn()) {
+            return titleTemplate(t);
+        }
+        String taskCode = t.taskCode();
         ClassPathResource resource = new ClassPathResource("skills/" + taskCode + ".md");
         try (InputStream in = resource.getInputStream()) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8).replace("\r\n", "\n");

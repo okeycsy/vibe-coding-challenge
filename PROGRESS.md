@@ -25,6 +25,11 @@
 - 공개 배포는 Vercel Git 연결로 한다 (Root Directory `day01-gyeongsik-fee-calculator`, Production Branch `main`). 토큰·GitHub Actions 배포는 쓰지 않는다
 
 ## 세션 로그
+### 2026-10-24 (경식, 업무 관리 페이지)
+- 관리자 설정에 [업무 관리] 하위 메뉴 추가(기존 업무 권한 관리 화면은 그대로): 업무 조회(업무명·코드·매핑 md 파일명·기준 작성 상태·권한 보유자 수), 추가, 삭제(경고창 + 확인 체크 후 삭제)
+- 업무 추가 시 md 파일명 지정(비우면 업무 코드), 한 파일은 한 업무에만 연결(대소문자 무관 중복 거부), 새 md 파일은 기본 템플릿 제목 한 줄만. 회비기준 관리에서 [기본 템플릿 섹션 넣기]로 나머지 섹션을 채워 저장
+- 백엔드: `SkillFileService`가 고정 5개 업무 대신 `{SKILLS_DIR}/tasks.json` 업무 목록을 씀. API `GET/POST /api/v1/tasks`, `DELETE /api/v1/tasks/{taskCode}`(추가·삭제는 시스템관리자, 삭제 시 md 파일·업무 권한·대기 신청 정리). 섹션이 덜 찬 skill.md도 `parseError`와 함께 열람 가능. `mvn test` 23개 통과
+- 회비 산출 화면은 실적 예시 데이터가 있는 기본 업무만(삭제한 업무는 빠짐). 새 업무를 산출에 쓰려면 실적·단가 데이터 연결이 추가로 필요
 ### 2026-10-24 (경식, 회비기준 skill.md 관리 페이지)
 - 1업무 1파일: `SkillFileService`가 `data/skills/{업무코드}.md`(SKILLS_DIR)만 읽고 씀. 없으면 `resources/skills` 초기 기준 복사, 업무 코드 화이트리스트·경로 검사로 Path Traversal 차단, 저장 전 섹션·SpEL 구문·시험 계산 검증(구문 오류 400)
 - 권한: `SkillAccessControlService` — 시스템관리자 전체, 일반담당자는 승인된 업무 권한만, 참가기관 불가. 사번은 `X-Employee-Id` 헤더(토큰이 없어 헤더 값을 그대로 믿는 한계). API `GET /api/v1/skills`, `GET/PUT /api/v1/skills/{taskCode}`, `POST /{taskCode}/reset`(관리자), `POST /api/v1/fees/calculate`도 권한 확인. 이전 `/api/v1/fees/skill/*`와 모달은 정리
