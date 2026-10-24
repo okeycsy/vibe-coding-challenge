@@ -5,6 +5,7 @@ import {
   CalendarDays,
   CloudUpload,
   Download,
+  FileCode2,
   FileSpreadsheet,
   Info,
   Plus,
@@ -22,6 +23,20 @@ import { daysBetween, parseDate, periodLabel, periodTag, previousQuarter, quarte
 import { downloadReconciliation, downloadRevenueResolution } from '../utils/excel';
 import { Card, Select, StatusBadge } from './ui';
 import DateField from './DateField';
+import SkillModal from './SkillModal';
+import { api, apiEnabled } from '../utils/api';
+import { DEFAULT_SKILLS, TASK_CODES, parseSkill } from '../utils/skill';
+
+// 서버가 없을 때 쓰는 skill.md: 원본 파일 + 이 화면에서 고친 내용(새로고침하면 원본으로)
+const localSkill = (businessId, overrides) => {
+  const code = TASK_CODES[businessId];
+  const markdown = overrides[code] ?? DEFAULT_SKILLS[code];
+  return {
+    ...parseSkill(code, markdown),
+    modified: markdown !== DEFAULT_SKILLS[code],
+    updatedBy: overrides[code] ? '이 브라우저' : null,
+  };
+};
 
 const NEXT_STATUS = { 대기: '확인중', 확인중: '완료', 완료: '대기' };
 const LOADING_STEPS = ['Raw Data 검증 중…', 'AI 이슈 해석 및 예외 건 차감 중…', '회비분담기준 적용 중…'];
@@ -56,7 +71,13 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
   const [uploading, setUploading] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [tooltip, setTooltip] = useState(null);
+  // 업무별 skill.md (업무 ID → 해석 결과). 서버가 있으면 서버에서, 없으면 묶어 온 원본에서 읽는다.
+  const [skills, setSkills] = useState({});
+  const [skillError, setSkillError] = useState(null);
+  const [localOverrides, setLocalOverrides] = useState({});
+  const [skillOpen, setSkillOpen] = useState(false);
   const timers = useRef([]);
+  const canEditSkill = user.role === 'sysadmin';
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
 
@@ -70,6 +91,65 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
   }, [user.role, allowedTasks]);
 
   const business = BUSINESSES.find((b) => b.id === businessId);
+  const skill = skills[businessId];
+
+  // Step 1에서 업무를 고르면 해당 skill.md를 불러온다
+  useEffect(() => {
+    let alive = true;
+    setSkillError(null);
+    if (!apiEnabled) {
+      try {
+        setSkills((m) => ({ ...m, [businessId]: localSkill(businessId, localOverrides) }));
+      } catch (e) {
+        setSkillError(e.message);
+      }
+      return undefined;
+    }
+    api
+      .skill(businessId)
+      .then((data) => alive && setSkills((m) => ({ ...m, [businessId]: data })))
+      .catch((e) => alive && setSkillError(e.message));
+    return () => {
+      alive = false;
+    };
+  }, [businessId, localOverrides]);
+
+  const saveSkill = async (markdown) => {
+    const code = TASK_CODES[businessId];
+    if (!apiEnabled) {
+      parseSkill(code, markdown);
+      setLocalOverrides((o) => ({ ...o, [code]: markdown }));
+      notify('회비 기준을 이 브라우저에 반영했습니다. (서버 미연결: 새로고침하면 원본으로 돌아갑니다)');
+      setSkillOpen(false);
+      return;
+    }
+    try {
+      const data = await api.saveSkill(code, markdown, user.id);
+      setSkills((m) => ({ ...m, [businessId]: data }));
+      notify('회비 기준(skill.md)을 저장했습니다. 다음 산출부터 적용됩니다.');
+      setSkillOpen(false);
+    } catch (e) {
+      notify(e.message, 'error');
+    }
+  };
+
+  const resetSkill = async () => {
+    const code = TASK_CODES[businessId];
+    if (!apiEnabled) {
+      setLocalOverrides(({ [code]: _, ...rest }) => rest);
+      notify('원본 skill.md로 되돌렸습니다.');
+      setSkillOpen(false);
+      return;
+    }
+    try {
+      const data = await api.resetSkill(code, user.id);
+      setSkills((m) => ({ ...m, [businessId]: data }));
+      notify('원본 skill.md로 되돌렸습니다.');
+      setSkillOpen(false);
+    } catch (e) {
+      notify(e.message, 'error');
+    }
+  };
   // ── 기간 검증: 각 날짜가 실제 날짜인지, From이 To보다 늦지 않은지 ──
   const fromCheck = parseDate(fromText);
   const toCheck = parseDate(toText);
@@ -134,19 +214,34 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
 
   const removeIssue = (id) => updateDraft({ issues: draft.issues.filter((i) => i.id !== id) });
 
+  // 산출: 서버가 있으면 POST /api/v1/fees/calculate (SkillEngineService), 없으면 브라우저에서 같은 수식으로 계산
   const runCalculation = () => {
+    if (!skill) {
+      notify(skillError ?? '회비 기준(skill.md)을 불러오는 중입니다. 잠시 후 다시 시도해 주세요.', 'error');
+      return;
+    }
+    const k = key;
+    const issues = draft.issues;
+    const used = { calcType: skill.calcType, formula: skill.formula, summary: skill.summary };
     setLoadingStep(0);
     later(() => setLoadingStep(1), 550);
     later(() => setLoadingStep(2), 1100);
-    later(() => {
-      const rows = calculateFees({ businessId, from, to, issues: draft.issues });
-      setRuns((r) => ({
-        ...r,
-        [key]: { businessId, from, to, rows, issues: draft.issues, createdAt: new Date().toLocaleString('ko-KR') },
-      }));
-      setLoadingStep(-1);
-      notify('AI 회비 초안 산출이 완료되었습니다.');
-    }, 1700);
+    const compute = apiEnabled
+      ? api
+          .calculate({ businessId, from, to, issues: issues.map((i) => i.text), requestedBy: user.id })
+          .then((res) => ({ rows: res.rows, used: { ...used, calcType: res.calcType, formula: res.formula } }))
+      : new Promise((resolve) => resolve({ rows: calculateFees({ businessId, from, to, issues, skill }), used }));
+    const minDelay = new Promise((resolve) => later(resolve, 1700));
+    Promise.all([compute, minDelay])
+      .then(([{ rows, used: applied }]) => {
+        setRuns((r) => ({
+          ...r,
+          [k]: { businessId, from, to, rows, issues, skill: applied, createdAt: new Date().toLocaleString('ko-KR') },
+        }));
+        notify('skill.md 수식으로 AI 회비 초안 산출이 완료되었습니다.');
+      })
+      .catch((e) => notify(`산출하지 못했습니다: ${e.message}`, 'error'))
+      .finally(() => setLoadingStep(-1));
   };
 
   // ── Step 3: 상태 변경·다운로드 ──
@@ -160,7 +255,13 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
     : [];
 
   const downloadForInstitutions = () => {
-    downloadReconciliation({ business, from, to, rows: visibleRows, issues: run.issues });
+    downloadReconciliation({
+      business: { ...business, summary: run.skill?.summary ?? business.summary },
+      from,
+      to,
+      rows: visibleRows,
+      issues: run.issues,
+    });
     if (isOperator) {
       updateRows((row) => (row.status === '대기' ? { ...row, status: '확인중' } : row));
       notify('대사용 파일을 내려받았습니다. 대기 중인 기관은 확인중으로 바뀌었습니다.');
@@ -274,24 +375,63 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
           </div>
 
           <div className="lg:col-span-3 rounded-lg border border-brand-100 bg-brand-50/60 p-4">
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex flex-wrap items-center gap-2 mb-2">
               <Info className="w-4 h-4 text-brand-500" />
               <p className="text-sm font-semibold text-brand-800">{business.name} 회비분담기준 요약</p>
-              <span className="ml-auto rounded bg-white border border-brand-200 px-2 py-0.5 text-[11px] text-brand-600">
-                {business.method === 'unit' ? '건당 단가 방식' : '총액 분담 방식'}
+              <span className="rounded bg-white border border-brand-200 px-2 py-0.5 text-[11px] text-brand-600">
+                {skill ? skill.calcType : '불러오는 중…'}
               </span>
+              {skill?.modified && (
+                <span className="rounded bg-amber-50 border border-amber-200 px-2 py-0.5 text-[11px] text-amber-700">수정됨</span>
+              )}
+              <button
+                onClick={() => setSkillOpen(true)}
+                disabled={!skill}
+                className="ml-auto flex items-center gap-1 rounded-lg border border-brand-200 bg-white px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100 disabled:opacity-50"
+              >
+                <FileCode2 className="w-3.5 h-3.5" /> 회비기준(skill.md) 원본 보기{canEditSkill ? '/수정' : ''}
+              </button>
             </div>
-            <ul className="space-y-1.5 text-sm text-slate-700">
-              {business.summary.map((s) => (
-                <li key={s} className="flex gap-2">
-                  <span className="mt-2 w-1 h-1 rounded-full bg-brand-400 shrink-0" />
-                  {s}
-                </li>
-              ))}
-            </ul>
+            {skillError ? (
+              <p role="alert" className="flex gap-2 text-xs text-rose-600">
+                <TriangleAlert className="w-4 h-4 shrink-0" />
+                회비 기준(skill.md)을 불러오지 못했습니다: {skillError}
+              </p>
+            ) : (
+              <>
+                <ul className="space-y-1.5 text-sm text-slate-700">
+                  {(skill?.summary ?? business.summary).map((s) => (
+                    <li key={s} className="flex gap-2">
+                      <span className="mt-2 w-1 h-1 rounded-full bg-brand-400 shrink-0" />
+                      {s}
+                    </li>
+                  ))}
+                </ul>
+                {skill && (
+                  <p className="mt-3 text-[11px] text-slate-500">
+                    정산 수식 ({TASK_CODES[businessId]}.md){' '}
+                    <code className="break-all rounded bg-white border border-slate-200 px-1.5 py-0.5 font-mono text-brand-800">
+                      {skill.formula.replace(/\s+/g, ' ')}
+                    </code>
+                  </p>
+                )}
+              </>
+            )}
           </div>
         </div>
       </Card>
+
+      {skillOpen && skill && (
+        <SkillModal
+          key={`${businessId}-${skill.updatedAt ?? ''}-${skill.modified}`}
+          business={business}
+          skill={skill}
+          canEdit={canEditSkill}
+          onClose={() => setSkillOpen(false)}
+          onSave={saveSkill}
+          onReset={resetSkill}
+        />
+      )}
 
       {/* STEP 2 */}
       {isOperator && (
@@ -501,6 +641,7 @@ export default function FeeCalculation({ user, runs, setRuns, notify, allowedTas
               </span>
               <span>산출일시 {run.createdAt}</span>
               <span>반영 이슈 {run.issues.length}건</span>
+              {run.skill && <span>적용 기준 {run.skill.calcType} (skill.md)</span>}
               {isOperator && <span className="text-brand-500">대사 상태 배지를 누르면 상태가 바뀝니다.</span>}
             </div>
             <div className="overflow-x-auto rounded-lg border border-slate-200">

@@ -1,8 +1,6 @@
 package com.kftc.feecalc.domain.fee.service;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,7 +22,6 @@ import com.kftc.feecalc.domain.fee.dto.InstitutionResponse;
 import com.kftc.feecalc.domain.fee.dto.ParsedIssue;
 import com.kftc.feecalc.domain.fee.entity.AiIssue;
 import com.kftc.feecalc.domain.fee.entity.Business;
-import com.kftc.feecalc.domain.fee.entity.CalcMethod;
 import com.kftc.feecalc.domain.fee.entity.FeeCalculation;
 import com.kftc.feecalc.domain.fee.entity.FeeCalculationItem;
 import com.kftc.feecalc.domain.fee.entity.Institution;
@@ -37,9 +34,8 @@ import lombok.RequiredArgsConstructor;
 
 /**
  * 회비 산출.
- * 1) 기관별 기준 실적(업로드 또는 시연용) → 2) AI 이슈 차감 → 3) 방식별 회비 계산
- * - 건당 단가(UNIT): 최종 인정 건수 × 단가
- * - 총액 분담(RATIO): 기간 환산 총액을 인정 건수 비율로 나누고, 원 미만은 최대잔여법으로 배정해 합계 = 총액을 보장
+ * 1) 기관별 기준 실적(업로드 또는 시연용) → 2) AI 이슈 차감 → 3) 업무별 skill.md 의 SpEL 수식으로 회비 계산
+ * 산정 방식(구간 단가, 총액 분담, 기본료 등)은 Java 코드가 아니라 skill.md 에만 있다. {@link SkillEngineService} 참고
  */
 @Service
 @RequiredArgsConstructor
@@ -53,6 +49,7 @@ public class FeeCalculationService {
     private final DemoVolumeGenerator demoVolumeGenerator;
     private final UserService userService;
     private final ApplicationEventPublisher eventPublisher;
+    private final SkillEngineService skillEngine;
 
     // ---------- 기준 정보 ----------
 
@@ -83,7 +80,9 @@ public class FeeCalculationService {
 
     @Transactional
     public CalculationResponse calculate(CalculationRequest req) {
-        Business business = getBusiness(req.businessId());
+        // businessId 에는 업무 ID(openbanking)나 skill.md 업무 코드(OPEN_BANKING) 모두 쓸 수 있다
+        Business business = getBusiness(skillEngine.businessIdOf(req.businessId()));
+        SkillEngineService.ParsedSkill skill = skillEngine.getSkill(business.getCode());
         if (req.requestedBy() != null && !req.requestedBy().isBlank()) {
             userService.checkCalculatePermission(req.requestedBy(), business.getCode());
         }
@@ -97,8 +96,9 @@ public class FeeCalculationService {
                 .periodFrom(period.from())
                 .periodTo(period.to())
                 .periodScale(scale)
-                .appliedUnitPrice(business.getMethod() == CalcMethod.UNIT ? business.getUnitPrice() : null)
-                .appliedTotalFee(business.getMethod() == CalcMethod.RATIO ? Math.round(business.getTotalFee() * scale) : null)
+                .skillCode(skill.taskCode())
+                .appliedCalcType(skill.calcType())
+                .appliedFormula(skill.formula())
                 .source(uploaded ? "UPLOAD" : "DEMO")
                 .uploadFileName(req.uploadFileName())
                 .calculatedBy(req.requestedBy())
@@ -139,13 +139,9 @@ public class FeeCalculationService {
                     .build());
         }
 
-        // 3) 회비 계산
-        if (business.getMethod() == CalcMethod.UNIT) {
-            long price = business.getUnitPrice();
-            calc.getItems().forEach(i -> i.applyFee(i.getFinalCount() * price, price + "원/건"));
-        } else {
-            allocateByRatio(calc.getItems(), calc.getAppliedTotalFee());
-        }
+        // 3) 회비 계산: skill.md 수식 실행
+        applySkill(calc.getItems(), skill, scale);
+        calc.applyTotalFee(calc.getTotalFeeAmount());
 
         FeeCalculation saved = calculationRepository.save(calc);
         eventPublisher.publishEvent(new FeeCalculatedEvent(saved.getId()));
@@ -183,32 +179,28 @@ public class FeeCalculationService {
         return result;
     }
 
-    /** 총액을 인정 건수 비율로 나눈다. 원 미만은 버린 뒤 남은 원을 나머지가 큰 기관부터 1원씩 배정한다. */
-    static void allocateByRatio(List<FeeCalculationItem> items, long totalFee) {
-        long totalFinal = items.stream().mapToLong(FeeCalculationItem::getFinalCount).sum();
-        if (totalFinal == 0) {
-            items.forEach(i -> i.applyFee(0, "0.00%"));
-            return;
-        }
-        long[] fees = new long[items.size()];
-        List<long[]> remainders = new ArrayList<>(); // [index, remainder]
-        long assigned = 0;
-        for (int idx = 0; idx < items.size(); idx++) {
-            long fc = items.get(idx).getFinalCount();
-            // totalFee(억 단위) × fc(백만 단위)는 long 범위 안이다
-            fees[idx] = Math.multiplyExact(totalFee, fc) / totalFinal;
-            remainders.add(new long[] {idx, Math.multiplyExact(totalFee, fc) % totalFinal});
-            assigned += fees[idx];
-        }
-        long left = totalFee - assigned;
-        remainders.sort(Comparator.<long[]>comparingLong(r -> r[1]).reversed().thenComparingLong(r -> r[0]));
-        for (int k = 0; k < left; k++) {
-            fees[(int) remainders.get(k)[0]]++;
-        }
+    /**
+     * 기관별로 skill.md 수식을 실행해 회비를 매긴다. 표시 단위가 "원/건"이면 실효 단가(회비 ÷ 인정 건수),
+     * 그 밖에는 회비 합계 대비 비율을 rateLabel 로 남긴다.
+     */
+    private void applySkill(List<FeeCalculationItem> items, SkillEngineService.ParsedSkill skill, double scale) {
+        List<Long> fees = skillEngine.calculateAll(skill.taskCode(),
+                items.stream().map(i -> new SkillEngineService.Counts(i.getBaseCount(), i.getDeduction(), i.getFinalCount()))
+                        .toList(),
+                scale);
+        long feeSum = fees.stream().mapToLong(Long::longValue).sum();
+        boolean perCount = skill.rateUnit().contains("건");
         for (int idx = 0; idx < items.size(); idx++) {
             FeeCalculationItem item = items.get(idx);
-            double share = (double) item.getFinalCount() / totalFinal * 100;
-            item.applyFee(fees[idx], String.format("%.2f%%", share));
+            long fee = fees.get(idx);
+            String label;
+            if (perCount) {
+                double unit = item.getFinalCount() == 0 ? 0 : (double) fee / item.getFinalCount();
+                label = (unit == Math.rint(unit) ? String.format("%,.0f", unit) : String.format("%,.2f", unit)) + "원/건";
+            } else {
+                label = String.format("%.2f%%", feeSum == 0 ? 0 : (double) fee / feeSum * 100);
+            }
+            item.applyFee(fee, label);
         }
     }
 

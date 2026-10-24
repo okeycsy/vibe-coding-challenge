@@ -64,4 +64,15 @@ export const api = {
   requestTask: (id, taskId, reason) => request('POST', `/api/users/${id}/task-requests`, { businessCode: taskId, reason }),
   approveTaskRequest: (requestId) => request('POST', `/api/task-requests/${requestId}/approve`),
   rejectTaskRequest: (requestId) => request('POST', `/api/task-requests/${requestId}/reject`),
+
+  // 업무별 skill.md (taskCode: OPEN_BANKING 또는 업무 ID openbanking)
+  skill: (taskCode) => request('GET', `/api/v1/fees/skill/${taskCode}`),
+  saveSkill: (taskCode, markdown, updatedBy) => request('PUT', `/api/v1/fees/skill/${taskCode}`, { markdown, updatedBy }),
+  resetSkill: (taskCode, updatedBy) =>
+    request('DELETE', `/api/v1/fees/skill/${taskCode}?updatedBy=${encodeURIComponent(updatedBy)}`),
+  // skill.md 수식으로 산출 → 화면 결과 행 형태로
+  calculate: async (body) => {
+    const res = await request('POST', '/api/v1/fees/calculate', body);
+    return { ...res, rows: res.items.map(({ id, ...item }) => ({ ...item, status: '대기' })) };
+  },
 };

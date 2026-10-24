@@ -48,6 +48,7 @@ public class FeeExcelService {
 
     private final InstitutionRepository institutionRepository;
     private final FeeCalculationService calculationService;
+    private final SkillEngineService skillEngine;
 
     public record ExcelFile(String fileName, byte[] content) {
     }
@@ -166,7 +167,7 @@ public class FeeExcelService {
 
             Sheet detail = wb.createSheet("대사내역");
             writeRow(detail, 0, header, "기관코드", "기관명", "기준 실적", "AI 차감", "최종 인정 건수",
-                    biz.getMethod() == CalcMethod.UNIT ? "단가" : "분담률", "산출 회비(원)", "차감 사유");
+                    "적용 단가/분담률", "산출 회비(원)", "차감 사유");
             int r = 1;
             for (FeeCalculationItem i : calc.getItems()) {
                 writeRow(detail, r++, null, i.getBankCode(), i.getInstitutionName(), i.getBaseCount(), i.getDeduction(),
@@ -183,19 +184,26 @@ public class FeeExcelService {
             writeRow(basis, b++, header, "항목", "내용");
             writeRow(basis, b++, null, "업무", biz.getName());
             writeRow(basis, b++, null, "산출 기간", period.label());
-            writeRow(basis, b++, null, "산출 방식", biz.getMethod().getLabel());
-            if (biz.getMethod() == CalcMethod.UNIT) {
+            if (calc.getAppliedFormula() != null) {
+                writeRow(basis, b++, null, "산출 방식", calc.getAppliedCalcType() + " (" + calc.getSkillCode() + ".md)");
+                writeRow(basis, b++, null, "정산 수식(SpEL)", calc.getAppliedFormula().replaceAll("\\s+", " "));
+                writeRow(basis, b++, null, "회비 합계(원)", calc.getTotalFeeAmount());
+                writeRow(basis, b++, null, "원 단위 처리", "원 미만 버림 후 최대잔여법으로 배정(합계 = 수식 결과 합계의 반올림)");
+            } else if (biz.getMethod() == CalcMethod.UNIT) {
+                writeRow(basis, b++, null, "산출 방식", biz.getMethod().getLabel());
                 writeRow(basis, b++, null, "건당 단가(원)", calc.getAppliedUnitPrice());
             } else {
+                writeRow(basis, b++, null, "산출 방식", biz.getMethod().getLabel());
                 writeRow(basis, b++, null, "기간 총액(원)", calc.getAppliedTotalFee());
-                writeRow(basis, b++, null, "원 단위 처리", "원 미만 버림 후 최대잔여법으로 배정(합계 = 총액)");
             }
             if (period.quarter() == 0) {
                 writeRow(basis, b++, null, "기간 환산", period.days() + "일 ÷ " + Period.QUARTER_DAYS + "일");
             }
             writeRow(basis, b++, null, "실적 출처", "UPLOAD".equals(calc.getSource())
                     ? "엑셀 업로드 (" + calc.getUploadFileName() + ")" : "시연용 예시 실적");
-            for (String line : biz.getSummary()) {
+            List<String> summary = calc.getSkillCode() != null
+                    ? skillEngine.getSkill(calc.getSkillCode()).summary() : biz.getSummary();
+            for (String line : summary) {
                 writeRow(basis, b++, null, "분담기준", line);
             }
             autosize(basis, 2);

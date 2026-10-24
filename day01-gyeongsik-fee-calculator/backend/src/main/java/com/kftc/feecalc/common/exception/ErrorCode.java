@@ -18,6 +18,7 @@ public enum ErrorCode {
     ACCOUNT_PENDING(HttpStatus.FORBIDDEN, "가입 승인 대기 중인 계정입니다."),
     ACCOUNT_REJECTED(HttpStatus.FORBIDDEN, "가입이 반려된 계정입니다."),
     NO_TASK_PERMISSION(HttpStatus.FORBIDDEN, "해당 업무의 산출 권한이 없습니다."),
+    ADMIN_ONLY(HttpStatus.FORBIDDEN, "시스템관리자만 회비 기준(skill.md)을 수정할 수 있습니다."),
 
     MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "회원을 찾을 수 없습니다."),
     BUSINESS_NOT_FOUND(HttpStatus.NOT_FOUND, "업무를 찾을 수 없습니다."),
