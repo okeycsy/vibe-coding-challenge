@@ -29,11 +29,23 @@ public record SkillDetailResponse(
         String version,
         /** 초기 기준과 다르면 true */
         boolean modified,
-        String updatedBy) {
+        String updatedBy,
+        /** 연결된 md 파일명 */
+        String fileName,
+        /** 섹션·수식이 없어 아직 산출에 쓸 수 없으면 그 이유 (예: 막 추가한 업무), 쓸 수 있으면 null */
+        String parseError) {
 
-    public static SkillDetailResponse of(String taskName, String content, ParsedSkill p, SkillFileMeta m) {
+    public static SkillDetailResponse of(String taskName, String fileName, String content, ParsedSkill p,
+                                         SkillFileMeta m) {
         return new SkillDetailResponse(p.taskCode(), taskName, p.businessId(), content, p.formula(), p.summary(),
                 p.aiGuide(), p.calcType(), p.rateUnit(), m.lastModified(), m.size(), m.version(), m.modified(),
-                m.updatedBy());
+                m.updatedBy(), fileName, null);
+    }
+
+    /** 아직 작성 중인 skill.md: 원문만 주고 섹션은 비운다 */
+    public static SkillDetailResponse incomplete(String taskCode, String businessId, String taskName, String fileName,
+                                                 String content, String parseError, SkillFileMeta m) {
+        return new SkillDetailResponse(taskCode, taskName, businessId, content, "", List.of(), "", "", "",
+                m.lastModified(), m.size(), m.version(), m.modified(), m.updatedBy(), fileName, parseError);
     }
 }

@@ -80,6 +80,10 @@ export const api = {
   skill: (taskCode) => request('GET', `/api/v1/skills/${taskCode}`),
   saveSkill: (taskCode, content) => request('PUT', `/api/v1/skills/${taskCode}`, { content }),
   resetSkill: (taskCode) => request('POST', `/api/v1/skills/${taskCode}/reset`),
+  // 업무 관리 (추가·삭제는 시스템관리자만). 업무 1개 = md 파일 1개
+  tasks: () => request('GET', '/api/v1/tasks'),
+  createTask: (taskCode, name, fileName) => request('POST', '/api/v1/tasks', { taskCode, name, fileName }),
+  deleteTask: (taskCode) => request('DELETE', `/api/v1/tasks/${taskCode}`),
   // skill.md 수식으로 산출 → 화면 결과 행 형태로
   calculate: async (body) => {
     const res = await request('POST', '/api/v1/fees/calculate', body);

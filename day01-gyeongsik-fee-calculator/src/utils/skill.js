@@ -214,39 +214,145 @@ export function rateLabel(skill, fee, finalCount, feeSum) {
   return `${(feeSum ? (fee / feeSum) * 100 : 0).toFixed(2)}%`;
 }
 
-// ── 서버가 없을 때(Mock): 묶어 온 원본 + 화면에서 고친 내용(overrides)으로 서버 API와 같은 모양을 만든다 ──
+// ── 업무 목록: 업무 1개 = md 파일 1개 (서버 SkillFileService 의 tasks.json 과 같은 모양) ──
 export const businessIdOf = (taskCode) => Object.keys(TASK_CODES).find((id) => TASK_CODES[id] === taskCode);
 
-const contentOf = (code, overrides) => overrides[code]?.content ?? DEFAULT_SKILLS[code];
+// 기본 제공 업무 (초기 기준 skill.md 가 있다)
+export const builtInTasks = (businesses) =>
+  businesses.map((b) => ({
+    taskCode: TASK_CODES[b.id],
+    businessId: b.id,
+    name: b.name,
+    fileName: `${TASK_CODES[b.id]}.md`,
+    builtIn: true,
+    createdAt: null,
+    createdBy: null,
+  }));
 
-export function localSkillList(businesses, allowedTasks, overrides) {
-  return businesses.map((b) => {
-    const code = TASK_CODES[b.id];
-    const content = contentOf(code, overrides);
+// 새로 추가한 업무의 skill.md: 기본 템플릿 중 제목만 (서버 SkillFileService.titleTemplate 과 같다)
+export const titleTemplate = (task) => `# ${task.name} 회비 산정 기준 (${task.taskCode})\n`;
+
+// 제목 아래에 붙이는 나머지 기본 템플릿 (편집 화면의 '기본 섹션 넣기')
+export const SECTION_TEMPLATE = `
+- 업무명:
+- 산정 유형:
+- 표시 단위: 원/건
+
+## 1. 비즈니스 규칙 요약
+
+- 
+
+## 2. AI 예외 차감 지침
+
+- 
+
+## 3. 정산 수식
+
+변수: \`#finalCount\` 최종 인정 건수, \`#periodScale\` 기간 환산 비율(분기 = 1).
+
+\`\`\`formula
+#finalCount * 0
+\`\`\`
+`;
+
+const defaultContent = (task) => (task.builtIn ? DEFAULT_SKILLS[task.taskCode] : titleTemplate(task));
+const contentOf = (task, overrides) => overrides[task.taskCode]?.content ?? defaultContent(task);
+const isReady = (task, content) => {
+  try {
+    parseSkill(task.taskCode, content);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// 업무 추가 입력 검사 (서버 SkillFileService.create 와 같은 규칙). 문제가 있으면 Error, 통과하면 정리한 값
+const NEW_CODE = /^[A-Z][A-Z0-9_]{1,29}$/;
+const FILE_BASE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,49}$/;
+export function checkNewTask(tasks, form) {
+  const taskCode = form.taskCode.trim().toUpperCase();
+  const name = form.name.trim();
+  if (!NEW_CODE.test(taskCode)) {
+    throw Object.assign(new Error('업무 코드는 영문 대문자로 시작하는 영문 대문자·숫자·밑줄(_) 2~30자로 입력해 주세요.'), { field: 'taskCode' });
+  }
+  if (!name || name.length > 50) throw Object.assign(new Error('업무명은 1~50자로 입력해 주세요.'), { field: 'name' });
+  const base = (form.fileName.trim() || taskCode).replace(/\.md$/i, '');
+  if (!FILE_BASE.test(base)) {
+    throw Object.assign(
+      new Error('md 파일명은 영문·숫자로 시작하는 영문·숫자·밑줄(_)·하이픈(-) 50자 이하로 입력해 주세요. (예: NEW_TASK.md)'),
+      { field: 'fileName' },
+    );
+  }
+  const fileName = `${base}.md`;
+  const businessId = taskCode.toLowerCase();
+  for (const t of tasks) {
+    if (t.taskCode === taskCode || t.businessId.toLowerCase() === businessId) {
+      throw Object.assign(new Error(`이미 있는 업무 코드입니다: ${taskCode}`), { field: 'taskCode' });
+    }
+    if (t.name === name) throw Object.assign(new Error(`이미 있는 업무명입니다: ${name}`), { field: 'name' });
+    if (t.fileName.toLowerCase() === fileName.toLowerCase()) {
+      throw Object.assign(
+        new Error(`${fileName} 파일은 이미 ${t.name} 업무에 연결되어 있습니다. 한 파일은 한 업무에만 연결할 수 있습니다.`),
+        { field: 'fileName' },
+      );
+    }
+  }
+  return { taskCode, businessId, name, fileName };
+}
+
+// ── 서버가 없을 때(Mock): 업무 목록 + 화면에서 고친 내용(overrides)으로 서버 API와 같은 모양을 만든다 ──
+export function localTaskList(tasks, overrides, members) {
+  return tasks.map((t) => {
+    const content = contentOf(t, overrides);
     return {
-      taskCode: code,
-      taskName: b.name,
-      businessId: b.id,
-      accessible: allowedTasks.includes(b.id),
-      lastModified: overrides[code]?.lastModified ?? null,
+      ...t,
+      lastModified: overrides[t.taskCode]?.lastModified ?? t.createdAt,
       size: new Blob([content]).size,
-      modified: content !== DEFAULT_SKILLS[code],
+      ready: isReady(t, content),
+      memberCount: members.filter((m) => m.role === 'operator' && m.tasks.includes(t.businessId)).length,
     };
   });
 }
 
-export function localSkillDetail(businessId, taskName, overrides) {
-  const code = TASK_CODES[businessId];
-  const content = contentOf(code, overrides);
+export function localSkillList(tasks, allowedTasks, overrides) {
+  return tasks.map((t) => {
+    const content = contentOf(t, overrides);
+    return {
+      taskCode: t.taskCode,
+      taskName: t.name,
+      businessId: t.businessId,
+      fileName: t.fileName,
+      accessible: allowedTasks.includes(t.businessId),
+      lastModified: overrides[t.taskCode]?.lastModified ?? t.createdAt,
+      size: new Blob([content]).size,
+      modified: content !== defaultContent(t),
+    };
+  });
+}
+
+// 섹션이 덜 채워진 파일(막 추가한 업무)도 열 수 있게 parseError 로 알려 준다 (서버 SkillDetailResponse 와 같다)
+export function localSkillDetail(task, overrides) {
+  const code = task.taskCode;
+  const content = contentOf(task, overrides);
+  let parsed;
+  let parseError = null;
+  try {
+    parsed = parseSkill(code, content);
+  } catch (e) {
+    parseError = e.message;
+    parsed = { taskCode: code, formula: '', summary: [], aiGuide: '', calcType: '', rateUnit: '' };
+  }
   return {
-    ...parseSkill(code, content),
-    taskName,
-    businessId,
+    ...parsed,
+    taskName: task.name,
+    businessId: task.businessId,
+    fileName: task.fileName,
     content,
-    lastModified: overrides[code]?.lastModified ?? null,
-    updatedBy: overrides[code]?.updatedBy ?? null,
+    parseError,
+    lastModified: overrides[code]?.lastModified ?? task.createdAt,
+    updatedBy: overrides[code]?.updatedBy ?? task.createdBy,
     size: new Blob([content]).size,
-    modified: content !== DEFAULT_SKILLS[code],
+    modified: content !== defaultContent(task),
   };
 }
 

@@ -24,7 +24,7 @@ import { downloadReconciliation, downloadRevenueResolution } from '../utils/exce
 import { Card, Select, StatusBadge } from './ui';
 import DateField from './DateField';
 import { api, apiEnabled } from '../utils/api';
-import { TASK_CODES, localSkillDetail } from '../utils/skill';
+import { TASK_CODES, builtInTasks, localSkillDetail } from '../utils/skill';
 
 const NEXT_STATUS = { 대기: '확인중', 확인중: '완료', 완료: '대기' };
 const LOADING_STEPS = ['Raw Data 검증 중…', 'AI 이슈 해석 및 예외 건 차감 중…', '회비분담기준 적용 중…'];
@@ -52,6 +52,7 @@ export default function FeeCalculation({
   skillOverrides,
   skillVersion,
   onOpenSkill,
+  businesses = BUSINESSES,
 }) {
   // 결제원 담당자(일반담당자·시스템관리자)는 산출, 참가기관은 조회·대사 회신만 한다.
   const isOperator = user.side === 'kftc';
@@ -78,14 +79,15 @@ export default function FeeCalculation({
 
   // 역할이 바뀌어 지금 업무에 권한이 없어지면 선택 가능한 첫 업무로 옮긴다.
   useEffect(() => {
-    if (!canSelect(businessId)) {
-      const first = BUSINESSES.find((b) => canSelect(b.id));
+    if (!canSelect(businessId) || !businesses.some((b) => b.id === businessId)) {
+      const first = businesses.find((b) => canSelect(b.id));
       if (first) setBusinessId(first.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user.role, allowedTasks]);
+  }, [user.role, allowedTasks, businesses]);
 
-  const business = BUSINESSES.find((b) => b.id === businessId);
+  // 업무 관리에서 지운 업무는 목록에서 빠진다 (옮겨 가기 전 한 번 그릴 때는 원래 업무 정보를 쓴다)
+  const business = businesses.find((b) => b.id === businessId) ?? BUSINESSES.find((b) => b.id === businessId);
   const skill = skills[businessId];
 
   // Step 1에서 업무를 고르면 해당 skill.md를 불러온다. 회비기준 관리에서 저장하면(skillVersion) 다시 읽는다.
@@ -99,7 +101,7 @@ export default function FeeCalculation({
     }
     if (!apiEnabled) {
       try {
-        setSkills((m) => ({ ...m, [businessId]: localSkillDetail(businessId, business.name, skillOverrides) }));
+        setSkills((m) => ({ ...m, [businessId]: localSkillDetail(builtInTasks([business])[0], skillOverrides) }));
       } catch (e) {
         setSkillError(e.message);
       }
@@ -258,7 +260,7 @@ export default function FeeCalculation({
             <div className="flex items-end gap-2">
               <div className="flex-1">
                 <Select label="업무 선택" value={businessId} onChange={setBusinessId}>
-                  {BUSINESSES.map((b) => (
+                  {businesses.map((b) => (
                     <option key={b.id} value={b.id} disabled={!canSelect(b.id)}>
                       {b.name}
                       {canSelect(b.id) ? '' : ' (권한 없음 - 신청 필요)'}

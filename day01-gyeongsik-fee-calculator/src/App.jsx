@@ -9,6 +9,8 @@ import { Toast } from './components/ui';
 import LoginPage from './components/LoginPage';
 import { api, apiEnabled, setEmployeeId } from './utils/api';
 import SkillManagementPage from './components/SkillManagementPage';
+import TaskManagementPage from './components/TaskManagementPage';
+import { builtInTasks } from './utils/skill';
 
 const MAX_ATTEMPTS = 5;
 // 하위 메뉴가 각각 한 페이지인 메뉴와 그 첫 페이지
@@ -32,6 +34,8 @@ export default function App() {
   const [skillOverrides, setSkillOverrides] = useState({});
   const [skillVersion, setSkillVersion] = useState(0);
   const [skillTarget, setSkillTarget] = useState(null);
+  // 업무 목록 (업무 1개 = md 파일 1개). 관리자가 업무 관리에서 추가·삭제한다. 서버가 있으면 서버 목록을 받는다.
+  const [tasks, setTasks] = useState(() => builtInTasks(BUSINESSES));
   const [toast, setToast] = useState(null);
   const toastTimer = useRef();
 
@@ -59,7 +63,9 @@ export default function App() {
   const user = member ? { ...ROLES[member.role], ...member } : null;
   // 시스템관리자는 전체 업무, 일반담당자는 승인된 업무만 산출할 수 있다. 참가기관은 산출하지 않는다.
   const allowedTasks =
-    role === 'sysadmin' ? BUSINESSES.map((b) => b.id) : role === 'operator' ? (member?.tasks ?? []) : [];
+    role === 'sysadmin' ? tasks.map((t) => t.businessId) : role === 'operator' ? (member?.tasks ?? []) : [];
+  // 회비 산출은 실적 예시 데이터가 있는 기본 업무 중 지우지 않은 업무만 (새 업무는 md 기준만 관리한다)
+  const calcBusinesses = BUSINESSES.filter((b) => tasks.some((t) => t.businessId === b.id));
 
   const notify = (message, tone = 'info') => {
     clearTimeout(toastTimer.current);
@@ -77,6 +83,8 @@ export default function App() {
     setMembers(ms);
     setTaskRequests(rs);
     setLoginLocks(locks);
+    // 업무 관리 API가 아직 배포되지 않은 서버면 기본 업무 목록을 그대로 쓴다
+    api.tasks().then(setTasks).catch(() => {});
   };
   // 화면은 바로 바꾸고 서버에 같은 변경을 보낸다. 서버가 거절하면 알리고 서버 값으로 되돌린다.
   const persist = (call) => {
@@ -230,6 +238,35 @@ export default function App() {
     notify(`${target.name}님의 ${bizName(taskId)} 권한을 ${granted ? '부여' : '해제'}했습니다.${mmNote(target)}`);
   };
 
+  // ── 업무 관리 (관리자): 추가·삭제 ──
+  // 서버가 있으면 서버에서 먼저 처리하고(파일 생성·삭제) 결과를 반영한다. 실패하면 Error를 던져 화면이 보여 준다.
+  const addTask = async ({ taskCode, businessId, name, fileName }) => {
+    if (apiEnabled) {
+      const created = await api.createTask(taskCode, name, fileName);
+      setTasks((ts) => [...ts, created]);
+      return created;
+    }
+    const created = { taskCode, businessId, name, fileName, builtIn: false, createdAt: nowLabel(), createdBy: member.id };
+    setTasks((ts) => [...ts, created]);
+    return created;
+  };
+
+  const deleteTask = async (taskCode) => {
+    const task = tasks.find((t) => t.taskCode === taskCode);
+    if (apiEnabled) await api.deleteTask(taskCode);
+    setTasks((ts) => ts.filter((t) => t.taskCode !== taskCode));
+    setSkillOverrides(({ [taskCode]: _, ...rest }) => rest);
+    // 그 업무의 산출 권한과 승인 대기 신청도 정리한다 (서버도 같은 처리를 한다)
+    setMembers((ms) => ms.map((m) => ({ ...m, tasks: m.tasks.filter((t) => t !== task.businessId) })));
+    setTaskRequests((rs) =>
+      rs.map((r) =>
+        r.taskId === task.businessId && r.status === '승인 대기중' ? { ...r, status: '반려', decidedAt: nowLabel() } : r,
+      ),
+    );
+    if (skillTarget === task.businessId) setSkillTarget(null);
+    setSkillVersion((v) => v + 1);
+  };
+
   // [ 키로 사이드바 접기/펴기. 입력창에 타이핑 중이거나 조합키와 함께 누른 경우는 무시한다.
   useEffect(() => {
     if (!isLoggedIn) return undefined;
@@ -309,6 +346,7 @@ export default function App() {
               <FeeCalculation
                 {...shared}
                 allowedTasks={allowedTasks}
+                businesses={calcBusinesses}
                 onRequestTask={() => selectMenu('mypage', 'mypage-tasks')}
                 skillOverrides={skillOverrides}
                 skillVersion={skillVersion}
@@ -323,6 +361,7 @@ export default function App() {
                 user={user}
                 notify={notify}
                 allowedTasks={allowedTasks}
+                tasks={tasks}
                 target={skillTarget}
                 overrides={skillOverrides}
                 setOverrides={setSkillOverrides}
@@ -345,7 +384,21 @@ export default function App() {
                 loginAt={loginAt}
               />
             )}
-            {menu === 'admin' && canSee('admin') && (
+            {menu === 'admin' && canSee('admin') && activeSection === 'admin-business' && (
+              <TaskManagementPage
+                tasks={tasks}
+                members={members}
+                overrides={skillOverrides}
+                onAddTask={addTask}
+                onDeleteTask={deleteTask}
+                onOpenSkill={(businessId) => {
+                  setSkillTarget(businessId);
+                  selectMenu('skills');
+                }}
+                notify={notify}
+              />
+            )}
+            {menu === 'admin' && canSee('admin') && activeSection !== 'admin-business' && (
               <AdminSettings
                 page={activeSection ?? 'admin-members'}
                 me={member}

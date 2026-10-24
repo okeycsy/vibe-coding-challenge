@@ -54,7 +54,7 @@ public class SkillAccessControlService {
 
     private boolean canAccess(Member member, String taskCode) {
         return member.getStatus() == MemberStatus.ACTIVE
-                && member.canCalculate(SkillFileService.businessIdOf(taskCode));
+                && member.canCalculate(fileService.businessIdOf(taskCode));
     }
 
     private Member member(String employeeId) {

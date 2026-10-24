@@ -1,9 +1,6 @@
 package com.kftc.feecalc.domain.fee.controller;
 
 import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -15,14 +12,14 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.kftc.feecalc.common.dto.ApiResponse;
+import com.kftc.feecalc.common.exception.BusinessException;
 import com.kftc.feecalc.domain.fee.dto.SkillDetailResponse;
 import com.kftc.feecalc.domain.fee.dto.SkillSaveRequest;
 import com.kftc.feecalc.domain.fee.dto.SkillSummaryResponse;
-import com.kftc.feecalc.domain.fee.entity.Business;
-import com.kftc.feecalc.domain.fee.repository.BusinessRepository;
 import com.kftc.feecalc.domain.fee.service.SkillAccessControlService;
 import com.kftc.feecalc.domain.fee.service.SkillEngineService;
 import com.kftc.feecalc.domain.fee.service.SkillFileService;
+import com.kftc.feecalc.domain.fee.service.SkillFileService.TaskEntry;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -41,17 +38,14 @@ public class SkillManagementController {
     private final SkillFileService fileService;
     private final SkillAccessControlService accessControl;
     private final SkillEngineService skillEngine;
-    private final BusinessRepository businessRepository;
 
     /** 전체 업무와 접근 가능 여부, 파일 상태 (내용 없음) */
     @GetMapping
     public ApiResponse<List<SkillSummaryResponse>> list(
             @RequestHeader(value = EMPLOYEE_HEADER, required = false) String employeeId) {
         List<String> accessible = accessControl.accessibleTaskCodes(employeeId);
-        Map<String, String> names = taskNames();
-        return ApiResponse.ok(fileService.taskCodes().stream()
-                .map(code -> SkillSummaryResponse.of(names.get(code), SkillFileService.businessIdOf(code),
-                        accessible.contains(code), fileService.meta(code)))
+        return ApiResponse.ok(fileService.tasks().stream()
+                .map(t -> SkillSummaryResponse.of(t, accessible.contains(t.taskCode()), fileService.meta(t.taskCode())))
                 .toList());
     }
 
@@ -85,17 +79,16 @@ public class SkillManagementController {
         return ApiResponse.ok("초기 기준 skill.md 로 되돌렸습니다.", detail(code));
     }
 
+    /** 섹션이 덜 채워진 파일(막 추가한 업무 등)도 열어서 고칠 수 있게 원문은 그대로 준다 */
     private SkillDetailResponse detail(String code) {
+        TaskEntry task = fileService.task(code);
         String content = fileService.read(code);
-        return SkillDetailResponse.of(taskNames().get(code), content,
-                SkillEngineService.parse(code, SkillFileService.businessIdOf(code), content), fileService.meta(code));
-    }
-
-    /** 업무 코드 → 업무명 */
-    private Map<String, String> taskNames() {
-        Map<String, String> byBusinessId = businessRepository.findAll().stream()
-                .collect(Collectors.toMap(Business::getCode, Business::getName));
-        return fileService.taskCodes().stream().collect(Collectors.toMap(Function.identity(),
-                code -> byBusinessId.getOrDefault(SkillFileService.businessIdOf(code), code)));
+        try {
+            return SkillDetailResponse.of(task.name(), task.fileName(), content,
+                    SkillEngineService.parse(code, task.businessId(), content), fileService.meta(code));
+        } catch (BusinessException e) {
+            return SkillDetailResponse.incomplete(code, task.businessId(), task.name(), task.fileName(), content,
+                    e.getMessage(), fileService.meta(code));
+        }
     }
 }

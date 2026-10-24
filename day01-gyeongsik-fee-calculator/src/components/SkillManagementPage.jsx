@@ -12,7 +12,6 @@ import {
   SquarePen,
   TriangleAlert,
 } from 'lucide-react';
-import { BUSINESSES } from '../data/mockData';
 import { api, apiEnabled } from '../utils/api';
 import { fmt } from '../utils/fee';
 import {
@@ -20,6 +19,7 @@ import {
   localSkillDetail,
   localSkillList,
   parseSkill,
+  SECTION_TEMPLATE,
   validateSkill,
 } from '../utils/skill';
 import { Card, Modal } from './ui';
@@ -48,6 +48,7 @@ export default function SkillManagementPage({
   setOverrides,
   onSaved,
   onRequestTask,
+  tasks,
 }) {
   const [list, setList] = useState([]);
   const [listError, setListError] = useState(null);
@@ -63,10 +64,9 @@ export default function SkillManagementPage({
 
   // ── 업무 목록 (권한이 바뀌면 다시 읽는다) ──
   const loadList = async () => {
-    if (!apiEnabled) return localSkillList(BUSINESSES, allowedTasks, overrides);
-    const rows = await api.skills();
-    // 서버 순서를 화면 업무 순서에 맞춘다
-    return BUSINESSES.map((b) => rows.find((r) => r.businessId === b.id)).filter(Boolean);
+    if (!apiEnabled) return localSkillList(tasks, allowedTasks, overrides);
+    // 서버의 업무 목록 순서(기본 업무 → 추가한 업무) 그대로
+    return api.skills();
   };
 
   useEffect(() => {
@@ -79,7 +79,7 @@ export default function SkillManagementPage({
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user.id, allowedTasks, overrides]);
+  }, [user.id, allowedTasks, overrides, tasks]);
 
   // 처음 열 때: 산출 화면에서 넘어온 업무 → 접근 가능한 첫 업무
   useEffect(() => {
@@ -98,12 +98,12 @@ export default function SkillManagementPage({
   // ── 업무 열기 ──
   const open = async (businessId, force = false) => {
     if (!force && dirty && !window.confirm('저장하지 않은 수정 내용이 있습니다. 다른 업무로 이동할까요?')) return;
-    const b = BUSINESSES.find((x) => x.id === businessId);
+    const task = tasks.find((t) => t.businessId === businessId);
     setSelected(businessId);
     setSaveError(null);
     setLoading(true);
     try {
-      const d = apiEnabled ? await api.skill(businessId) : localSkillDetail(businessId, b.name, overrides);
+      const d = apiEnabled ? await api.skill(businessId) : localSkillDetail(task, overrides);
       setDetail(d);
       setText(d.content);
     } catch (e) {
@@ -136,7 +136,7 @@ export default function SkillManagementPage({
         validateSkill(detail.taskCode, text);
         const next = { ...overrides, [detail.taskCode]: { content: text, lastModified: nowLabel(), updatedBy: user.id } };
         setOverrides(next);
-        setDetail(localSkillDetail(selected, detail.taskName, next));
+        setDetail(localSkillDetail(tasks.find((t) => t.businessId === selected), next));
       }
       onSaved();
       notify(`${detail.taskName} 회비분담기준(skill.md)이 성공적으로 저장 및 반영되었습니다.`);
@@ -162,7 +162,7 @@ export default function SkillManagementPage({
       } else {
         const { [detail.taskCode]: _, ...rest } = overrides;
         setOverrides(rest);
-        d = localSkillDetail(selected, detail.taskName, rest);
+        d = localSkillDetail(tasks.find((t) => t.businessId === selected), rest);
       }
       setDetail(d);
       setText(d.content);
@@ -226,7 +226,7 @@ export default function SkillManagementPage({
                         <span className="ml-auto rounded bg-amber-50 border border-amber-200 px-1.5 text-[10px] text-amber-700">수정됨</span>
                       )}
                     </div>
-                    <p className="mt-0.5 font-mono text-[11px] text-slate-400">{r.taskCode}.md</p>
+                    <p className="mt-0.5 font-mono text-[11px] text-slate-400">{r.fileName ?? `${r.taskCode}.md`}</p>
                     <div className="mt-1.5">
                       {r.accessible ? (
                         <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
@@ -264,7 +264,7 @@ export default function SkillManagementPage({
                 <div className="min-w-0">
                   <p className="font-semibold text-brand-900 flex items-center gap-2">
                     {detail.taskName} 회비분담기준
-                    <span className="font-mono text-xs font-normal text-slate-400">{detail.taskCode}.md</span>
+                    <span className="font-mono text-xs font-normal text-slate-400">{detail.fileName ?? `${detail.taskCode}.md`}</span>
                     {dirty && <span className="rounded bg-sky-50 border border-sky-200 px-1.5 text-[10px] text-sky-700">편집 중</span>}
                   </p>
                   <p className="text-[11px] text-slate-500 flex items-center gap-1">
@@ -328,8 +328,17 @@ export default function SkillManagementPage({
                   </div>
                 )}
                 {live?.error && !saveError && (
-                  <p className="flex items-center gap-1.5 text-xs text-amber-700">
+                  <p className="flex flex-wrap items-center gap-1.5 text-xs text-amber-700">
                     <TriangleAlert className="w-3.5 h-3.5" /> {live.error}
+                    {/* 막 추가한 업무처럼 제목만 있으면 나머지 기본 템플릿 섹션을 붙여 넣을 수 있다 */}
+                    {!/^##\s/m.test(text) && (
+                      <button
+                        onClick={() => setText(text.replace(/\s*$/, '\n') + SECTION_TEMPLATE)}
+                        className="ml-1 rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 hover:bg-amber-100"
+                      >
+                        기본 템플릿 섹션 넣기
+                      </button>
+                    )}
                   </p>
                 )}
 
@@ -380,7 +389,7 @@ export default function SkillManagementPage({
           <div className="flex gap-3">
             <Lock className="w-8 h-8 text-slate-400 shrink-0" />
             <div className="text-sm text-slate-700">
-              <p className="font-semibold">{lockedItem.taskName} ({lockedItem.taskCode}.md)</p>
+              <p className="font-semibold">{lockedItem.taskName} ({lockedItem.fileName ?? `${lockedItem.taskCode}.md`})</p>
               <p className="mt-1">{LOCKED_MSG}</p>
               <p className="mt-1 text-xs text-slate-500">권한이 승인되면 이 목록의 자물쇠가 풀리고 바로 열람·수정할 수 있습니다.</p>
             </div>
