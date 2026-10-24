@@ -1,5 +1,6 @@
-import { BUSINESSES, INSTITUTIONS, getBaseCounts } from '../data/mockData';
+import { INSTITUTIONS, getBaseCounts } from '../data/mockData';
 import { asQuarter, daysBetween } from './period';
+import { allocate, evaluateFormula, rateLabel } from './skill';
 
 export const fmt = (n) => Math.round(n).toLocaleString('ko-KR');
 
@@ -31,11 +32,10 @@ export function parseIssue(text) {
 // 분기 기준 값(실적·총액)에 곱할 비율. 정확히 한 분기면 1, 아니면 산출 기간 일수 ÷ 91일.
 export const periodScale = (from, to) => (asQuarter(from, to) ? 1 : daysBetween(from, to) / 91);
 
-export function calculateFees({ businessId, from, to, issues }) {
-  const biz = BUSINESSES.find((b) => b.id === businessId);
+// 서버가 없을 때 브라우저에서 산출한다. skill(parseSkill 결과)의 정산 수식을 기관마다 실행한다.
+export function calculateFees({ businessId, from, to, issues, skill }) {
   const scale = periodScale(from, to);
   const base = getBaseCounts(businessId, from, to, scale);
-  const totalFee = Math.round((biz.totalFee ?? 0) * scale);
 
   const rows = base.map(({ institutionId, baseCount }) => {
     const inst = INSTITUTIONS.find((i) => i.id === institutionId);
@@ -55,20 +55,26 @@ export function calculateFees({ businessId, from, to, issues }) {
     };
   });
 
-  const totalFinal = rows.reduce((s, r) => s + r.finalCount, 0);
-
-  return rows.map((r) => {
-    if (biz.method === 'unit') {
-      return { ...r, rateLabel: `${biz.unitPrice}원/건`, fee: r.finalCount * biz.unitPrice, status: '대기' };
-    }
-    const share = totalFinal ? r.finalCount / totalFinal : 0;
-    return {
-      ...r,
-      rateLabel: `${(share * 100).toFixed(2)}%`,
-      fee: Math.round(totalFee * share),
-      status: '대기',
-    };
-  });
+  const totalCount = rows.reduce((s, r) => s + r.finalCount, 0);
+  const fees = allocate(
+    rows.map((r) =>
+      evaluateFormula(skill.formula, {
+        rawCount: r.baseCount,
+        deductedCount: r.deduction,
+        finalCount: r.finalCount,
+        totalCount,
+        institutionCount: rows.length,
+        periodScale: scale,
+      }),
+    ),
+  );
+  const feeSum = fees.reduce((s, f) => s + f, 0);
+  return rows.map((r, idx) => ({
+    ...r,
+    rateLabel: rateLabel(skill, fees[idx], r.finalCount, feeSum),
+    fee: fees[idx],
+    status: '대기',
+  }));
 }
 
 export const runKey = (businessId, from, to) => `${businessId}-${from}-${to}`;

@@ -34,7 +34,7 @@
 - **업무별 산출 권한(RBAC)**: 일반담당자는 STEP 1 업무 드롭다운에서 승인된 업무만 고를 수 있고, 나머지는 「(권한 없음 - 신청 필요)」로 비활성화됩니다. 옆의 [+ 담당 업무 추가 신청]은 내 정보 관리로 이동합니다. 시스템관리자가 관리자 설정 › 업무 권한 관리에서 승인(또는 직접 부여)하면 바로 선택할 수 있고, 해제하면 바로 비활성화됩니다.
 - **산출 기간**: 시작일(From)·종료일(To)을 달력에서 고르거나 숫자 8자리(예: `20260701`)로 입력합니다(하이픈 자동 입력, `2026.7.1` 같은 값 붙여넣기 가능). 없는 날짜(2월 30일, 13월 등)와 형식 오류는 칸 아래에, From이 To보다 늦으면 경고 상자에 표시하고 산출을 막습니다. 기본값은 직전 분기이고 빠른 선택(직전 분기·최근 1개월·올해 누적·올해 지난 분기)이 있습니다. 정확히 한 분기가 아니면 분기 기준 실적·총액을 일수 ÷ 91일 비율로 환산합니다.
 - **AI 이슈 해석**: 문장에서 기관명(또는 A~H은행 가명)과 `N건`을 찾아 차감합니다. 시연용 가명 매핑은 A은행=신한은행, B은행=KB국민은행 … 순서입니다 (`src/data/mockData.js`).
-- **산출 방식**: 건당 단가 방식(오픈뱅킹·CMS·타행환)은 최종 인정 건수 × 단가, 총액 분담 방식(금거정·CD공동망)은 분기 총액 × 인정 건수 비율.
+- **산출 방식 (skill.md)**: 업무마다 `backend/src/main/resources/skills/<업무코드>.md`의 SpEL 수식으로 계산합니다. 오픈뱅킹 구간별 누진 단가, 금거정 총액 × 건수 비율, CMS 기본료 + 건당 단가, CD공동망 30% 균등 + 70% 실적 비례, 타행환 건당 단가 + 최저·최고 한도. STEP 1 요약 박스는 skill.md의 `## 1. 비즈니스 규칙 요약`과 수식을 보여 주고, [회비기준(skill.md) 원본 보기/수정]에서 원문·섹션·수식 시험 계산을 볼 수 있습니다(수정·원본 되돌리기는 시스템관리자만). 서버가 연결되어 있으면 skill.md 조회·수정과 산출을 `/api/v1/fees` API로 하고, 없으면 같은 파일을 화면에 묶어 브라우저에서 같은 규칙으로 계산합니다(수정은 새로고침 전까지만 유지). 자세한 규칙은 [backend/README.md](backend/README.md#fee-v1--apiv1fees-skillmd-기반-산출-엔진)
 - **대사 상태**: 결제원 뷰에서 상태 배지를 누르면 대기→확인중→완료로 바뀌고, 「참가기관 송부 대사용」을 내려받으면 대기 기관이 확인중으로 바뀝니다.
 - **Excel**: SheetJS(xlsx)로 브라우저에서 생성합니다. 대사용 파일은 대사내역·산출기준·AI 이슈 이력 3개 시트, 수입결의용은 결의일자·수입과목·거래처·금액·적요 형식입니다.
 
@@ -63,7 +63,7 @@ npm run build    # dist/ 에 정적 파일 생성
 로그인 화면·헤더 로고와 파비콘은 금융결제원 CI 심벌마크(`public/kftc-symbol.png`, 가이드 이미지에서 잘라 배경을 투명하게 처리)입니다. 색상은 심벌의 그라데이션에서 뽑았습니다. 짙은 블루 `#0E45AA`·`#0D389E`를 주색(`brand`), 밝은 블루 `#178CDC`를 보조색(`accent`)으로 쓰며 `tailwind.config.js`에서 관리합니다.
 
 ## 백엔드 API
-`backend/` 폴더에 Spring Boot API 서버(로그인·5회 잠금, 업무 권한 RBAC, 회비 산출·엑셀, 대사·수행률·Mattermost 알림)가 있습니다. 실행 방법과 API 목록은 [backend/README.md](backend/README.md)를 보세요. `VITE_API_BASE_URL`이 설정되면 로그인(5회 잠금 포함)·회원 관리(가입 승인·반려, 잠금 해제, 비밀번호 초기화, 부서·이메일·내선 수정)·업무 권한 신청·승인·부여·해제가 서버(`src/utils/api.js`)와 연동됩니다. 회원 이름·역할 변경, 회원 추가·삭제, 회비 산출·대사 화면은 아직 화면 안의 예시 데이터로만 동작합니다.
+`backend/` 폴더에 Spring Boot API 서버(로그인·5회 잠금, 업무 권한 RBAC, 회비 산출·엑셀, 대사·수행률·Mattermost 알림)가 있습니다. 실행 방법과 API 목록은 [backend/README.md](backend/README.md)를 보세요. `VITE_API_BASE_URL`이 설정되면 로그인(5회 잠금 포함)·회원 관리(가입 승인·반려, 잠금 해제, 비밀번호 초기화, 부서·이메일·내선 수정)·업무 권한 신청·승인·부여·해제가 서버(`src/utils/api.js`)와 연동됩니다. 회비 산출(STEP 3 결과)과 skill.md 조회·수정도 서버(`/api/v1/fees`)를 씁니다. 회원 이름·역할 변경, 회원 추가·삭제, 실적 업로드, 대사 상태는 아직 화면 안의 예시 데이터로만 동작합니다.
 
 ## 기술 스택
 Vite 5, React 18, Tailwind CSS 3, lucide-react, xlsx(SheetJS)
@@ -75,12 +75,14 @@ src/
   components/LoginPage.jsx         로그인 화면(로고 쇼케이스, 5회 잠금)
   components/Layout.jsx            헤더(권한 배지·로그아웃), 사이드바
   components/FeeCalculation.jsx    메인 화면 STEP 1~3
+  components/SkillModal.jsx        회비기준(skill.md) 원본 보기/수정 모달
   components/DateField.jsx         날짜 입력칸(숫자 입력·달력 선택)
   components/ResultsManagement.jsx 테스트/대사 결과 관리
   components/MyPage.jsx            내 정보 관리(마이페이지)
   components/AdminSettings.jsx     관리자 설정: 회원 관리(추가·수정·삭제·가입 승인·잠금 해제), 업무 권한 관리
   data/mockData.js                 역할·회원(계정)·업무·기관·기준 예시 데이터
-  utils/fee.js                     AI 이슈 파서, 회비 계산
+  utils/fee.js                     AI 이슈 파서, 회비 계산(서버 미연결 시)
+  utils/skill.js                   skill.md 해석·SpEL 수식 계산(서버와 같은 규칙)
   utils/excel.js                   Excel 2종 생성
   utils/period.js                  산출 기간 날짜 검증·분기 계산
 ```

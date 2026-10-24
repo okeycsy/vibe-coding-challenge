@@ -214,8 +214,8 @@ export function Sidebar({ role, active, activeSection, onSelect, adminBadge, sec
       {open && (
         <div className="mt-auto m-3 rounded-lg bg-brand-50 p-3 text-[11px] text-brand-600 leading-relaxed">
           {apiEnabled
-            ? '로그인·회원·업무 권한은 백엔드 서버와 연동되고, 회비 산출 화면은 아직 예시 데이터로 동작합니다.'
-            : '모든 화면은 백엔드 없이 예시 데이터(Mock)로 동작합니다.'}{' '}
+            ? '로그인·회원·업무 권한과 회비 산출(skill.md 수식)은 백엔드 서버와 연동되고, 실적은 예시 데이터를 씁니다.'
+            : '모든 화면은 백엔드 없이 예시 데이터(Mock)로 동작합니다. 회비는 묶어 둔 skill.md 수식으로 계산합니다.'}{' '}
           실제 실적·회비와 무관합니다.
         </div>
       )}

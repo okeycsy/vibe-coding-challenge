@@ -61,7 +61,7 @@ src/main/java/com/kftc/feecalc/
   domain/
     auth/       로그인, 5회 비밀번호 오류 잠금, 잠금 초기화, 접속 이력
     user/       회원 정보, 가입 승인, 담당 업무 권한(RBAC) 조회·추가 신청·관리자 승인
-    fee/        업무별 회비 기준, 엑셀 업로드/다운로드(POI), AI 예외 차감 산출
+    fee/        업무별 회비 기준, 엑셀 업로드/다운로드(POI), AI 예외 차감 산출, skill.md 수식 엔진(SkillEngineService)
     reconcile/  참가기관 대사·연동 테스트 결과, 수행률 집계, Mattermost 알림
 ```
 각 도메인은 `controller / service / entity / repository / dto`로 나눴습니다.
@@ -118,8 +118,27 @@ src/main/java/com/kftc/feecalc/
 - 실적: `counts`(업로드 결과)가 있으면 그 값, 없으면 업무·기간·기관을 시드로 한 시연용 실적(프론트 Mock과 같은 값)
 - 기간: 정확히 한 분기가 아니면 분기 기준 실적·총액을 `일수 ÷ 91일`로 환산
 - AI 이슈: 기관 이름·별칭과 `N건`을 모두 찾은 문장만 차감(기관 실적보다 많이 빼지 않음). 못 찾은 문장은 `applied: false`로 남김
-- 건당 단가: 최종 인정 건수 × 단가 / 총액 분담: 총액 × 기관 인정 건수 비율, 원 미만은 최대잔여법으로 배정해 **합계 = 총액**을 보장 (프론트는 기관별 반올림이라 1원 단위 차이가 날 수 있음)
+- 회비: 업무별 skill.md의 SpEL 수식으로 계산합니다 (아래 fee v1 참고). `PUT /businesses/{code}/rate`로 바꾼 단가·총액은 더 이상 산출에 쓰이지 않습니다
 - `requestedBy`를 주면 업무 산출 권한을 확인합니다(사용자는 부여받은 업무만, 참가기관은 불가)
+
+### fee v1 — `/api/v1/fees` (skill.md 기반 산출 엔진)
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| GET | `/skills` | 5개 업무의 skill.md 해석 결과 목록 |
+| GET | `/skill/{taskCode}` | skill.md 원문(`markdown`), 요약(`summary`), AI 차감 지침(`aiGuide`), 수식(`formula`), 산정 유형, 수정 여부. `taskCode`는 `OPEN_BANKING` 또는 업무 ID `openbanking` |
+| PUT | `/skill/{taskCode}` | skill.md 수정 `{ markdown, updatedBy }`. 시스템관리자(`admin`)만. 섹션 확인 + 예시 값으로 시험 계산을 통과해야 저장되고 다음 산출부터 바로 적용 |
+| DELETE | `/skill/{taskCode}?updatedBy=` | 원본 skill.md로 되돌리기 (시스템관리자만) |
+| POST | `/calculate` | `/api/fee/calculations`와 같은 요청으로 산출. 응답에 적용한 `skillCode`·`calcType`·`formula` 포함 |
+
+skill.md 엔진 (`SkillEngineService`)
+- 원본: `src/main/resources/skills/{OPEN_BANKING,FIN_INFO,CMS,CD_NET,INTERBANK}.md`. 업무 코드 ↔ 업무 ID 매핑은 `SkillEngineService.TASK_TO_BUSINESS`
+- 섹션: `## 1. 비즈니스 규칙 요약`(화면 요약 박스), `## 2. AI 예외 차감 지침`, `## 3. 정산 수식`(```` ```formula ```` 코드 블록 안 SpEL). 머리말의 `- 산정 유형:`·`- 표시 단위:`(원/건 또는 %)는 화면 배지와 결과 표 문구에 씁니다
+- 수식 변수: `#rawCount` 기본건수, `#deductedCount` AI 차감건수, `#finalCount` 최종인정건수, `#totalCount` 전체 기관 인정건수 합계, `#institutionCount` 참가기관 수, `#periodScale` 기간 환산 비율(분기 = 1)
+- 업무별 수식 패턴: 오픈뱅킹 구간별 누진 단가, 금거정 총액 × 건수 비율, CMS 기본료 + 건당 단가, CD공동망 30% 균등 + 70% 실적 비례, 타행환 건당 단가 + 최저·최고 한도
+- 원 단위: 기관별 수식 결과의 원 미만을 버리고, (결과 합계 반올림 − 버린 합계)를 원 미만이 큰 기관부터 1원씩 배정합니다. 건당 단가처럼 정수 결과는 그대로이고, 총액 분담은 합계 = 총액이 됩니다
+- 보안: 수식은 `StandardEvaluationContext`가 아니라 `SimpleEvaluationContext.forReadOnlyDataBinding()`으로 평가합니다. `T(java.lang.Runtime)` 같은 타입 참조, 생성자, 메서드 호출, 빈 참조가 막혀 수식으로 서버 코드를 실행할 수 없습니다
+- 정수끼리 나누면 SpEL은 소수점을 버립니다. 비율 계산은 `120000000.0`처럼 소수점을 붙여 씁니다
+- 저장: 화면에서 고친 내용은 메모리에 바로 반영되고, 환경변수 `SKILLS_DIR`(예: `./data/skills`)가 있으면 그 폴더에도 저장해 재기동 후에도 씁니다. 없으면 재기동 시 원본으로 돌아갑니다(Render 무료 플랜은 디스크가 유지되지 않으므로 `SKILLS_DIR`을 줘도 재배포·재기동 시 사라집니다)
 
 ### reconcile — `/api/reconcile`
 | 메서드 | 경로 | 설명 |

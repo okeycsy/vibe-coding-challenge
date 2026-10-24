@@ -47,9 +47,19 @@ public class FeeCalculation {
     /** 분기 기준 값에 곱한 비율 (정확히 한 분기면 1, 아니면 일수 ÷ 91) */
     private double periodScale;
 
-    /** 산출에 적용한 단가(UNIT) 또는 기간 환산 총액(RATIO) */
+    /** 산출에 적용한 단가(UNIT) 또는 기간 환산 총액(RATIO). skill.md 엔진 도입 후에는 appliedTotalFee = 회비 합계 */
     private Long appliedUnitPrice;
     private Long appliedTotalFee;
+
+    /** 산출에 적용한 skill.md 업무 코드·산정 유형·SpEL 수식 (나중에 기준이 바뀌어도 근거를 남긴다) */
+    @Column(length = 30)
+    private String skillCode;
+
+    @Column(length = 100)
+    private String appliedCalcType;
+
+    @Column(length = 2000)
+    private String appliedFormula;
 
     /** 실적 출처: UPLOAD(엑셀 업로드) | DEMO(시연용 생성) */
     @Column(length = 10)
@@ -72,7 +82,8 @@ public class FeeCalculation {
 
     @Builder
     private FeeCalculation(Business business, LocalDate periodFrom, LocalDate periodTo, double periodScale,
-                           Long appliedUnitPrice, Long appliedTotalFee, String source, String uploadFileName,
+                           Long appliedUnitPrice, Long appliedTotalFee, String skillCode, String appliedCalcType,
+                           String appliedFormula, String source, String uploadFileName,
                            String calculatedBy, LocalDateTime calculatedAt) {
         this.business = business;
         this.periodFrom = periodFrom;
@@ -80,10 +91,18 @@ public class FeeCalculation {
         this.periodScale = periodScale;
         this.appliedUnitPrice = appliedUnitPrice;
         this.appliedTotalFee = appliedTotalFee;
+        this.skillCode = skillCode;
+        this.appliedCalcType = appliedCalcType;
+        this.appliedFormula = appliedFormula;
         this.source = source;
         this.uploadFileName = uploadFileName;
         this.calculatedBy = calculatedBy;
         this.calculatedAt = calculatedAt;
+    }
+
+    /** skill.md 수식으로 산출한 뒤 회비 합계를 기록한다 */
+    public void applyTotalFee(long totalFee) {
+        this.appliedTotalFee = totalFee;
     }
 
     public void addItem(FeeCalculationItem item) {

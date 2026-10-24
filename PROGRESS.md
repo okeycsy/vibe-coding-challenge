@@ -25,6 +25,12 @@
 - 공개 배포는 Vercel Git 연결로 한다 (Root Directory `day01-gyeongsik-fee-calculator`, Production Branch `main`). 토큰·GitHub Actions 배포는 쓰지 않는다
 
 ## 세션 로그
+### 2026-10-24 (경식, skill.md 산출 엔진)
+- 업무별 `skill.md`(OPEN_BANKING·FIN_INFO·CMS·CD_NET·INTERBANK, `backend/src/main/resources/skills/`)와 `SkillEngineService` 추가: 정규식으로 요약·AI 차감 지침·```formula 수식을 꺼내 SpEL로 계산. 수식 패턴은 구간 누진 단가 / 총액 비율 / 기본료+단가 / 30% 균등+70% 비례 / 단가+최저·최고 한도
+- 보안상 요청서의 `StandardEvaluationContext` 대신 `SimpleEvaluationContext`(타입 참조·메서드·생성자 차단)로 평가, skill.md 수정(PUT)·되돌리기(DELETE)는 시스템관리자 ID만 허용(인증 토큰이 없어 ID만 확인)
+- API `GET/PUT/DELETE /api/v1/fees/skill/{taskCode}`, `POST /api/v1/fees/calculate`. 기존 `/api/fee/calculations`도 같은 엔진 사용. 원 단위는 원 미만 버림 후 최대잔여법(총액 분담 합계 = 총액)
+- 화면: STEP 1 요약 박스를 skill.md에서 읽고 [회비기준(skill.md) 원본 보기/수정] 모달(원문·섹션 보기·수식 시험 계산). 서버 연결 시 산출도 API로, 미연결 시 같은 skill.md를 브라우저 해석기로 계산(서버와 결과 일치 확인). `mvn test` 18개 통과
+- 화면에서 고친 skill.md는 메모리 반영(`SKILLS_DIR` 주면 파일 저장). Render 무료 플랜은 재기동 시 원본으로 돌아감
 ### 2026-10-22 (경식, 백엔드 배포)
 - 시연 계정 기본 비밀번호를 `1234`에서 `kftc1234!!`로 변경(백엔드 DataInitializer·비밀번호 초기화, 프론트 mockData·로그인 안내, README)
 - `backend/Dockerfile` 추가(Render 등 Docker 무료 호스팅용), `PORT`·`CORS_ALLOWED_ORIGINS`·`H2_CONSOLE_ENABLED` 환경변수, Vercel 주소 CORS 허용, `GET /api/health`. `mvn test` 11개 통과(Docker 빌드는 이 환경에서 Docker Hub 요청 제한으로 확인 못 함)
