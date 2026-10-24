@@ -11,6 +11,7 @@ public enum ErrorCode {
 
     INVALID_INPUT(HttpStatus.BAD_REQUEST, "입력값이 올바르지 않습니다."),
     INVALID_PERIOD(HttpStatus.BAD_REQUEST, "산출 기간이 올바르지 않습니다."),
+    INVALID_FORMULA(HttpStatus.BAD_REQUEST, "수식(formula) 구문 오류가 발견되었습니다."),
     INVALID_EXCEL(HttpStatus.BAD_REQUEST, "엑셀 파일을 읽을 수 없습니다."),
 
     LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "아이디 또는 비밀번호가 올바르지 않습니다."),
@@ -18,7 +19,9 @@ public enum ErrorCode {
     ACCOUNT_PENDING(HttpStatus.FORBIDDEN, "가입 승인 대기 중인 계정입니다."),
     ACCOUNT_REJECTED(HttpStatus.FORBIDDEN, "가입이 반려된 계정입니다."),
     NO_TASK_PERMISSION(HttpStatus.FORBIDDEN, "해당 업무의 산출 권한이 없습니다."),
-    ADMIN_ONLY(HttpStatus.FORBIDDEN, "시스템관리자만 회비 기준(skill.md)을 수정할 수 있습니다."),
+    ADMIN_ONLY(HttpStatus.FORBIDDEN, "시스템관리자만 할 수 있는 작업입니다."),
+    SKILL_ACCESS_DENIED(HttpStatus.FORBIDDEN, "해당 업무의 회비분담기준(skill.md) 접근 권한이 없습니다."),
+    EMPLOYEE_ID_REQUIRED(HttpStatus.UNAUTHORIZED, "사번(X-Employee-Id 헤더)이 필요합니다. 다시 로그인해 주세요."),
 
     MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "회원을 찾을 수 없습니다."),
     BUSINESS_NOT_FOUND(HttpStatus.NOT_FOUND, "업무를 찾을 수 없습니다."),

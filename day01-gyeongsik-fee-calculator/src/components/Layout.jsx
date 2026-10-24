@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { apiEnabled } from '../utils/api';
-import { Bell, Calculator, ChevronDown, ClipboardCheck, LogOut, Menu, ShieldCheck, UserCog } from 'lucide-react';
+import { Bell, Calculator, ChevronDown, ClipboardCheck, FileCode2, LogOut, Menu, ShieldCheck, UserCog } from 'lucide-react';
 
 // 메뉴는 로그인한 계정의 role로 걸러진다. labels는 역할별로 이름을 바꿀 때 쓴다.
 // children: 하위 메뉴. section은 해당 화면 안에서 스크롤할 영역의 id, roles가 없으면 상위 메뉴 권한을 따른다.
@@ -26,6 +26,13 @@ export const MENUS = [
       { section: 'calc-input', label: '데이터 입력 및 AI 이슈', roles: ['operator', 'sysadmin'] },
       { section: 'calc-result', label: '산출 결과 및 다운로드', labels: { institution: '회비 확인 및 대사 회신' } },
     ],
+  },
+  {
+    // 업무별 skill.md 조회·수정. 일반담당자는 승인된 업무만, 시스템관리자는 전체
+    id: 'skills',
+    label: '회비기준(Skill.md) 관리',
+    icon: FileCode2,
+    roles: ['operator', 'sysadmin'],
   },
   {
     id: 'results',
@@ -214,8 +221,8 @@ export function Sidebar({ role, active, activeSection, onSelect, adminBadge, sec
       {open && (
         <div className="mt-auto m-3 rounded-lg bg-brand-50 p-3 text-[11px] text-brand-600 leading-relaxed">
           {apiEnabled
-            ? '로그인·회원·업무 권한과 회비 산출(skill.md 수식)은 백엔드 서버와 연동되고, 실적은 예시 데이터를 씁니다.'
-            : '모든 화면은 백엔드 없이 예시 데이터(Mock)로 동작합니다. 회비는 묶어 둔 skill.md 수식으로 계산합니다.'}{' '}
+            ? '로그인·회원·업무 권한과 회비기준(skill.md)·회비 산출은 백엔드 서버와 연동되고, 실적은 예시 데이터를 씁니다.'
+            : '모든 화면은 백엔드 없이 예시 데이터(Mock)로 동작합니다. 회비기준(skill.md) 수정은 새로고침 전까지만 유지됩니다.'}{' '}
           실제 실적·회비와 무관합니다.
         </div>
       )}

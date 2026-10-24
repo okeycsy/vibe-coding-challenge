@@ -20,12 +20,10 @@
 
 ## 3. 정산 수식
 
-변수: `#finalCount` 최종 인정 건수. 1구간 최대 금액 2,000만원(100만 × 20원), 2구간까지 최대 5,000만원(+200만 × 15원).
+변수: `#finalCount` 최종 인정 건수. 구간마다 해당 구간에 든 건수 × 그 구간 단가를 더한다 (단가는 각 줄 끝의 숫자 한 곳만 바꾸면 된다).
 
 ```formula
-#finalCount <= 1000000
-  ? #finalCount * 20
-  : (#finalCount <= 3000000
-      ? 20000000 + (#finalCount - 1000000) * 15
-      : 50000000 + (#finalCount - 3000000) * 10)
+(#finalCount < 1000000 ? #finalCount : 1000000) * 20
+  + (#finalCount > 1000000 ? (#finalCount < 3000000 ? #finalCount : 3000000) - 1000000 : 0) * 15
+  + (#finalCount > 3000000 ? #finalCount - 3000000 : 0) * 10
 ```

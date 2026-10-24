@@ -121,24 +121,30 @@ src/main/java/com/kftc/feecalc/
 - 회비: 업무별 skill.md의 SpEL 수식으로 계산합니다 (아래 fee v1 참고). `PUT /businesses/{code}/rate`로 바꾼 단가·총액은 더 이상 산출에 쓰이지 않습니다
 - `requestedBy`를 주면 업무 산출 권한을 확인합니다(사용자는 부여받은 업무만, 참가기관은 불가)
 
-### fee v1 — `/api/v1/fees` (skill.md 기반 산출 엔진)
+### skills — `/api/v1/skills` (업무별 회비분담기준 skill.md 관리)
+모든 요청에 `X-Employee-Id: <로그인 ID>` 헤더가 필요합니다(없으면 401). 시스템관리자는 전체 업무, 일반담당자는 승인된 업무 권한(신청 승인 또는 관리자 부여)이 있는 업무만, 참가기관은 접근할 수 없습니다(403 "해당 업무의 회비분담기준(skill.md) 접근 권한이 없습니다.").
+
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
-| GET | `/skills` | 5개 업무의 skill.md 해석 결과 목록 |
-| GET | `/skill/{taskCode}` | skill.md 원문(`markdown`), 요약(`summary`), AI 차감 지침(`aiGuide`), 수식(`formula`), 산정 유형, 수정 여부. `taskCode`는 `OPEN_BANKING` 또는 업무 ID `openbanking` |
-| PUT | `/skill/{taskCode}` | skill.md 수정 `{ markdown, updatedBy }`. 시스템관리자(`admin`)만. 섹션 확인 + 예시 값으로 시험 계산을 통과해야 저장되고 다음 산출부터 바로 적용 |
-| DELETE | `/skill/{taskCode}?updatedBy=` | 원본 skill.md로 되돌리기 (시스템관리자만) |
-| POST | `/calculate` | `/api/fee/calculations`와 같은 요청으로 산출. 응답에 적용한 `skillCode`·`calcType`·`formula` 포함 |
+| GET | `/api/v1/skills` | 전체 업무와 `accessible`(접근 가능 여부), 최종 수정 일시·크기·버전(내용 해시 8자리)·수정 여부. 내용은 주지 않음 |
+| GET | `/api/v1/skills/{taskCode}` | `{ taskCode, taskName, content, formula, summary, aiGuide, calcType, rateUnit, lastModified, size, version, modified, updatedBy }`. `taskCode`는 `OPEN_BANKING` 또는 업무 ID `openbanking` |
+| PUT | `/api/v1/skills/{taskCode}` | `{ content }` 저장. 섹션 확인 → 수식 SpEL 구문 검사 → 예시 값 시험 계산을 통과해야 파일을 덮어씀. 구문 오류는 400 "수식(formula) 구문 오류가 발견되었습니다." |
+| POST | `/api/v1/skills/{taskCode}/reset` | 초기 기준(`resources/skills`)으로 되돌리기 (시스템관리자만) |
+| POST | `/api/v1/fees/calculate` | skill.md 수식으로 산출. 헤더(또는 `requestedBy`)의 사번이 그 업무 권한이 있어야 함. 응답에 `skillCode`·`calcType`·`formula` |
 
-skill.md 엔진 (`SkillEngineService`)
-- 원본: `src/main/resources/skills/{OPEN_BANKING,FIN_INFO,CMS,CD_NET,INTERBANK}.md`. 업무 코드 ↔ 업무 ID 매핑은 `SkillEngineService.TASK_TO_BUSINESS`
+skill.md 저장 (`SkillFileService`)
+- 1업무 = 1파일: `{SKILLS_DIR}/{업무코드}.md` (기본 `./data/skills`, Docker 이미지에서는 `/app/data/skills`). 업무 코드는 `OPEN_BANKING`·`FIN_INFO`·`CMS`·`CD_NET`·`INTERBANK` 다섯 개뿐이고 그 밖의 `.md`는 읽지 않습니다(기동 로그에 경고)
+- 기동 시 없는 파일은 `src/main/resources/skills/`의 초기 기준을 복사해 만듭니다
+- 경로 보호: 업무 코드는 영문·밑줄만 받고 목록에 있어야 하며, 만든 경로가 저장 폴더 바로 아래가 아니면 거부합니다. 저장은 임시 파일에 쓴 뒤 바꿔 끼웁니다
+- Render 무료 플랜은 디스크가 유지되지 않아 재배포·재기동 시 초기 기준으로 돌아갑니다. 계속 쓸 기준은 `src/main/resources/skills/`를 고쳐 배포하세요
+
+산출 엔진 (`SkillEngineService`)
 - 섹션: `## 1. 비즈니스 규칙 요약`(화면 요약 박스), `## 2. AI 예외 차감 지침`, `## 3. 정산 수식`(```` ```formula ```` 코드 블록 안 SpEL). 머리말의 `- 산정 유형:`·`- 표시 단위:`(원/건 또는 %)는 화면 배지와 결과 표 문구에 씁니다
 - 수식 변수: `#rawCount` 기본건수, `#deductedCount` AI 차감건수, `#finalCount` 최종인정건수, `#totalCount` 전체 기관 인정건수 합계, `#institutionCount` 참가기관 수, `#periodScale` 기간 환산 비율(분기 = 1)
-- 업무별 수식 패턴: 오픈뱅킹 구간별 누진 단가, 금거정 총액 × 건수 비율, CMS 기본료 + 건당 단가, CD공동망 30% 균등 + 70% 실적 비례, 타행환 건당 단가 + 최저·최고 한도
-- 원 단위: 기관별 수식 결과의 원 미만을 버리고, (결과 합계 반올림 − 버린 합계)를 원 미만이 큰 기관부터 1원씩 배정합니다. 건당 단가처럼 정수 결과는 그대로이고, 총액 분담은 합계 = 총액이 됩니다
-- 보안: 수식은 `StandardEvaluationContext`가 아니라 `SimpleEvaluationContext.forReadOnlyDataBinding()`으로 평가합니다. `T(java.lang.Runtime)` 같은 타입 참조, 생성자, 메서드 호출, 빈 참조가 막혀 수식으로 서버 코드를 실행할 수 없습니다
+- 업무별 수식 패턴: 오픈뱅킹 구간별 누진 단가(구간 단가는 수식에 한 번씩만 나옴), 금거정 총액 × 건수 비율, CMS 기본료 + 건당 단가, CD공동망 30% 균등 + 70% 실적 비례, 타행환 건당 단가 + 최저·최고 한도
+- 원 단위: 기관별 수식 결과의 원 미만을 버리고, (결과 합계 반올림 − 버린 합계)를 원 미만이 큰 기관부터 1원씩 배정합니다. 총액 분담은 합계 = 총액이 됩니다
+- 보안: 수식은 `SimpleEvaluationContext.forReadOnlyDataBinding()`으로 평가해 `T(java.lang.Runtime)` 같은 타입 참조, 생성자, 메서드 호출, 빈 참조를 막습니다
 - 정수끼리 나누면 SpEL은 소수점을 버립니다. 비율 계산은 `120000000.0`처럼 소수점을 붙여 씁니다
-- 저장: 화면에서 고친 내용은 메모리에 바로 반영되고, 환경변수 `SKILLS_DIR`(예: `./data/skills`)가 있으면 그 폴더에도 저장해 재기동 후에도 씁니다. 없으면 재기동 시 원본으로 돌아갑니다(Render 무료 플랜은 디스크가 유지되지 않으므로 `SKILLS_DIR`을 줘도 재배포·재기동 시 사라집니다)
 
 ### reconcile — `/api/reconcile`
 | 메서드 | 경로 | 설명 |
@@ -153,7 +159,7 @@ skill.md 엔진 (`SkillEngineService`)
 | POST | `/notifications/test` | Mattermost 테스트 발송 `{ text }` |
 
 ## 다음 단계 (아직 안 한 것)
-- 인증 토큰(세션 또는 JWT)과 API별 역할 검사. 지금은 로그인 응답만 주고, 관리자 API도 누구나 호출할 수 있습니다
+- 인증 토큰(세션 또는 JWT)과 API별 역할 검사. 지금은 로그인 응답만 주고, 관리자 API도 누구나 호출할 수 있습니다. skill.md API는 `X-Employee-Id` 헤더로 권한을 확인하지만, 헤더 값을 그대로 믿으므로 다른 사람의 ID를 넣으면 막을 수 없습니다(토큰 도입 시 토큰에서 사번을 꺼내도록 교체)
 - 회비 산출·대사 화면과 회원 추가·삭제·역할 변경을 API에 연결 (로그인·회원 승인·업무 권한은 연결됨)
 - AI 이슈 해석을 규칙 기반에서 LLM 기반으로 교체 (`AiIssueParser`)
 - 운영 DB(예: Oracle/PostgreSQL)와 스키마 관리(Flyway)

@@ -25,6 +25,11 @@
 - 공개 배포는 Vercel Git 연결로 한다 (Root Directory `day01-gyeongsik-fee-calculator`, Production Branch `main`). 토큰·GitHub Actions 배포는 쓰지 않는다
 
 ## 세션 로그
+### 2026-10-24 (경식, 회비기준 skill.md 관리 페이지)
+- 1업무 1파일: `SkillFileService`가 `data/skills/{업무코드}.md`(SKILLS_DIR)만 읽고 씀. 없으면 `resources/skills` 초기 기준 복사, 업무 코드 화이트리스트·경로 검사로 Path Traversal 차단, 저장 전 섹션·SpEL 구문·시험 계산 검증(구문 오류 400)
+- 권한: `SkillAccessControlService` — 시스템관리자 전체, 일반담당자는 승인된 업무 권한만, 참가기관 불가. 사번은 `X-Employee-Id` 헤더(토큰이 없어 헤더 값을 그대로 믿는 한계). API `GET /api/v1/skills`, `GET/PUT /api/v1/skills/{taskCode}`, `POST /{taskCode}/reset`(관리자), `POST /api/v1/fees/calculate`도 권한 확인. 이전 `/api/v1/fees/skill/*`와 모달은 정리
+- 화면: 사이드바 [회비기준(Skill.md) 관리] — 업무 목록(접근 가능/자물쇠), 줄 번호 편집기·미리보기·나란히 보기, 되돌리기·저장, 구문 오류 붉은 경고, 저장 즉시 산출 화면 반영(서버·Mock 모두 Playwright로 확인)
+- 오픈뱅킹 수식을 구간 단가가 한 번씩만 나오게 바꿈(단가 숫자만 고치면 반영). `mvn test` 20개 통과
 ### 2026-10-24 (경식, skill.md 산출 엔진)
 - 업무별 `skill.md`(OPEN_BANKING·FIN_INFO·CMS·CD_NET·INTERBANK, `backend/src/main/resources/skills/`)와 `SkillEngineService` 추가: 정규식으로 요약·AI 차감 지침·```formula 수식을 꺼내 SpEL로 계산. 수식 패턴은 구간 누진 단가 / 총액 비율 / 기본료+단가 / 30% 균등+70% 비례 / 단가+최저·최고 한도
 - 보안상 요청서의 `StandardEvaluationContext` 대신 `SimpleEvaluationContext`(타입 참조·메서드·생성자 차단)로 평가, skill.md 수정(PUT)·되돌리기(DELETE)는 시스템관리자 ID만 허용(인증 토큰이 없어 ID만 확인)

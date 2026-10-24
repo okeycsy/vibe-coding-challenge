@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -23,6 +23,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kftc.feecalc.common.exception.BusinessException;
@@ -31,11 +32,14 @@ import com.kftc.feecalc.domain.fee.dto.CalculationResponse;
 import com.kftc.feecalc.domain.fee.service.FeeCalculationService;
 import com.kftc.feecalc.domain.fee.service.SkillEngineService;
 import com.kftc.feecalc.domain.fee.service.SkillEngineService.Counts;
+import com.kftc.feecalc.domain.fee.service.SkillFileService;
 
-@SpringBootTest
+@SpringBootTest(properties = "app.skills.dir=${java.io.tmpdir}/feecalc-skills-${random.uuid}")
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class SkillEngineTests {
+
+    private static final String H = "X-Employee-Id";
 
     @Autowired
     MockMvc mvc;
@@ -47,10 +51,15 @@ class SkillEngineTests {
     SkillEngineService engine;
 
     @Autowired
+    SkillFileService files;
+
+    @Autowired
     FeeCalculationService calculationService;
 
-    private static final LocalDate Q3_FROM = LocalDate.of(2026, 7, 1);
-    private static final LocalDate Q3_TO = LocalDate.of(2026, 9, 30);
+    private ResultActions save(String who, String code, String content) throws Exception {
+        return mvc.perform(put("/api/v1/skills/" + code).header(H, who).contentType(MediaType.APPLICATION_JSON)
+                .content(om.writeValueAsString(Map.of("content", content))));
+    }
 
     @Test
     void 다섯_업무의_요약과_수식을_정규식으로_꺼낸다() {
@@ -100,62 +109,102 @@ class SkillEngineTests {
                 "new java.io.File('/tmp/x').delete()",
                 "#finalCount.getClass().forName('java.lang.Runtime')",
                 "@someBean")) {
-            assertThatThrownBy(() -> engine.evaluate(attack, c, 1, 1, 1.0)).isInstanceOf(BusinessException.class);
+            assertThatThrownBy(() -> SkillEngineService.evaluate(attack, c, 1, 1, 1.0))
+                    .isInstanceOf(BusinessException.class);
         }
     }
 
     @Test
-    void 산출API는_skill_md_수식을_실행한다() throws Exception {
+    void 일반담당자는_승인된_업무만_조회_수정할_수_있다() throws Exception {
+        // hong: 오픈뱅킹·금거정 승인
+        mvc.perform(get("/api/v1/skills").header(H, "hong"))
+                .andExpect(jsonPath("$.data", hasSize(5)))
+                .andExpect(jsonPath("$.data[0].accessible", is(true)))
+                .andExpect(jsonPath("$.data[2].taskCode", is("CMS")))
+                .andExpect(jsonPath("$.data[2].accessible", is(false)));
+        mvc.perform(get("/api/v1/skills/OPEN_BANKING").header(H, "hong"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.taskName", is("오픈뱅킹")))
+                .andExpect(jsonPath("$.data.content", startsWith("# 오픈뱅킹")))
+                .andExpect(jsonPath("$.data.formula", containsString("#finalCount")));
+        mvc.perform(get("/api/v1/skills/CMS").header(H, "hong"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.success", is(false)))
+                .andExpect(jsonPath("$.message", is("해당 업무의 회비분담기준(skill.md) 접근 권한이 없습니다.")));
+        save("hong", "CMS", files.read("CMS")).andExpect(status().isForbidden());
+        // 참가기관, 사번 없음
+        mvc.perform(get("/api/v1/skills/CMS").header(H, "shinhan")).andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/skills/CMS")).andExpect(status().isUnauthorized());
+
+        // 권한 신청 → 관리자 승인 → 접근 가능
+        mvc.perform(post("/api/users/hong/task-requests").contentType(MediaType.APPLICATION_JSON)
+                .content(om.writeValueAsString(Map.of("businessCode", "cms", "reason", "테스트"))));
+        mvc.perform(post("/api/task-requests/3/approve")).andExpect(status().isOk());
+        mvc.perform(get("/api/v1/skills/CMS").header(H, "hong")).andExpect(status().isOk());
+        // 관리자는 전체
+        mvc.perform(get("/api/v1/skills/INTERBANK").header(H, "admin")).andExpect(status().isOk());
+    }
+
+    @Test
+    void 저장하면_파일이_바뀌고_다음_산출에_바로_반영된다() throws Exception {
+        String content = files.read("OPEN_BANKING").replace("1000000) * 20", "1000000) * 25");
+        save("hong", "OPEN_BANKING", content)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message", is("오픈뱅킹 회비분담기준(skill.md)이 성공적으로 저장 및 반영되었습니다.")))
+                .andExpect(jsonPath("$.data.modified", is(true)))
+                .andExpect(jsonPath("$.data.updatedBy", is("hong")));
+        assertThat(files.read("OPEN_BANKING")).contains("1000000) * 25");
+        assertThat(engine.calculate("OPEN_BANKING", 800_000, 0, 800_000, 0, 1)).isEqualTo(20_000_000L);
+
+        // v1 산출 API: 권한 있는 사번만
         Map<String, Object> body = Map.of("businessId", "OPEN_BANKING", "from", "2026-07-01", "to", "2026-09-30");
-        mvc.perform(post("/api/v1/fees/calculate").contentType(MediaType.APPLICATION_JSON).content(om.writeValueAsString(body)))
+        mvc.perform(post("/api/v1/fees/calculate").header(H, "hong").contentType(MediaType.APPLICATION_JSON)
+                        .content(om.writeValueAsString(body)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.skillCode", is("OPEN_BANKING")))
-                .andExpect(jsonPath("$.data.calcType", is("구간별 차등 단가")))
-                .andExpect(jsonPath("$.data.items", hasSize(8)))
-                // 신한 5,156,170건: 5,000만 + 2,156,170 × 10
-                .andExpect(jsonPath("$.data.items[0].fee", is(71_561_700)));
-    }
-
-    @Test
-    void 관리자가_skill_md를_고치면_바로_반영되고_되돌릴_수_있다() throws Exception {
-        String markdown = engine.getStored("CMS").markdown()
-                .replace("(#finalCount > 0 ? 900000 * #periodScale : 0) + #finalCount * 8", "#finalCount * 10");
-
-        // 시스템관리자가 아니면 거부
-        mvc.perform(put("/api/v1/fees/skill/CMS").contentType(MediaType.APPLICATION_JSON)
-                        .content(om.writeValueAsString(Map.of("markdown", markdown, "updatedBy", "hong"))))
+                .andExpect(jsonPath("$.data.formula", containsString("* 25")))
+                .andExpect(jsonPath("$.data.items", hasSize(8)));
+        mvc.perform(post("/api/v1/fees/calculate").header(H, "kimms").contentType(MediaType.APPLICATION_JSON)
+                        .content(om.writeValueAsString(body)))
                 .andExpect(status().isForbidden());
 
-        mvc.perform(put("/api/v1/fees/skill/CMS").contentType(MediaType.APPLICATION_JSON)
-                        .content(om.writeValueAsString(Map.of("markdown", markdown, "updatedBy", "admin"))))
+        // 초기 기준 복원은 관리자만
+        mvc.perform(post("/api/v1/skills/OPEN_BANKING/reset").header(H, "hong")).andExpect(status().isForbidden());
+        mvc.perform(post("/api/v1/skills/OPEN_BANKING/reset").header(H, "admin"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.formula", is("#finalCount * 10")))
-                .andExpect(jsonPath("$.data.modified", is(true)));
-
-        CalculationResponse res = calculationService.calculate(
-                new CalculationRequest("cms", Q3_FROM, Q3_TO, List.of(), null, null, null));
-        assertThat(res.items()).allSatisfy(i -> assertThat(i.fee()).isEqualTo(i.finalCount() * 10));
-        assertThat(res.items().get(0).rateLabel()).isEqualTo("10원/건");
-
-        mvc.perform(delete("/api/v1/fees/skill/cms").param("updatedBy", "admin"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.modified", is(false)))
-                .andExpect(jsonPath("$.data.formula", containsString("900000")));
+                .andExpect(jsonPath("$.data.modified", is(false)));
     }
 
     @Test
-    void 잘못된_수식이나_섹션이_없으면_저장하지_않는다() throws Exception {
-        String original = engine.getStored("FIN_INFO").markdown();
+    void 수식_구문오류나_섹션이_없으면_저장하지_않는다() throws Exception {
+        String original = files.read("FIN_INFO");
+        save("admin", "FIN_INFO", original.replaceAll("(?s)```formula.*?```", "```formula\n(#finalCount * 2\n```"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", startsWith("수식(formula) 구문 오류가 발견되었습니다.")));
         for (String bad : List.of(
                 original.replaceAll("(?s)```formula.*?```", "```formula\nT(java.lang.System).exit(0)\n```"),
                 original.replaceAll("(?s)```formula.*?```", "```formula\n#finalCount / 0.0\n```"),
                 original.replace("## 1. 비즈니스 규칙 요약", "## 요약"))) {
-            mvc.perform(put("/api/v1/fees/skill/FIN_INFO").contentType(MediaType.APPLICATION_JSON)
-                            .content(om.writeValueAsString(Map.of("markdown", bad, "updatedBy", "admin"))))
-                    .andExpect(status().isBadRequest());
+            save("admin", "FIN_INFO", bad).andExpect(status().isBadRequest());
         }
-        mvc.perform(get("/api/v1/fees/skill/FIN_INFO"))
-                .andExpect(jsonPath("$.data.markdown", is(original)))
-                .andExpect(jsonPath("$.data.summary", hasSize(4)));
+        assertThat(files.read("FIN_INFO")).isEqualTo(original);
+    }
+
+    @Test
+    void 경로_조작이나_없는_업무코드는_거부한다() throws Exception {
+        for (String code : List.of("..%2F..%2Fetc%2Fpasswd", "OPEN_BANKING.md", "FOO")) {
+            mvc.perform(get("/api/v1/skills/" + code).header(H, "admin"))
+                    .andExpect(result -> assertThat(result.getResponse().getStatus()).isIn(400, 404));
+        }
+        assertThatThrownBy(() -> files.resolveTaskCode("../OPEN_BANKING")).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> files.resolveTaskCode("OPEN_BANKING/../../x")).isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void 기존_산출API도_skill_md_수식을_쓴다() {
+        CalculationResponse res = calculationService.calculate(new CalculationRequest("cms",
+                LocalDate.of(2026, 7, 1), LocalDate.of(2026, 9, 30), List.of(), null, null, null));
+        assertThat(res.skillCode()).isEqualTo("CMS");
+        assertThat(res.items().get(0).fee()).isEqualTo(900_000 + res.items().get(0).finalCount() * 8);
     }
 }

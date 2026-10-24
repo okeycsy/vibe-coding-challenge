@@ -37,8 +37,9 @@ app:
   auth:
     max-fail-count: 5
   skills:
-    # 화면에서 수정한 skill.md 를 저장할 폴더. 비워 두면 메모리에만 반영되고 서버 재기동 시 원본(resources/skills)으로 돌아간다.
-    dir: ${SKILLS_DIR:}
+    # 업무별 skill.md 저장 폴더(1업무 1파일). 없는 파일은 기동 시 resources/skills 의 초기 기준을 복사해 만든다.
+    # Render 무료 플랜처럼 디스크가 유지되지 않는 곳에서는 재배포·재기동 시 초기 기준으로 돌아간다.
+    dir: ${SKILLS_DIR:./data/skills}
   mattermost:
     # 비어 있으면 실제 발송 없이 로그만 남긴다. 예: export MATTERMOST_WEBHOOK_URL=https://mattermost.example.com/hooks/xxx
     webhook-url: ${MATTERMOST_WEBHOOK_URL:}
