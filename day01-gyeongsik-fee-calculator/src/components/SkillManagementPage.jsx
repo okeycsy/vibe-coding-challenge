@@ -19,7 +19,6 @@ import {
   localSkillDetail,
   localSkillList,
   parseSkill,
-  SECTION_TEMPLATE,
   validateSkill,
 } from '../utils/skill';
 import { Card, Modal } from './ui';
@@ -328,17 +327,8 @@ export default function SkillManagementPage({
                   </div>
                 )}
                 {live?.error && !saveError && (
-                  <p className="flex flex-wrap items-center gap-1.5 text-xs text-amber-700">
+                  <p className="flex items-center gap-1.5 text-xs text-amber-700">
                     <TriangleAlert className="w-3.5 h-3.5" /> {live.error}
-                    {/* 막 추가한 업무처럼 제목만 있으면 나머지 기본 템플릿 섹션을 붙여 넣을 수 있다 */}
-                    {!/^##\s/m.test(text) && (
-                      <button
-                        onClick={() => setText(text.replace(/\s*$/, '\n') + SECTION_TEMPLATE)}
-                        className="ml-1 rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 hover:bg-amber-100"
-                      >
-                        기본 템플릿 섹션 넣기
-                      </button>
-                    )}
                   </p>
                 )}
 

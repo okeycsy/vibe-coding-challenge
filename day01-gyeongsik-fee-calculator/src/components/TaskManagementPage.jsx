@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Briefcase, CircleCheck, FileCode2, FilePlus2, LoaderCircle, Plus, Search, Trash2, TriangleAlert } from 'lucide-react';
 import { api, apiEnabled, toLabel } from '../utils/api';
 import { fmt } from '../utils/fee';
-import { checkNewTask, localTaskList, titleTemplate } from '../utils/skill';
+import { checkNewTask, localTaskList, skeletonTemplate } from '../utils/skill';
 import { Card, Modal } from './ui';
 
 const btnLine =
@@ -114,7 +114,7 @@ export default function TaskManagementPage({ tasks, members, overrides, onAddTas
         <h2 className="text-xl font-bold text-brand-900">업무 관리</h2>
         <p className="text-sm text-slate-500 mt-0.5">
           회비 산출 업무를 조회·추가·삭제합니다. 업무마다 회비분담기준 md 파일이 정확히 하나 연결되며, 새 업무의 md 파일은
-          제목만 들어간 채로 만들어집니다.
+          기본 템플릿의 제목·섹션·formula 블록 뼈대만 들어간 채로 만들어집니다.
         </p>
       </div>
 
@@ -186,7 +186,7 @@ export default function TaskManagementPage({ tasks, members, overrides, onAddTas
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
-                        <TriangleAlert className="w-3 h-3" /> 작성 필요 (제목만 있음)
+                        <TriangleAlert className="w-3 h-3" /> 작성 필요 (뼈대만 있음)
                       </span>
                     )}
                   </td>
@@ -221,7 +221,7 @@ export default function TaskManagementPage({ tasks, members, overrides, onAddTas
           </table>
         </div>
         <p className="mt-2 text-[11px] text-slate-400">
-          새로 추가한 업무는 [md 편집]에서 요약·AI 차감 지침·정산 수식 섹션을 채워 저장하면 회비 산출에 쓸 수 있습니다. 업무별 담당자
+          새로 추가한 업무는 [md 편집]에서 비어 있는 요약·AI 차감 지침·정산 수식을 채워 저장하면 회비 산출에 쓸 수 있습니다. 업무별 담당자
           권한은 [업무 권한 관리]에서 따로 관리합니다.
         </p>
       </Card>
@@ -278,9 +278,9 @@ export default function TaskManagementPage({ tasks, members, overrides, onAddTas
               </div>
             </Field>
             <div>
-              <p className="text-xs font-medium text-slate-500 mb-1">처음 만들어질 {fileNamePreview} 내용 (기본 템플릿의 제목만)</p>
+              <p className="text-xs font-medium text-slate-500 mb-1">처음 만들어질 {fileNamePreview} 내용 (기본 템플릿 뼈대, 내용은 [md 편집]에서 채움)</p>
               <pre className="rounded-lg bg-slate-900 px-3 py-2 font-mono text-xs text-slate-100 whitespace-pre-wrap">
-                {titleTemplate({ name: form.name.trim() || '업무명', taskCode: form.taskCode.trim().toUpperCase() || 'NEW_TASK' })}
+                {skeletonTemplate({ name: form.name.trim() || '업무명', taskCode: form.taskCode.trim().toUpperCase() || 'NEW_TASK' })}
               </pre>
             </div>
             {adding.error && !adding.error.field && (

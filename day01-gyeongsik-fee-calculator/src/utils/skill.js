@@ -229,33 +229,28 @@ export const builtInTasks = (businesses) =>
     createdBy: null,
   }));
 
-// 새로 추가한 업무의 skill.md: 기본 템플릿 중 제목만 (서버 SkillFileService.titleTemplate 과 같다)
-export const titleTemplate = (task) => `# ${task.name} 회비 산정 기준 (${task.taskCode})\n`;
+// 새로 추가한 업무의 skill.md: 기본 템플릿에서 반드시 있어야 하는 뼈대만
+// (# 제목, 업무명·산정 유형·표시 단위, ## 1~3 섹션 제목, 빈 formula 블록). 서버 SkillFileService.skeletonTemplate 과 같다
+export const skeletonTemplate = (task) =>
+  [
+    `# ${task.name} 회비 산정 기준 (${task.taskCode})`,
+    '',
+    `- 업무명: ${task.name}`,
+    '- 산정 유형:',
+    '- 표시 단위:',
+    '',
+    '## 1. 비즈니스 규칙 요약',
+    '',
+    '## 2. AI 예외 차감 지침',
+    '',
+    '## 3. 정산 수식',
+    '',
+    '```formula',
+    '```',
+    '',
+  ].join('\n');
 
-// 제목 아래에 붙이는 나머지 기본 템플릿 (편집 화면의 '기본 섹션 넣기')
-export const SECTION_TEMPLATE = `
-- 업무명:
-- 산정 유형:
-- 표시 단위: 원/건
-
-## 1. 비즈니스 규칙 요약
-
-- 
-
-## 2. AI 예외 차감 지침
-
-- 
-
-## 3. 정산 수식
-
-변수: \`#finalCount\` 최종 인정 건수, \`#periodScale\` 기간 환산 비율(분기 = 1).
-
-\`\`\`formula
-#finalCount * 0
-\`\`\`
-`;
-
-const defaultContent = (task) => (task.builtIn ? DEFAULT_SKILLS[task.taskCode] : titleTemplate(task));
+const defaultContent = (task) => (task.builtIn ? DEFAULT_SKILLS[task.taskCode] : skeletonTemplate(task));
 const contentOf = (task, overrides) => overrides[task.taskCode]?.content ?? defaultContent(task);
 const isReady = (task, content) => {
   try {
