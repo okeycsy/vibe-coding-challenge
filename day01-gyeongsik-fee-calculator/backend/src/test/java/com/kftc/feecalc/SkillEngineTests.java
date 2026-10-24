@@ -217,7 +217,7 @@ class SkillEngineTests {
     }
 
     @Test
-    void 관리자는_업무를_추가하면_제목만_있는_md_파일이_하나_생긴다() throws Exception {
+    void 관리자는_업무를_추가하면_기본_템플릿_뼈대만_있는_md_파일이_하나_생긴다() throws Exception {
         mvc.perform(get("/api/v1/tasks").header(H, "admin"))
                 .andExpect(jsonPath("$.data", hasSize(5)))
                 .andExpect(jsonPath("$.data[0].fileName", is("OPEN_BANKING.md")))
@@ -231,14 +231,17 @@ class SkillEngineTests {
                 .andExpect(jsonPath("$.data.builtIn", is(false)))
                 .andExpect(jsonPath("$.data.ready", is(false)))
                 .andExpect(jsonPath("$.data.createdBy", is("admin")));
-        assertThat(Files.readString(files.directory().resolve("giro-payment.md"))).isEqualTo("# 지로 회비 산정 기준 (GIRO_PAY)\n");
+        String skeleton = Files.readString(files.directory().resolve("giro-payment.md"));
+        assertThat(skeleton).startsWith("# 지로 회비 산정 기준 (GIRO_PAY)\n\n- 업무명: 지로\n")
+                .contains("- 산정 유형:", "- 표시 단위:", "## 1. 비즈니스 규칙 요약", "## 2. AI 예외 차감 지침",
+                        "## 3. 정산 수식", "```formula\n```");
         assertThat(Files.readString(files.directory().resolve("tasks.json"))).contains("giro-payment.md");
 
         // skill.md 관리 화면에도 보이고, 섹션이 비어 있어도 열린다
         mvc.perform(get("/api/v1/skills").header(H, "admin")).andExpect(jsonPath("$.data", hasSize(6)));
         mvc.perform(get("/api/v1/skills/GIRO_PAY").header(H, "admin"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.content", is("# 지로 회비 산정 기준 (GIRO_PAY)\n")))
+                .andExpect(jsonPath("$.data.content", is(skeleton)))
                 .andExpect(jsonPath("$.data.parseError", containsString("비즈니스 규칙 요약")));
         // 섹션을 채워 저장하면 산출에 쓸 수 있다
         String filled = files.read("CMS").replace("# CMS 회비 산정 기준 (CMS)", "# 지로 회비 산정 기준 (GIRO_PAY)");

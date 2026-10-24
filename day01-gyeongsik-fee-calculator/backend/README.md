@@ -136,7 +136,7 @@ src/main/java/com/kftc/feecalc/
 | 메서드 | 경로 | 설명 |
 |---|---|---|
 | GET | `/api/v1/tasks` | 업무 목록: `{ taskCode, businessId, name, fileName, builtIn, createdAt, createdBy, lastModified, size, ready, memberCount }`. `ready`는 요약·수식 섹션이 있어 산출에 쓸 수 있는지 |
-| POST | `/api/v1/tasks` | `{ taskCode, name, fileName }`로 업무 추가 (시스템관리자만, `X-Employee-Id`). `fileName`은 `.md` 생략 가능, 비우면 `{업무코드}.md`. 업무 코드·업무명·파일명(대소문자 무관)이 겹치면 409. md 파일은 `# {업무명} 회비 산정 기준 ({업무코드})` 제목 한 줄로 만듦 |
+| POST | `/api/v1/tasks` | `{ taskCode, name, fileName }`로 업무 추가 (시스템관리자만, `X-Employee-Id`). `fileName`은 `.md` 생략 가능, 비우면 `{업무코드}.md`. 업무 코드·업무명·파일명(대소문자 무관)이 겹치면 409. md 파일은 기본 템플릿 뼈대(`# {업무명} 회비 산정 기준 ({업무코드})`, 업무명·산정 유형·표시 단위 항목, `## 1~3` 섹션 제목, 빈 ```formula 블록)로 만듦 |
 | DELETE | `/api/v1/tasks/{taskCode}` | 업무 삭제 (시스템관리자만). 연결된 md 파일 삭제, 회원의 그 업무 권한 해제, 승인 대기 신청 반려 |
 
 - 새 업무의 skill.md는 섹션이 없어 `GET /api/v1/skills/{taskCode}`에서 `parseError`와 원문만 주고, 섹션을 채워 `PUT`으로 저장해야 산출에 쓸 수 있습니다. 회비 산출 화면은 실적 예시 데이터가 있는 기본 업무만 보여 줍니다

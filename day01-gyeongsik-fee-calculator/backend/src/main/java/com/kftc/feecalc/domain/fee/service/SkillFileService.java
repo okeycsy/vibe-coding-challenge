@@ -36,7 +36,7 @@ import lombok.extern.slf4j.Slf4j;
  * <ul>
  *   <li>업무 목록(업무 코드·이름·파일명)은 같은 폴더의 tasks.json 에 둔다. 없으면 기본 5개 업무로 만든다</li>
  *   <li>기동 시 파일이 없는 기본 업무는 classpath:skills/{TASK_CODE}.md(초기 기준)를 복사해 만든다.
- *       관리자가 추가한 업무는 제목 한 줄만 있는 파일로 시작한다</li>
+ *       관리자가 추가한 업무는 기본 템플릿의 뼈대(제목·항목·섹션 제목·빈 formula 블록)만 있는 파일로 시작한다</li>
  *   <li>업무 코드·파일명은 영문·숫자·밑줄(파일명은 - 도)만 받는다. 경로 문자(.., /, \)가 섞이면 거부하고,
  *       만든 경로가 저장 폴더 밖이면 다시 한 번 막는다 (Path Traversal 방지). 한 파일은 한 업무에만 연결된다</li>
  *   <li>저장 전 섹션·수식 구문·시험 계산을 통과해야 하며, 임시 파일에 쓴 뒤 바꿔 끼운다</li>
@@ -147,7 +147,7 @@ public class SkillFileService {
 
     /**
      * 업무 추가. 업무 코드·업무명·파일명이 다른 업무와 겹치면 409, 형식이 틀리면 400.
-     * md 파일은 기본 템플릿의 제목 한 줄만 쓴 채로 만든다.
+     * md 파일은 기본 템플릿의 뼈대(#·## 제목, 업무명 등 항목, 빈 formula 블록)만 쓴 채로 만든다.
      */
     public synchronized TaskEntry create(String taskCode, String name, String fileName, String employeeId) {
         String code = taskCode == null ? "" : taskCode.trim().toUpperCase();
@@ -179,7 +179,7 @@ public class SkillFileService {
         }
         TaskEntry entry = new TaskEntry(code, businessId, taskName, file, false,
                 LocalDateTime.now(ZoneId.of("Asia/Seoul")).withNano(0), employeeId);
-        write(target, titleTemplate(entry));
+        write(target, skeletonTemplate(entry));
         tasks.put(code, entry);
         try {
             saveRegistry();
@@ -228,9 +228,26 @@ public class SkillFileService {
                 && FILE_BASE.matcher(fileName.substring(0, fileName.length() - 3)).matches();
     }
 
-    /** 처음 만든 업무의 skill.md: 기본 템플릿 중 제목만 */
-    static String titleTemplate(TaskEntry t) {
-        return "# " + t.name() + " 회비 산정 기준 (" + t.taskCode() + ")\n";
+    /**
+     * 처음 만든 업무의 skill.md: 기본 템플릿에서 반드시 있어야 하는 뼈대만 넣는다.
+     * # 제목, 업무명·산정 유형·표시 단위 항목, ## 1~3 섹션 제목, 빈 ```formula 블록. 내용은 비어 있어
+     * 요약과 수식을 채워 저장하기 전까지는 산출에 쓰이지 않는다.
+     */
+    static String skeletonTemplate(TaskEntry t) {
+        return "# " + t.name() + " 회비 산정 기준 (" + t.taskCode() + ")\n"
+                + "\n"
+                + "- 업무명: " + t.name() + "\n"
+                + "- 산정 유형:\n"
+                + "- 표시 단위:\n"
+                + "\n"
+                + "## 1. 비즈니스 규칙 요약\n"
+                + "\n"
+                + "## 2. AI 예외 차감 지침\n"
+                + "\n"
+                + "## 3. 정산 수식\n"
+                + "\n"
+                + "```formula\n"
+                + "```\n";
     }
 
     private void saveRegistry() {
@@ -326,7 +343,7 @@ public class SkillFileService {
         log.info("skill.md 저장: {} by {}", taskCode, employeeId);
     }
 
-    /** 초기 기준(기본 업무는 classpath, 추가한 업무는 제목 한 줄)으로 되돌린다 */
+    /** 초기 기준(기본 업무는 classpath, 추가한 업무는 기본 템플릿 뼈대)으로 되돌린다 */
     public synchronized void reset(String taskCode, String employeeId) {
         write(path(taskCode), readDefault(task(taskCode)));
         updatedBy.put(taskCode, employeeId);
@@ -345,7 +362,7 @@ public class SkillFileService {
 
     private static String readDefault(TaskEntry t) {
         if (!t.builtIn()) {
-            return titleTemplate(t);
+            return skeletonTemplate(t);
         }
         String taskCode = t.taskCode();
         ClassPathResource resource = new ClassPathResource("skills/" + taskCode + ".md");

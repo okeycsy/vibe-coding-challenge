@@ -38,7 +38,7 @@ public class TaskManagementController {
         return ApiResponse.ok(taskService.list());
     }
 
-    /** 업무 추가: md 파일을 기본 템플릿의 제목만 넣어 만든다 */
+    /** 업무 추가: md 파일을 기본 템플릿 뼈대(제목·섹션·빈 formula 블록)로 만든다 */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<TaskResponse> create(
