@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiEnabled } from '../utils/api';
-import { Bell, Calculator, ChevronDown, ClipboardCheck, FileCode2, LogOut, Menu, ShieldCheck, UserCog } from 'lucide-react';
+import { Bell, Calculator, CheckCheck, ChevronDown, ClipboardCheck, FileCode2, LogOut, Menu, ShieldCheck, UserCog } from 'lucide-react';
 
 // 메뉴는 로그인한 계정의 role로 걸러진다. labels는 역할별로 이름을 바꿀 때 쓴다.
 // children: 하위 메뉴. section은 해당 화면 안에서 스크롤할 영역의 id, roles가 없으면 상위 메뉴 권한을 따른다.
@@ -68,7 +68,88 @@ const ROLE_BADGE = {
   institution: 'bg-emerald-400 text-emerald-950',
 };
 
-export function Header({ user, onLogout, onToggleSidebar, sidebarOpen }) {
+// 상단바 알림 버튼과 알림 목록 드롭다운. 읽지 않은 알림이 있을 때만 빨간 표시를 띄운다.
+function NotificationMenu({ notifications, onOpen, onReadAll }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const unread = notifications.filter((n) => !n.read).length;
+
+  // 바깥을 누르거나 Esc를 누르면 닫는다
+  useEffect(() => {
+    if (!open) return undefined;
+    const onClick = (e) => !ref.current?.contains(e.target) && setOpen(false);
+    const onKey = (e) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className={`relative p-2 rounded-full hover:bg-white/10 ${open ? 'bg-white/10' : ''}`}
+        title="알림"
+        aria-label={unread > 0 ? `알림 (읽지 않음 ${unread}건)` : '알림'}
+        aria-expanded={open}
+        aria-haspopup="true"
+      >
+        <Bell className="w-5 h-5 text-brand-200" />
+        {unread > 0 && (
+          <span className="absolute top-0.5 right-0.5 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold leading-4 text-center">
+            {unread > 9 ? '9+' : unread}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-2 w-80 rounded-lg border border-slate-200 bg-white text-slate-700 shadow-xl z-40">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100">
+            <p className="text-sm font-bold text-brand-900">
+              알림 {unread > 0 && <span className="text-rose-500">{unread}</span>}
+            </p>
+            <button
+              onClick={onReadAll}
+              disabled={unread === 0}
+              className="flex items-center gap-1 text-xs text-brand-600 hover:underline disabled:text-slate-300 disabled:no-underline"
+            >
+              <CheckCheck className="w-3.5 h-3.5" /> 모두 읽음
+            </button>
+          </div>
+          {notifications.length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-slate-400">새 알림이 없습니다.</p>
+          ) : (
+            <ul className="max-h-96 overflow-y-auto divide-y divide-slate-100">
+              {notifications.map((n) => (
+                <li key={n.id}>
+                  <button
+                    onClick={() => {
+                      onOpen(n);
+                      setOpen(false);
+                    }}
+                    className={`w-full text-left px-4 py-3 hover:bg-brand-50 ${n.read ? '' : 'bg-rose-50/40'}`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className={`w-2 h-2 shrink-0 rounded-full ${n.read ? 'bg-transparent' : 'bg-rose-500'}`} />
+                      <span className={`flex-1 text-sm ${n.read ? 'text-slate-500' : 'font-semibold text-slate-800'}`}>{n.title}</span>
+                      <span className="text-[11px] text-slate-400">{n.at}</span>
+                    </span>
+                    <span className="block mt-1 pl-4 text-xs text-slate-500 leading-relaxed">{n.body}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function Header({ user, onLogout, onToggleSidebar, sidebarOpen, notifications = [], onOpenNotification, onReadAll }) {
   return (
     <header className="h-16 bg-brand-800 text-white flex items-center justify-between px-6 shadow-md z-10">
       <div className="flex items-center gap-3">
@@ -91,10 +172,7 @@ export function Header({ user, onLogout, onToggleSidebar, sidebarOpen }) {
       </div>
 
       <div className="flex items-center gap-4">
-        <button className="relative p-2 rounded-full hover:bg-white/10" title="알림">
-          <Bell className="w-5 h-5 text-brand-200" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-400 rounded-full" />
-        </button>
+        <NotificationMenu notifications={notifications} onOpen={onOpenNotification} onReadAll={onReadAll} />
         <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${ROLE_BADGE[user.role]}`}>{user.label}</span>
         <div className="text-right leading-tight">
           <p className="text-sm font-semibold">

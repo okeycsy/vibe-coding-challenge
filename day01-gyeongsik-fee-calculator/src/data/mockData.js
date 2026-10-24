@@ -32,6 +32,18 @@ export const INITIAL_TASK_REQUESTS = [
   { id: 2, memberId: 'kimms', taskId: 'cd', reason: 'CD공동망 분기 대사 지원', requestedAt: '2026-10-02 15:41', status: '반려', decidedAt: '2026-10-03 09:10' },
 ];
 
+// 상단바 알림 예시. roles: 이 알림을 받는 역할, target: 누르면 이동할 메뉴·하위 영역
+export const INITIAL_NOTIFICATIONS = [
+  { id: 'n1', roles: ['sysadmin'], title: '업무 권한 신청', body: '김민수님이 오픈뱅킹 산출 권한을 신청했습니다.', at: '2026-10-19 10:20', read: false, target: { menu: 'admin', section: 'admin-tasks' } },
+  { id: 'n2', roles: ['sysadmin'], title: '가입 승인 대기', body: '하나은행·토스뱅크 등 3명이 가입 승인을 기다리고 있습니다.', at: '2026-10-13 17:05', read: false, target: { menu: 'admin', section: 'admin-members' } },
+  { id: 'n3', roles: ['sysadmin'], title: '계정 잠금', body: '우리은행 박지훈님 계정이 비밀번호 5회 오류로 잠겼습니다.', at: '2026-10-19 16:42', read: true, target: { menu: 'admin', section: 'admin-members' } },
+  { id: 'n4', roles: ['operator', 'sysadmin'], title: '대사 이슈 등록', body: 'A은행이 오픈뱅킹 3분기 대사 결과에 이슈를 등록했습니다.', at: '2026-10-21 14:12', read: false, target: { menu: 'results', section: 'results-recon' } },
+  { id: 'n5', roles: ['operator', 'sysadmin'], title: '기관 테스트 오류', body: 'C은행 연동 테스트에서 예외사항이 발생했습니다.', at: '2026-10-20 11:30', read: false, target: { menu: 'results', section: 'results-test' } },
+  { id: 'n6', roles: ['operator'], title: '권한 신청 결과', body: 'CD공동망 산출 권한 신청이 반려되었습니다.', at: '2026-10-03 09:10', read: true, target: { menu: 'mypage', section: 'mypage-tasks' } },
+  { id: 'n7', roles: ['institution'], title: '회비 대사 요청', body: '오픈뱅킹 3분기 회비 산출 결과가 도착했습니다. 확인 후 회신해 주세요.', at: '2026-10-21 09:00', read: false, target: { menu: 'calc', section: 'calc-result' } },
+  { id: 'n8', roles: ['institution'], title: '연동 테스트 결과', body: '10월 기관 연동 테스트 결과가 등록되었습니다.', at: '2026-10-18 15:20', read: true, target: { menu: 'results', section: 'results-test' } },
+];
+
 // 비밀번호 5회 오류로 잠긴 계정 예시 (실제 계정이 5회 틀리면 여기에 추가된다)
 export const INITIAL_LOGIN_LOCKS = {
   woori01: { count: 5, lockedAt: '2026-10-19 16:42' },

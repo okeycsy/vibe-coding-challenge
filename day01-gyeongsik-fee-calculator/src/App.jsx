@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BUSINESSES, INITIAL_LOGIN_LOCKS, INITIAL_TASK_REQUESTS, MEMBERS, ROLES } from './data/mockData';
+import { BUSINESSES, INITIAL_LOGIN_LOCKS, INITIAL_NOTIFICATIONS, INITIAL_TASK_REQUESTS, MEMBERS, ROLES } from './data/mockData';
 import { Header, MENUS, Sidebar } from './components/Layout';
 import FeeCalculation from './components/FeeCalculation';
 import ResultsManagement from './components/ResultsManagement';
@@ -37,6 +37,8 @@ export default function App() {
   // 업무 목록 (업무 1개 = md 파일 1개). 관리자가 업무 관리에서 추가·삭제한다. 서버가 있으면 서버 목록을 받는다.
   const [tasks, setTasks] = useState(() => builtInTasks(BUSINESSES));
   const [toast, setToast] = useState(null);
+  // 상단바 알림. 서버 API가 없어 서버 연결 여부와 관계없이 예시 데이터로 동작하고, 읽음 표시는 새로고침 전까지 유지된다.
+  const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
   const toastTimer = useRef();
 
   // ── 회원(=로그인 계정)·로그인 잠금 ──
@@ -302,6 +304,13 @@ export default function App() {
     setMenu('calc');
   };
 
+  const myNotifications = notifications.filter((n) => n.roles.includes(role)).sort((a, b) => b.at.localeCompare(a.at));
+  const markRead = (ids) => setNotifications((ns) => ns.map((n) => (ids.includes(n.id) ? { ...n, read: true } : n)));
+  const openNotification = (n) => {
+    markRead([n.id]);
+    if (canSee(n.target.menu)) selectMenu(n.target.menu, n.target.section);
+  };
+
   const shared = { user, runs, setRuns, notify };
   const isLocked = (id) => loginLocks[id]?.count >= MAX_ATTEMPTS;
   const adminCounts = {
@@ -326,6 +335,9 @@ export default function App() {
       <Header
         user={user}
         onLogout={logout}
+        notifications={myNotifications}
+        onOpenNotification={openNotification}
+        onReadAll={() => markRead(myNotifications.map((n) => n.id))}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((o) => !o)}
       />
