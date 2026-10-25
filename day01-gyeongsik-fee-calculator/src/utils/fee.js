@@ -6,8 +6,19 @@ export const fmt = (n) => Math.round(n).toLocaleString('ko-KR');
 
 // AI 에이전트 이슈 문장을 해석하는 시연용 파서.
 // 기관 별칭과 "1,500건" 같은 건수를 찾아 차감 규칙으로 바꾼다.
+// 문장에 들어 있는 이름·별칭 중 가장 긴 것을 고른다 ('하나온은행'이 '하나'(하나은행)로 잡히지 않도록).
+export function longestMatch(text) {
+  let best = null;
+  INSTITUTIONS.forEach((inst) => {
+    const alias = [inst.name, ...inst.aliases].find((a) => text.includes(a));
+    if (alias && (!best || alias.length > best.alias.length)) best = { inst, alias };
+  });
+  return best;
+}
+
 export function parseIssue(text) {
-  const inst = INSTITUTIONS.find((i) => [i.name, ...i.aliases].some((a) => text.includes(a)));
+  const match = longestMatch(text);
+  const inst = match?.inst;
   const countMatch = text.match(/([\d,]+)\s*건/);
   const count = countMatch ? Number(countMatch[1].replace(/,/g, '')) : null;
   const dateMatch = text.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
@@ -22,7 +33,7 @@ export function parseIssue(text) {
   return {
     institutionId: inst?.id ?? null,
     institutionName: inst?.name ?? null,
-    matchedAlias: inst ? [inst.name, ...inst.aliases].find((a) => text.includes(a)) : null,
+    matchedAlias: match?.alias ?? null,
     count,
     date: dateMatch ? `${dateMatch[1]}/${dateMatch[2]}` : null,
     reason,

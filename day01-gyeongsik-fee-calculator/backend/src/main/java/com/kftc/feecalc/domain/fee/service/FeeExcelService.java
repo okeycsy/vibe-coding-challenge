@@ -257,12 +257,17 @@ public class FeeExcelService {
                 return i;
             }
         }
+        // 이름·별칭이 들어 있으면 가장 길게 맞는 기관
+        Institution best = null;
+        int bestLength = 0;
         for (Institution i : institutions) {
-            if (i.findMatchedAlias(v) != null) {
-                return i;
+            String a = i.findMatchedAlias(v);
+            if (a != null && a.length() > bestLength) {
+                best = i;
+                bestLength = a.length();
             }
         }
-        return null;
+        return best;
     }
 
     private Long readCount(Cell cell, DataFormatter fmt) {

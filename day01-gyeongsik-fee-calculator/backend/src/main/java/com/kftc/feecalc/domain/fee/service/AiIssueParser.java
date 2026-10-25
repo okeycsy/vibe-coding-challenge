@@ -23,11 +23,12 @@ public class AiIssueParser {
     public ParsedIssue parse(String text, List<Institution> institutions) {
         Institution inst = null;
         String alias = null;
+        // 가장 길게 맞는 이름·별칭을 고른다 ('하나온은행'이 '하나'(하나은행)로 잡히지 않도록)
         for (Institution i : institutions) {
-            alias = i.findMatchedAlias(text);
-            if (alias != null) {
+            String a = i.findMatchedAlias(text);
+            if (a != null && (alias == null || a.length() > alias.length())) {
+                alias = a;
                 inst = i;
-                break;
             }
         }
 

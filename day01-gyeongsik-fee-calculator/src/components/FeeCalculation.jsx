@@ -17,7 +17,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { BUSINESSES, INSTITUTIONS, ISSUE_EXAMPLES } from '../data/mockData';
+import { BUSINESSES, ISSUE_EXAMPLES } from '../data/mockData';
 import { calculateFees, fmt, parseIssue, periodScale, runKey } from '../utils/fee';
 import { daysBetween, parseDate, periodLabel, previousQuarter, quarterRange, toISO } from '../utils/period';
 import { downloadReconciliation, downloadRevenueResolution } from '../utils/excel';
@@ -484,7 +484,7 @@ export default function FeeCalculation({
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
-                  <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
+                  <div className="mt-3 grid max-h-48 grid-cols-2 gap-x-4 gap-y-0.5 overflow-y-auto pr-1 text-xs">
                     {draft.file.counts.map((c) => (
                       <div key={c.institutionId} className="flex justify-between">
                         <span className="text-slate-600">{c.name}</span>
@@ -499,11 +499,7 @@ export default function FeeCalculation({
                       {draft.file.unmatched.length > 5 && ' 외'}
                     </p>
                   )}
-                  {draft.file.counts.length < INSTITUTIONS.length && (
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      파일에 없는 참가기관 {INSTITUTIONS.length - draft.file.counts.length}곳은 산출 대상에서 빠집니다.
-                    </p>
-                  )}
+                  <p className="mt-1 text-[11px] text-slate-500">파일에 있는 기관만 산출 대상이 됩니다.</p>
                 </div>
               ) : (
                 <button

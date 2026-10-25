@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { INSTITUTIONS } from '../data/mockData';
+import { longestMatch } from './fee';
 
 // 실적 엑셀 업로드. 서버(FeeExcelService.parseUpload)와 같은 규칙으로 읽는다:
 // 첫 시트 위쪽 21행 안에서 기관(기관·금융회사·코드)과 건수(건수·실적) 열이 함께 있는 머리글 행을 찾고,
@@ -26,7 +27,7 @@ function matchInstitution(value) {
   const lower = v.toLowerCase();
   return (
     INSTITUTIONS.find((i) => lower === i.code.toLowerCase() || lower === i.id.toLowerCase() || v === i.name) ??
-    INSTITUTIONS.find((i) => v.includes(i.name) || i.aliases.some((a) => v.includes(a))) ??
+    longestMatch(v)?.inst ??
     null
   );
 }
