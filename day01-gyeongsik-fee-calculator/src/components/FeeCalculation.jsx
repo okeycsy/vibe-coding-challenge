@@ -25,6 +25,7 @@ import { Card, Select, StatusBadge } from './ui';
 import DateField from './DateField';
 import { api, apiEnabled } from '../utils/api';
 import { TASK_CODES, builtInTasks, lines, localSkillDetail } from '../utils/skill';
+import { SOURCE_LABEL, parseScript } from '../utils/postprocess';
 import { MAX_UPLOAD_MB, SAMPLE_FILE, UploadError, checkUploadFile, parseUploadInBrowser } from '../utils/upload';
 
 const NEXT_STATUS = { 대기: '확인중', 확인중: '완료', 완료: '대기' };
@@ -39,7 +40,7 @@ const LOADING_STEPS = [
   'Raw Data 검증 중…',
   'AI 예외 차감 지침으로 이슈 판별 중…',
   'Step 1: 3번 정산 수식(formula)으로 1차 정밀 계산 중…',
-  'Step 2: 4번 최종 정산 특이사항을 보정 동작으로 해석해 후처리 중…',
+  'Step 2: 4번 최종 정산 특이사항 후처리 스크립트 실행·검증 중…',
 ];
 // 산출 결과의 AI 단계 동작 방식 (서버 aiMode)
 const AI_MODE_LABEL = {
@@ -48,12 +49,14 @@ const AI_MODE_LABEL = {
   RULE_FALLBACK: '규칙 기반 이슈 판별 (AI 호출 실패)',
   MOCK: '규칙 기반 이슈 판별 (서버 미연결)',
 };
-// 4번 최종 정산 특이사항을 보정 동작으로 해석한 방식 (서버 specialRuleMode)
-const SPECIAL_MODE_LABEL = {
-  AI: 'AI 해석',
-  RULE: '규칙 기반 해석 (AI 키 없음)',
-  RULE_FALLBACK: '규칙 기반 해석 (AI 해석 실패)',
-  MOCK: '규칙 기반 해석 (서버 미연결)',
+
+// 스크립트 단계 수 (빈 줄·주석 제외, 문법 오류면 줄 수)
+const stepCount = (script) => {
+  try {
+    return parseScript(script).length;
+  } catch {
+    return script.split('\n').filter((l) => l.trim()).length;
+  }
 };
 
 // 기간 빠른 선택. 기본값은 오늘 기준 직전 분기(회비는 분기 종료 후 산출)다.
@@ -267,11 +270,10 @@ export default function FeeCalculation({
             issues: issues.map((i, idx) => ({ ...i, applied: res.issues[idx]?.applied, judgement: res.issues[idx]?.judgement })),
             ai: { mode: res.aiMode, model: res.aiModel, note: res.aiNote },
             special: {
-              mode: res.specialRuleMode,
-              model: res.specialRuleModel,
-              note: res.specialRuleNote,
-              actions: res.specialActions ?? [],
-              unsupported: res.specialUnsupported ?? [],
+              postprocess: res.postprocess ?? '',
+              source: res.postprocessSource,
+              checks: res.checks ?? [],
+              notes: res.notes ?? [],
             },
             used: { ...used, calcType: res.calcType, formula: res.formula, specialRules: lines(res.specialRules) },
           }))
@@ -486,7 +488,11 @@ export default function FeeCalculation({
                     <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-semibold text-white">
                       <Tag className="w-3 h-3" /> 최종 정산 특이사항 적용 업무
                     </span>
-                    <p className="mt-1 text-[11px] text-amber-800">1차 수식 계산 후 아래 4번 규칙으로 금액을 보정합니다.</p>
+                    <p className="mt-1 text-[11px] text-amber-800">
+                      {skill.postprocess
+                        ? `1차 수식 계산 후 아래 4번 규칙을 확정된 후처리 스크립트(${stepCount(skill.postprocess)}단계)로 실행해 금액을 보정·검증합니다.`
+                        : '1차 수식 계산 후 아래 4번 규칙으로 금액을 보정합니다. 후처리 스크립트가 아직 확정되지 않아 내장 변환기로 바꿔 실행합니다.'}
+                    </p>
                     <ul className="mt-1 space-y-1 text-xs text-amber-900">
                       {skill.specialRules.map((s) => (
                         <li key={s} className="flex gap-2">
@@ -800,40 +806,37 @@ export default function FeeCalculation({
               {run.skill && <span>적용 기준 {run.skill.calcType} (skill.md)</span>}
               {isOperator && <span className="text-brand-500">대사 상태 배지를 누르면 상태가 바뀝니다.</span>}
             </div>
-            {isOperator && (run.special?.actions?.length > 0 || run.special?.unsupported?.length > 0) && (
+            {isOperator && run.special?.source && run.special.source !== 'DEFAULT' && (
               <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2 text-xs">
                 <p className="flex flex-wrap items-center gap-2 font-semibold text-amber-900">
-                  4번 최종 정산 특이사항 해석 결과
+                  4번 최종 정산 특이사항 후처리
                   <span
                     className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-normal ${
-                      run.special.mode === 'AI'
-                        ? 'border-violet-200 bg-violet-50 text-violet-700'
-                        : run.special.mode === 'RULE_FALLBACK'
-                          ? 'border-amber-300 bg-amber-100 text-amber-800'
-                          : 'border-slate-200 bg-white text-slate-600'
+                      run.special.source === 'SCRIPT' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-300 bg-amber-100 text-amber-800'
                     }`}
-                    title={run.special.note ?? undefined}
                   >
-                    <Bot className="w-3 h-3" /> {SPECIAL_MODE_LABEL[run.special.mode] ?? run.special.mode}
-                    {run.special.model && ` · ${run.special.model}`}
+                    <FileCode2 className="w-3 h-3" /> {SOURCE_LABEL[run.special.source] ?? run.special.source}
                   </span>
-                  <span className="font-normal text-amber-800/80">금액은 아래 보정 동작대로 코드가 계산합니다.</span>
+                  <span className="font-normal text-amber-800/80">산출 중에는 AI 를 쓰지 않고 스크립트대로 코드가 계산합니다.</span>
                 </p>
-                {run.special.actions.length > 0 && (
-                  <ol className="mt-1.5 list-decimal space-y-0.5 pl-5 text-slate-700">
-                    {run.special.actions.map((a, i) => (
-                      <li key={i} title={a.rule || undefined}>
-                        {a.description}
+                <pre className="mt-1.5 max-h-40 overflow-auto rounded border border-amber-100 bg-white px-2 py-1 font-mono text-[11px] leading-5 text-slate-700">
+                  {run.special.postprocess}
+                </pre>
+                {run.special.checks.length > 0 && (
+                  <ul className="mt-1.5 space-y-0.5">
+                    {run.special.checks.map((c, i) => (
+                      <li key={i} className={c.passed ? 'text-emerald-700' : 'font-semibold text-rose-700'} title={c.expression}>
+                        {c.passed ? '✓' : '✗'} 검증 {c.label}
+                        {c.actual != null && <span className="font-normal text-slate-500"> · 실제 {c.actual}</span>}
                       </li>
                     ))}
-                  </ol>
+                  </ul>
                 )}
-                {run.special.unsupported.length > 0 && (
-                  <p className="mt-1.5 text-rose-700">
-                    적용하지 못한 문장: {run.special.unsupported.join(' / ')}
+                {run.special.notes.map((v) => (
+                  <p key={v} className="mt-1 text-amber-800">
+                    {v}
                   </p>
-                )}
-                {run.special.note && <p className="mt-1 text-amber-800">{run.special.note}</p>}
+                ))}
               </div>
             )}
             <div className="overflow-x-auto rounded-lg border border-slate-200">

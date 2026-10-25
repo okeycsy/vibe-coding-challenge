@@ -25,6 +25,11 @@
 - 공개 배포는 Vercel Git 연결로 한다 (Root Directory `day01-gyeongsik-fee-calculator`, Production Branch `main`). 토큰·GitHub Actions 배포는 쓰지 않는다
 
 ## 세션 로그
+### 2026-10-25 (경식, 4번 특이사항 → 후처리 스크립트, 3번 분리 수식)
+- John 결정: 특이사항이 많아질 수 있어 문장별 보정 동작(PR #43) 대신 **후처리 스크립트** 방식. 4번 = 자연어 + ```postprocess 블록. 빌더에서 AI(키 없으면 내장 변환기 `SpecialRuleConverter`)가 문장을 스크립트로 바꾸고 문법·시험 실행·시뮬레이션 후 확정, 산출 때는 AI 없이 스크립트만 실행(`PostprocessEngine`, 프론트 `postprocess.js`와 동일, 백만분의 1원 정수 연산). `SpecialRuleInterpreter`/`SpecialAction`/`SpecialRulePostProcessor`/`specialRules.js` 제거
+- 연산: allocate · roundUp/Down/Half(addTo) · fixSum(N%) · spreadDiff · min/max/add/set · assert(sum/mod/all/integer). 스크립트 없으면 자연어를 변환해 실행(AUTO_RULE), 4번 없으면 allocate(fee)(이전 결과와 같음). 기본 CD공동망·타행환·금거정 skill.md에 스크립트 블록 추가
+- 3번: ```formula:equal + ```formula:perf 분리 수식 지원(통합 ```formula는 선택). John의 CD공동망 문서는 3-1·3-2를 이 블록으로 감싸면 그대로 쓸 수 있음. 우체국 같은 지정 기관은 기관 관리에 먼저 등록해야 함
+- 검증: `mvn test` 47개, 서버·Mock 1,320건(분리 수식·스크립트 변형 포함) 일치, 스크립트 생성·문서 분해 일치, Playwright로 빌더 3·4번 탭과 STEP 3 확인. Render 재배포 필요. 기존 산출 이력 DB 컬럼이 바뀌어(H2 메모리라) 재기동 시 새로 생성
 ### 2026-10-25 (경식, 4번 특이사항 AI 해석)
 - John 확인: 4번 처리가 키워드 매칭뿐이라 AI를 쓰도록 변경. 구조 = AI가 문장을 보정 동작 JSON(MIN_FEE/MAX_FEE/ROUND, 단위·절상/절사/반올림, 대상 ALL/FIRST/NAMED, 차이분 실적순 배분)으로 해석 → 허용 목록 검증 → 코드가 동작대로 금액 계산(`SpecialRuleInterpreter` → `SpecialRulePostProcessor.validate/execute`). 키 없음(RULE)·AI 실패/형식 오류(RULE_FALLBACK)·Mock은 기존 키워드 규칙이 같은 구조를 만듦. 같은 문장·기관 목록의 AI 해석은 서버 메모리에 기억
 - 응답·화면·대사용 엑셀에 해석 방식, 보정 동작, 적용하지 못한 문장 표시. 규칙 기반일 때 서버·Mock 1,160건(4번 문장 변형 40건 포함) 일치, `mvn test` 46개. Render에 `AI_API_KEY`(필요 시 `AI_MODEL`·`AI_BASE_URL`)를 넣어야 AI 해석이 켜짐

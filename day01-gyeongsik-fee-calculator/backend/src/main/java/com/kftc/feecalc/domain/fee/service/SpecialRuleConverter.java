@@ -34,7 +34,10 @@ public final class SpecialRuleConverter {
     private static final Pattern ROUNDING = Pattern.compile(
             "(\\d[\\d,]*)\\s*원\\s*(?:단위|미만)\\s*(?:로|으로|에서)?\\s*(반올림|절상|올림|절사|절삭|버림|내림)");
     private static final Pattern CLAMP = Pattern.compile("(최저|최소|최고|최대)\\s*(?:회비|금액|한도)?\\s*(?:는|은)?\\s*(" + AMOUNT + ")");
-    private static final Pattern FIX_SUM = Pattern.compile("(균등|실적)\\S*[^\\n]*?(\\d+(?:\\.\\d+)?)\\s*%[^\\n]*?(목표|총액|합계)");
+    /** "균등분담회비 합계가 총액의 25%와 다르면 … 보정" · "실적분담 합계를 목표 75%에 맞춘다" (비율 앞뒤 어디든 목표·총액·합계 + 보정 동사) */
+    private static final Pattern FIX_SUM = Pattern.compile("(균등|실적)[^\\n]*?(\\d+(?:\\.\\d+)?)\\s*%");
+    private static final Pattern FIX_SUM_KEY = Pattern.compile("목표|총액|합계");
+    private static final Pattern FIX_SUM_VERB = Pattern.compile("보정|맞|일치|유지|다르|차이");
     private static final Pattern DIFF = Pattern.compile("차이|차액|초과|증액|증가");
     private static final Pattern CUT = Pattern.compile("절삭|차감|1원씩");
     private static final Pattern ASC = Pattern.compile("(작은|적은)\\s*(순|기관)");
@@ -83,7 +86,7 @@ public final class SpecialRuleConverter {
         // 2) 합계 목표 보정
         for (int k = 0; k < rules.size(); k++) {
             Matcher m = FIX_SUM.matcher(rules.get(k));
-            if (!m.find() || rules.get(k).contains("=")) {
+            if (!isFixSum(rules.get(k)) || !m.find()) {
                 continue;
             }
             String comp = m.group(1).equals("균등") ? "equal" : "perf";
@@ -94,6 +97,14 @@ public final class SpecialRuleConverter {
             steps.add("'" + rules.get(k) + "' → " + (comp.equals("equal") ? "균등분담분" : "실적분담분") + " 합계를 총액의 " + pct
                     + "%에 맞춤 (초과면 " + (perfOrder ? "실적분담분" : "인정 건수") + " 큰 기관부터 1원씩 감액, 미달이면 작은 기관부터 1원씩 증액)");
             asserts.add("assert sum(" + comp + ") == " + pct + "%");
+            // 다른 쪽도 나머지 비율로 맞춰야 반올림 오차 없이 총액이 유지된다 (총액 유지 문장이 있을 때)
+            String other = comp.equals("equal") ? "perf" : "equal";
+            String rest = PostprocessScript.trimPct(100 - Double.parseDouble(pct));
+            if (keepsTotal(rules) && Double.parseDouble(pct) < 100) {
+                script.add("fixSum(" + other + ", " + rest + "%, over=" + desc + ", under=" + asc + ")");
+                steps.add("총액 유지 → " + (other.equals("equal") ? "균등분담분" : "실적분담분") + " 합계도 나머지 " + rest
+                        + "%에 맞춰 반올림 오차를 없앰");
+            }
             used[k] = true;
             break;
         }
@@ -174,7 +185,7 @@ public final class SpecialRuleConverter {
             if (r.contains("일의 자리") && r.contains("0")) {
                 used[k] = true; // "일의 자리 = 0원" (끝전 처리 검증으로 반영)
             }
-            if (r.contains("=") && FIX_SUM.matcher(r).find()) {
+            if (r.contains("=") && FIX_SUM.matcher(r).find() && FIX_SUM_KEY.matcher(r).find()) {
                 used[k] = true; // "균등분담회비 합계 = 전체 회비의 25%" (fixSum 검증으로 반영)
             }
             if (NOISE.matcher(r).find()) {
@@ -194,6 +205,17 @@ public final class SpecialRuleConverter {
             }
         }
         return new Converted(String.join("\n", script), steps, unsupported);
+    }
+
+    /** 합계 목표 보정 문장 (검증용 "합계 = 총액의 25%" 는 제외) */
+    static boolean isFixSum(String rule) {
+        return !rule.contains("=") && FIX_SUM.matcher(rule).find() && FIX_SUM_KEY.matcher(rule).find()
+                && FIX_SUM_VERB.matcher(rule).find();
+    }
+
+    /** 총액이 바뀌면 안 된다는 뜻의 문장이 있는지 (총액 유지 · 차이분 되돌리기) */
+    static boolean keepsTotal(List<String> rules) {
+        return rules.stream().anyMatch(r -> KEEP_TOTAL.matcher(r).find() || isShareBack(r));
     }
 
     static boolean isShareBack(String rule) {

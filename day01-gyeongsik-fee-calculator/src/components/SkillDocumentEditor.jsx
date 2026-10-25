@@ -42,7 +42,12 @@ export default function SkillDocumentEditor({ user, detail, saveContent, onDirty
       return { error: e.message };
     }
   }, [text, detail.taskCode]);
-  const formula = live.parsed?.formula ?? parts.formulaSection.match(/```formula[ \t]*\n([\s\S]*?)```/)?.[1]?.trim() ?? '';
+  const formula = live.parsed
+    ? live.parsed.equalFormula != null
+      ? `# 균등분담 (formula:equal)\n${live.parsed.equalFormula}\n\n# 실적분담 (formula:perf)\n${live.parsed.perfFormula}`
+      : live.parsed.formula
+    : (parts.formulaSection.match(/```formula[^\n]*\n([\s\S]*?)```/)?.[1]?.trim() ?? '');
+  const savedSpecial = useMemo(() => splitSkill(detail.content).special, [detail.content]);
 
   const save = async () => {
     setSaveError(null);
@@ -182,7 +187,7 @@ export default function SkillDocumentEditor({ user, detail, saveContent, onDirty
                   ## 3. 정산 수식 <span className="text-[11px] font-normal text-slate-500">(필수 · 현재 적용 중 · 읽기 전용)</span>
                 </p>
                 <button
-                  onClick={onGoBuilder}
+                  onClick={() => onGoBuilder('formula')}
                   className="ml-auto flex items-center gap-1 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-700"
                 >
                   👉 AI 계산식 빌더로 이동하여 수식 갱신 <ArrowRight className="w-3.5 h-3.5" />
@@ -199,13 +204,36 @@ export default function SkillDocumentEditor({ user, detail, saveContent, onDirty
             <Section
               no={4}
               title="최종 정산 특이사항"
-              hint="1차 수식 계산 후 적용할 끝전 처리, 특정 기관 10원 절상 및 실적순 1원 절삭 등의 후처리 규칙을 작성하세요."
+              hint="1차 수식 계산 후의 반올림 · 합계 보정 · 특정 기관 절상 · 차이분 배분 · 최종 검증을 자연어로 적으세요. [AI 계산식 빌더 › 4번 후처리 스크립트]에서 이 문장을 실행용 스크립트로 바꿔 확정합니다."
               value={parts.special}
               onChange={(v) => setPart('special', v)}
-              rows={4}
-              placeholder="- 참가기관 중 1개 기관(첫 번째 기관 또는 지정 기관)은 산출된 회비 총액을 10원 단위로 절상한다.&#10;- 절상으로 인해 발생한 차이분(초과액)은 최종 인정 실적(#finalCount)이 큰 기관 순서대로 1원씩 절삭하여 분기 총액을 맞춘다."
-              tips={['N원 단위로 절상 + 차이분 실적순 1원씩 절삭', 'N원 미만 절사(버림)', '최저/최고 회비 N원', '기관명을 적으면 그 기관만']}
+              rows={6}
+              placeholder="- 균등분담회비·실적분담회비는 소수점 첫째 자리에서 반올림한다.&#10;- 균등분담회비 합계가 총액의 25%와 다르면 실적분담회비가 큰 기관부터 1원씩 보정한다.&#10;- 우체국은 회비를 10원 단위로 절상하고 증액분은 실적분담회비에 가산한다.&#10;- 증액분만큼 다른 기관의 실적분담회비를 실적분담회비가 큰 순서대로 1원씩 차감한다."
             />
+            <div className="-mt-2 rounded-lg border border-violet-200 bg-violet-50/40 p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-semibold text-brand-900">
+                  4번 후처리 스크립트 <span className="text-[11px] font-normal text-slate-500">(```postprocess 블록 · 산출 때 이대로 실행 · 읽기 전용)</span>
+                </p>
+                <button
+                  onClick={() => onGoBuilder('postprocess')}
+                  className="ml-auto flex items-center gap-1 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-700"
+                >
+                  👉 AI 계산식 빌더에서 스크립트 생성·확정 <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-900 p-2.5 font-mono text-[11px] text-violet-200">
+                {parts.postprocess ||
+                  (parts.special.trim()
+                    ? '(아직 확정된 스크립트가 없습니다. 산출 때는 내장 변환기가 위 문장을 바꿔 실행합니다.)'
+                    : '(특이사항 없음 · 산출 때 기본 배분 allocate(fee))')}
+              </pre>
+              {parts.postprocess && parts.special.trim() !== savedSpecial.trim() && (
+                <p className="mt-1.5 text-[11px] text-amber-700">
+                  4번 문장을 고쳤습니다. 저장한 뒤 빌더에서 스크립트를 다시 생성해 확정해야 산출에 반영됩니다 (스크립트는 그대로 유지됩니다).
+                </p>
+              )}
+            </div>
           </>
         ) : mode === 'raw' ? (
           <CodeEditor value={text} onChange={setText} />
@@ -216,7 +244,7 @@ export default function SkillDocumentEditor({ user, detail, saveContent, onDirty
         )}
         <p className="text-[11px] text-slate-400 leading-relaxed">
           저장하면 4개 섹션을 하나의 표준 마크다운으로 합쳐 {user.role === 'sysadmin' ? '' : '승인된 업무의 '}skill.md에 저장하고 3단계 검증(섹션 · 수식 구문 ·
-          시험 계산 2벌)을 거칩니다. 1번 · 3번은 필수, 2번 · 4번은 선택입니다.
+          시험 계산 2벌 · 후처리 스크립트 시험 실행)을 거칩니다. 1번 · 3번은 필수, 2번 · 4번은 선택입니다.
         </p>
       </div>
     </section>
@@ -303,7 +331,7 @@ export function MarkdownPreview({ markdown }) {
   const rows = markdown.replace(/\r\n/g, '\n').split('\n');
   for (let i = 0; i < rows.length; i++) {
     const line = rows[i];
-    const fence = line.match(/^```(\w*)/);
+    const fence = line.match(/^```([\w:]*)/);
     if (fence) {
       const body = [];
       for (i++; i < rows.length && !rows[i].startsWith('```'); i++) body.push(rows[i]);
@@ -338,8 +366,21 @@ export function MarkdownPreview({ markdown }) {
         if (b.type === 'code') {
           return (
             <div key={idx}>
-              {b.lang === 'formula' && <p className="text-[11px] font-semibold text-emerald-700 mb-1">정산 수식 (SpEL)</p>}
-              <pre className={`whitespace-pre-wrap rounded-lg p-3 font-mono text-xs ${b.lang === 'formula' ? 'bg-slate-900 text-emerald-200 ring-2 ring-emerald-300/40' : 'bg-slate-100 text-slate-700'}`}>
+              {b.lang.startsWith('formula') && (
+                <p className="text-[11px] font-semibold text-emerald-700 mb-1">
+                  {b.lang === 'formula:equal' ? '균등분담 수식 (SpEL)' : b.lang === 'formula:perf' ? '실적분담 수식 (SpEL)' : '정산 수식 (SpEL)'}
+                </p>
+              )}
+              {b.lang === 'postprocess' && <p className="text-[11px] font-semibold text-violet-700 mb-1">후처리 스크립트</p>}
+              <pre
+                className={`whitespace-pre-wrap rounded-lg p-3 font-mono text-xs ${
+                  b.lang.startsWith('formula')
+                    ? 'bg-slate-900 text-emerald-200 ring-2 ring-emerald-300/40'
+                    : b.lang === 'postprocess'
+                      ? 'bg-slate-900 text-violet-200 ring-2 ring-violet-300/40'
+                      : 'bg-slate-100 text-slate-700'
+                }`}
+              >
                 {b.text}
               </pre>
             </div>

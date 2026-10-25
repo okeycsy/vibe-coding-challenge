@@ -399,7 +399,8 @@ public final class PostprocessEngine {
                 case "MOD" -> {
                     List<Integer> t = targets(a.selector(), op.line());
                     if (t.isEmpty()) {
-                        checks.add(new Check(expr, compLabel(a.comp()) + " " + selectorLabel(a.selector()) + " " + a.mod() + "원 단위", false, "대상 기관 없음"));
+                        // 대상 기관이 이번 산출에 없으면 확인할 금액이 없다 (해당 단계도 건너뛰고 참고로 남는다)
+                        checks.add(new Check(expr, selectorLabel(a.selector()) + " " + compLabel(a.comp()) + " " + String.format("%,d", a.mod()) + "원 단위", true, "대상 기관 없음 · 확인 생략"));
                         return;
                     }
                     boolean ok = true;

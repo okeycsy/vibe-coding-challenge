@@ -309,6 +309,27 @@ class AiPipelineTests {
         assertThat(c.steps()).hasSize(5);
         PostprocessEngine.trial(c.script());
 
+        // 균등 25% · 실적 75% + 지정 기관 10원 절상 (실적분담회비 순서) 문장
+        SpecialRuleConverter.Converted john = SpecialRuleConverter.convert("""
+                - 균등분담회비·실적분담회비는 소수점 첫째 자리에서 반올림한다.
+                - 균등분담회비 합계가 총액의 25%와 다르면 실적분담회비가 큰 기관부터 1원씩 보정한다.
+                - NH농협은행은 회비를 10원 단위로 절상하고 증액분은 실적분담회비에 가산한다.
+                - 증액분만큼 다른 기관의 실적분담회비를 실적분담회비가 큰 순서대로 1원씩 차감한다. 동률이면 기관코드 오름차순.
+                - [최종 검증] 회비 총액은 변하지 않아야 한다.
+                """, insts);
+        assertThat(john.script()).isEqualTo("""
+                roundHalf(equal)
+                roundHalf(perf)
+                fixSum(equal, 25%, over=perfDesc, under=perfAsc)
+                fixSum(perf, 75%, over=perfDesc, under=perfAsc)
+                roundUp(fee, 10, "NH농협은행")
+                spreadDiff(perf, others, perfDesc)
+                assert sum(equal) == 25%
+                assert fee("NH농협은행") % 10 == 0
+                assert sum(fee) == before
+                assert all(fee >= 0)""");
+        assertThat(john.unsupported()).isEmpty();
+
         // 기본 3개 업무의 4번 문장은 내장 변환기로 바꿔도 skill.md 의 스크립트와 같은 금액이 나온다
         for (String code : List.of("CD_NET", "INTERBANK", "FIN_INFO")) {
             SkillEngineService.ParsedSkill skill = engine.getSkill(code);
