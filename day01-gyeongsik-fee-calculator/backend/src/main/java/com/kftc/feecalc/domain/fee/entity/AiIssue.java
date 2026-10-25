@@ -41,12 +41,16 @@ public class AiIssue {
     private String issueDate;
     private String reason;
 
-    /** 기관과 건수를 모두 찾아 차감에 반영했는지 */
+    /** 기관과 건수를 모두 찾고, "## 2. AI 예외 차감 지침"상 차감 대상이라 차감에 반영했는지 */
     private boolean applied;
+
+    /** 차감 여부 판별 근거 (AI 또는 규칙 기반) */
+    @Column(length = 500)
+    private String judgement;
 
     @Builder
     private AiIssue(String text, String institutionCode, String institutionName, String matchedAlias, Long count,
-                    String issueDate, String reason, boolean applied) {
+                    String issueDate, String reason, boolean applied, String judgement) {
         this.text = text;
         this.institutionCode = institutionCode;
         this.institutionName = institutionName;
@@ -55,6 +59,7 @@ public class AiIssue {
         this.issueDate = issueDate;
         this.reason = reason;
         this.applied = applied;
+        this.judgement = judgement;
     }
 
     void attach(FeeCalculation calculation) {

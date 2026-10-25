@@ -44,7 +44,7 @@ public class SkillEngineService {
     static final Pattern CALC_TYPE = Pattern.compile("(?m)^[-*]\\s*산정 유형\\s*:\\s*(.+)$");
     static final Pattern RATE_UNIT = Pattern.compile("(?m)^[-*]\\s*표시 단위\\s*:\\s*(.+)$");
 
-    static final int MAX_FORMULA_LENGTH = 2_000;
+    public static final int MAX_FORMULA_LENGTH = 2_000;
 
     private static final ExpressionParser PARSER = new SpelExpressionParser();
 

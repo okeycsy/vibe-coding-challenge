@@ -72,6 +72,16 @@ public class FeeCalculation {
 
     private LocalDateTime calculatedAt;
 
+    /** AI 단계(이슈 판별·최종 보정) 동작 방식: AI / RULE(키 없음) / RULE_FALLBACK(AI 실패) */
+    @Column(length = 20)
+    private String aiMode;
+
+    @Column(length = 60)
+    private String aiModel;
+
+    @Column(length = 1000)
+    private String aiNote;
+
     @OneToMany(mappedBy = "calculation", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sortOrder")
     private List<FeeCalculationItem> items = new ArrayList<>();
@@ -103,6 +113,12 @@ public class FeeCalculation {
     /** skill.md 수식으로 산출한 뒤 회비 합계를 기록한다 */
     public void applyTotalFee(long totalFee) {
         this.appliedTotalFee = totalFee;
+    }
+
+    public void applyAiResult(String aiMode, String aiModel, String aiNote) {
+        this.aiMode = aiMode;
+        this.aiModel = aiModel;
+        this.aiNote = aiNote;
     }
 
     public void addItem(FeeCalculationItem item) {

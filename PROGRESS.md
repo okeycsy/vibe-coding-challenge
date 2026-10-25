@@ -25,6 +25,12 @@
 - 공개 배포는 Vercel Git 연결로 한다 (Root Directory `day01-gyeongsik-fee-calculator`, Production Branch `main`). 토큰·GitHub Actions 배포는 쓰지 않는다
 
 ## 세션 로그
+### 2026-10-25 (경식, AI 규칙 보정 2단계 산출)
+- skill.md 1·2번 섹션이 표시용에 그치던 한계 개선. 산출 순서: Step A 이슈 문장을 `## 2. AI 예외 차감 지침`으로 판별(지침상 제외는 차감 안 함, 근거 기록) → Step B `## 3.` 수식으로 1차 회비(primaryFee) → Step C `AiFeePostProcessor`가 `## 1. 비즈니스 규칙 요약`의 단수 처리·예외 규정으로 최종 회비(fee)와 `aiAdjustReason`
+- LLM: OpenAI Chat Completions 호환 RestClient(`ai.api-key`=`${AI_API_KEY:}`, `ai.model`, `ai.base-url`로 Gemini 호환 주소 가능). 키 없으면 규칙 기반(`RuleBasedFeeRules`), AI 실패·이상 응답은 그 단계만 규칙 기반으로 전환(aiMode AI/RULE/RULE_FALLBACK). AI 보정값은 정수·0 이상·1차 금액 2배 이내만 반영. 기동 시 시연 산출은 AI 호출 안 함
+- `POST /api/v1/skills/sync-formula`: 1번 규칙 → 3번 수식 생성(저장 권한 동일, 파일 저장 안 함, AI 수식도 구문 검사·시험 계산 통과해야 함, 아니면 규칙 기반 생성기). 규칙 기반 생성기는 기본 5개 업무 수식을 글자 그대로 다시 만듦
+- 화면: 편집기 위 [✨ 1번 규칙 기반으로 3번 수식 자동 생성], 결과 표 [AI 규칙 보정] 배지·툴팁(보정 전 금액·사유), 지침상 제외 이슈 목록, AI 방식 배지. Mock 모드는 브라우저에 키를 둘 수 없어 같은 규칙 기반(`src/utils/aiRules.js`)으로 동작, 서버 규칙 기반과 결과 일치 확인
+- 시연용 규칙: 금거정 skill.md에 "NH농협은행 10원 단위 절상, 차이분 실적순 1원씩 절삭" 추가, 이슈 예시 4(CD공동망 지침상 제외) 추가. 이미 만들어진 서버 data/skills 파일은 [초기 기준 복원]해야 새 규칙이 들어감. `mvn test` 35개
 ### 2026-10-25 (경식, CD공동망 테스트 기관 추가)
 - John이 준 CD공동망 테스트 실적 파일의 가상 기관 50곳(기관코드 T001~T058, 내부 ID t001 등)을 서버 DataInitializer와 프론트 mockData INSTITUTIONS에 추가. 파일은 `public/samples/cd-net-test-sample.xlsx`로 저장
 - 테스트 기관은 시연용 예시 실적(업로드 없이 산출)에는 나오지 않고(서버 가중치 0, 프론트 `test: true`), 업로드 파일에 있을 때만 산출 대상

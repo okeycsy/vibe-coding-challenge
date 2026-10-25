@@ -266,6 +266,6 @@ public class DataInitializer implements ApplicationRunner {
                 LocalDate.of(2026, 7, 1), LocalDate.of(2026, 9, 30),
                 List.of("5월 3일 A은행 시스템 장애로 인해 중복 전송된 1,500건은 실적에서 제외하고 산출해 줘.",
                         "카카오뱅크 테스트 전문 2,300건은 실적에서 빼 줘."),
-                null, null, "hong"));
+                null, null, "hong"), false);
     }
 }

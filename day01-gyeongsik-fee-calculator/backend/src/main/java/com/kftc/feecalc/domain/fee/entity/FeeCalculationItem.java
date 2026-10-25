@@ -44,8 +44,15 @@ public class FeeCalculationItem {
     /** 화면 표시용: "20원/건" 또는 "12.34%" */
     private String rateLabel;
 
-    /** 산출 회비(원) */
+    /** 1차 산출 회비(원): skill.md 수식 결과 */
+    private long primaryFee;
+
+    /** 최종 산출 회비(원): 1차 회비에 "## 1. 비즈니스 규칙 요약"의 단수 처리·예외 규정을 반영한 값 */
     private long fee;
+
+    /** AI(또는 규칙 기반) 최종 보정 사유. 보정이 없으면 null */
+    @Column(length = 500)
+    private String aiAdjustReason;
 
     /** 차감 사유(이슈 원문) */
     @Column(length = 2000)
@@ -70,8 +77,10 @@ public class FeeCalculationItem {
         this.calculation = calculation;
     }
 
-    public void applyFee(long fee, String rateLabel) {
+    public void applyFee(long primaryFee, long fee, String aiAdjustReason, String rateLabel) {
+        this.primaryFee = primaryFee;
         this.fee = fee;
+        this.aiAdjustReason = aiAdjustReason;
         this.rateLabel = rateLabel;
     }
 }
