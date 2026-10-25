@@ -25,13 +25,14 @@ export const setEmployeeId = (id) => {
 async function request(method, path, body) {
   let res;
   const headers = {};
-  if (body) headers['Content-Type'] = 'application/json';
+  const form = body instanceof FormData;
+  if (body && !form) headers['Content-Type'] = 'application/json';
   if (employeeId) headers['X-Employee-Id'] = employeeId;
   try {
     res = await fetch(`${BASE}${path}`, {
       method,
       headers,
-      body: body ? JSON.stringify(body) : undefined,
+      body: body && !form ? JSON.stringify(body) : body,
     });
   } catch {
     throw new ApiError(0, '서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.');
@@ -84,7 +85,13 @@ export const api = {
   tasks: () => request('GET', '/api/v1/tasks'),
   createTask: (taskCode, name, fileName) => request('POST', '/api/v1/tasks', { taskCode, name, fileName }),
   deleteTask: (taskCode) => request('DELETE', `/api/v1/tasks/${taskCode}`),
-  // skill.md 수식으로 산출 → 화면 결과 행 형태로
+  // 실적 엑셀 업로드 → { fileName, rowCount, totalCount, counts, unmatched }. 잘못된 파일은 400(메시지 포함)
+  uploadPerformance: (file) => {
+    const form = new FormData();
+    form.append('file', file);
+    return request('POST', '/api/fee/uploads', form);
+  },
+  // skill.md 수식으로 산출 → 화면 결과 행 형태로 (counts 를 주면 업로드 실적으로 산출)
   calculate: async (body) => {
     const res = await request('POST', '/api/v1/fees/calculate', body);
     return { ...res, rows: res.items.map(({ id, ...item }) => ({ ...item, status: '대기' })) };

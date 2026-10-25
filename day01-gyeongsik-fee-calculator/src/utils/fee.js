@@ -33,9 +33,10 @@ export function parseIssue(text) {
 export const periodScale = (from, to) => (asQuarter(from, to) ? 1 : daysBetween(from, to) / 91);
 
 // 서버가 없을 때 브라우저에서 산출한다. skill(parseSkill 결과)의 정산 수식을 기관마다 실행한다.
-export function calculateFees({ businessId, from, to, issues, skill }) {
+// counts(업로드 실적 [{ institutionId, baseCount }])가 있으면 그 건수를 그대로 쓰고, 없으면 시연용 예시 실적을 만든다.
+export function calculateFees({ businessId, from, to, issues, skill, counts }) {
   const scale = periodScale(from, to);
-  const base = getBaseCounts(businessId, from, to, scale);
+  const base = counts?.length ? counts : getBaseCounts(businessId, from, to, scale);
 
   const rows = base.map(({ institutionId, baseCount }) => {
     const inst = INSTITUTIONS.find((i) => i.id === institutionId);

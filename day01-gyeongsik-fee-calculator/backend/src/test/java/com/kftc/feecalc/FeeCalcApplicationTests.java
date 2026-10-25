@@ -178,6 +178,45 @@ class FeeCalcApplicationTests {
     }
 
     @Test
+    void 예시_실적엑셀을_올리면_그_건수로_skill_md_수식을_계산한다() throws Exception {
+        // 프론트 public/samples 의 예시 파일(가짜 데이터): 제목 행 아래 머리글, 8개 기관, 합계 행
+        byte[] xlsx = java.nio.file.Files.readAllBytes(
+                java.nio.file.Path.of("../public/samples/fee-performance-sample.xlsx"));
+        String body = mvc.perform(multipart("/api/fee/uploads").file(new MockMultipartFile("file", "sample.xlsx",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", xlsx)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.counts", hasSize(8)))
+                .andExpect(jsonPath("$.data.counts[0].institutionId", is("shinhan")))
+                .andExpect(jsonPath("$.data.counts[0].baseCount", is(812340)))
+                .andExpect(jsonPath("$.data.totalCount", is(5419310)))
+                .andExpect(jsonPath("$.data.unmatched", hasSize(0)))
+                .andReturn().getResponse().getContentAsString();
+        Object counts = om.readTree(body).path("data").path("counts");
+
+        Map<String, Object> request = Map.of("businessId", "openbanking", "from", "2026-07-01", "to", "2026-09-30",
+                "issues", List.of("A은행 9월 장애로 1,000건 중복 전송"),
+                "counts", counts, "uploadFileName", "sample.xlsx");
+        mvc.perform(post("/api/v1/fees/calculate").header("X-Employee-Id", "hong")
+                        .contentType(MediaType.APPLICATION_JSON).content(json(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.source", is("UPLOAD")))
+                .andExpect(jsonPath("$.data.uploadFileName", is("sample.xlsx")))
+                .andExpect(jsonPath("$.data.items", hasSize(8)))
+                .andExpect(jsonPath("$.data.items[0].baseCount", is(812340)))
+                .andExpect(jsonPath("$.data.items[0].deduction", is(1000)))
+                .andExpect(jsonPath("$.data.items[1].baseCount", is(1023500)));
+    }
+
+    @Test
+    void 엑셀이_아닌_파일은_안내_메시지와_함께_거부한다() throws Exception {
+        mvc.perform(multipart("/api/fee/uploads").file(new MockMultipartFile("file", "memo.xlsx",
+                        "application/octet-stream", "not an excel".getBytes())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success", is(false)))
+                .andExpect(jsonPath("$.message", org.hamcrest.Matchers.containsString("읽을 수 없습니다")));
+    }
+
+    @Test
     void 산출결과_엑셀을_내려받는다() throws Exception {
         mvc.perform(get("/api/fee/calculations/1/excel/reconcile"))
                 .andExpect(status().isOk())
