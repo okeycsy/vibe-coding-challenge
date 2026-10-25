@@ -25,6 +25,8 @@
 - 공개 배포는 Vercel Git 연결로 한다 (Root Directory `day01-gyeongsik-fee-calculator`, Production Branch `main`). 토큰·GitHub Actions 배포는 쓰지 않는다
 
 ## 세션 로그
+### 2026-10-25 (경식, 기준 문서 편집 모드 3개)
+- 기준 문서 편집 모드를 섹션별 폼 편집 / 마크다운 원문(Raw) 편집(편집기만) / 마크다운 확인(렌더링 미리보기만) 3개로 분리 (이전 원문 모드는 편집기·미리보기 나란히)
 ### 2026-10-25 (경식, skill.md 4섹션 표준·AI 계산식 빌더·특이사항 후처리)
 - skill.md 표준 4섹션: 1 비즈니스 규칙 요약(필수) · 2 AI 예외 차감 지침(선택) · 3 정산 수식(필수, formula 2000자 이하) · 4 최종 정산 특이사항(선택, 신설). 3번은 4번 앞에서 끝남. 파서(서버 `SkillEngineService`, 프론트 `skill.js`)가 `specialRules`·`specialRulesRaw`를 응답에 실음. 기본 5개 md·새 업무 템플릿에 4번 추가. CD공동망·타행환 4번에 "1개 기관 10원 단위 절상 / 차이분 실적 큰 순 1원씩 절삭" 규칙
 - 2단계 정산: Step 1 수식 계산(원 단위 배분을 정수 백만분의 1원 방식으로 바꿔 서버·브라우저 동률 처리 일치) → Step 2 `SpecialRulePostProcessor`(프론트 `specialRules.js`)가 4번 적용. 균등분담분·실적분담분 분리, 결과·엑셀 2종에 열 추가, [특이사항 보정 +N원]·[절삭 -1원] 배지. 금액 계산에는 AI를 쓰지 않음(AI는 이슈 차감 판별만)

@@ -1,11 +1,12 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, Code2, History, Info, LayoutList, LoaderCircle, RotateCcw, Save, TriangleAlert } from 'lucide-react';
+import { ArrowRight, Code2, Eye, History, Info, LayoutList, LoaderCircle, RotateCcw, Save, TriangleAlert } from 'lucide-react';
 import { fmt } from '../utils/fee';
 import { composeSkill, parseSkill, splitSkill } from '../utils/skill';
 
 const MODES = [
   { id: 'form', label: '섹션별 폼 편집 모드', icon: LayoutList },
   { id: 'raw', label: '마크다운 원문(Raw) 편집 모드', icon: Code2 },
+  { id: 'preview', label: '마크다운 확인 모드', icon: Eye },
 ];
 const BLOCKED = '수식(formula) 블록 구문이 올바르지 않아 저장이 차단되었습니다.';
 
@@ -206,12 +207,11 @@ export default function SkillDocumentEditor({ user, detail, saveContent, onDirty
               tips={['N원 단위로 절상 + 차이분 실적순 1원씩 절삭', 'N원 미만 절사(버림)', '최저/최고 회비 N원', '기관명을 적으면 그 기관만']}
             />
           </>
+        ) : mode === 'raw' ? (
+          <CodeEditor value={text} onChange={setText} />
         ) : (
-          <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
-            <CodeEditor value={text} onChange={setText} />
-            <div className="h-[34rem] overflow-y-auto rounded-lg border border-slate-200 p-5">
-              <MarkdownPreview markdown={text} />
-            </div>
+          <div className="min-h-[34rem] rounded-lg border border-slate-200 p-5">
+            <MarkdownPreview markdown={text} />
           </div>
         )}
         <p className="text-[11px] text-slate-400 leading-relaxed">
