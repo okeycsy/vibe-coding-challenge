@@ -25,6 +25,10 @@
 - 공개 배포는 Vercel Git 연결로 한다 (Root Directory `day01-gyeongsik-fee-calculator`, Production Branch `main`). 토큰·GitHub Actions 배포는 쓰지 않는다
 
 ## 세션 로그
+### 2026-10-25 (경식, 업로드 엑셀로 회비 산출)
+- 회비 산출 STEP 2 업로드가 시연용(파일을 읽지 않고 예시 실적 사용)이던 것을 실제 파일을 읽도록 변경: 서버 연결 시 `POST /api/fee/uploads`(FeeExcelService.parseUpload), 미연결(Mock) 시 `src/utils/upload.js`가 같은 규칙(첫 시트, 기관·건수 머리글 탐색, 기관코드·이름·별칭 매칭, 합산, 합계 행 제외)으로 브라우저에서 읽음
+- 읽은 기관별 건수(counts)를 선택 업무 skill.md 수식으로 계산(서버 `/api/v1/fees/calculate`의 counts, 브라우저 calculateFees). 파일에 없는 기관은 산출 대상에서 빠짐. 미매칭 기관·머리글 없음·엑셀 아님·10MB 초과는 화면에 안내
+- 예시 실적 파일(가짜 데이터) `public/samples/fee-performance-sample.xlsx`, 화면에서 [예시 파일 내려받기]. `mvn test` 25개, 서버/브라우저 두 모드 Playwright로 같은 결과 확인
 ### 2026-10-25 (대용)
 - 규칙 프로토타입: 새 업무는 예시 실적 항목(압류·추심·해제) 없이 시작, 실적 엑셀의 건수 열을 적용할 때 실적 항목으로 자동 등록해 산출 조건의 인정 항목에 연결 (글자 열은 자동으로 사용 안 함). `npm test` 22개
 ### 2026-10-25 (경식, 사이드바 접힘 공백 제거)

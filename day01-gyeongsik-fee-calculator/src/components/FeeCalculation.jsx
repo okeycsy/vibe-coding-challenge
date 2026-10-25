@@ -19,12 +19,13 @@ import {
 } from 'lucide-react';
 import { BUSINESSES, INSTITUTIONS, ISSUE_EXAMPLES } from '../data/mockData';
 import { calculateFees, fmt, parseIssue, periodScale, runKey } from '../utils/fee';
-import { daysBetween, parseDate, periodLabel, periodTag, previousQuarter, quarterRange, toISO } from '../utils/period';
+import { daysBetween, parseDate, periodLabel, previousQuarter, quarterRange, toISO } from '../utils/period';
 import { downloadReconciliation, downloadRevenueResolution } from '../utils/excel';
 import { Card, Select, StatusBadge } from './ui';
 import DateField from './DateField';
 import { api, apiEnabled } from '../utils/api';
 import { TASK_CODES, builtInTasks, localSkillDetail } from '../utils/skill';
+import { MAX_UPLOAD_MB, SAMPLE_FILE, UploadError, checkUploadFile, parseUploadInBrowser } from '../utils/upload';
 
 const NEXT_STATUS = { 대기: '확인중', 확인중: '완료', 완료: '대기' };
 const LOADING_STEPS = ['Raw Data 검증 중…', 'AI 이슈 해석 및 예외 건 차감 중…', '회비분담기준 적용 중…'];
@@ -67,7 +68,9 @@ export default function FeeCalculation({
   const [drafts, setDrafts] = useState({});
   const [issueText, setIssueText] = useState('');
   const [loadingStep, setLoadingStep] = useState(-1);
-  const [uploading, setUploading] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+  const fileInput = useRef(null);
   const [dragOver, setDragOver] = useState(false);
   const [tooltip, setTooltip] = useState(null);
   // 업무별 skill.md (업무 ID → 해석 결과). 서버가 있으면 서버에서, 없으면 묶어 온 원본 + 화면 수정본에서 읽는다.
@@ -145,22 +148,46 @@ export default function FeeCalculation({
   const updateRows = (fn) => setRuns((r) => ({ ...r, [key]: { ...r[key], rows: r[key].rows.map(fn) } }));
   const later = (fn, ms) => timers.current.push(setTimeout(fn, ms));
 
-  // ── Step 2: 업로드 시뮬레이션 ──
-  const simulateUpload = (file) => {
+  // ── Step 2: 실적 엑셀 업로드 ──
+  // 서버가 있으면 POST /api/fee/uploads(FeeExcelService.parseUpload), 없으면 브라우저에서 같은 규칙으로 읽는다.
+  // 읽은 기관별 건수(counts)가 산출의 기본 건수가 된다.
+  const handleUpload = (file) => {
     if (!periodValid) {
       notify('산출 기간을 먼저 올바르게 입력해 주세요.', 'error');
       return;
     }
-    const name = file?.name ?? `${business.name}_${periodTag(from, to)}_RawData.xlsx`;
-    const size = file?.size ?? 2_400_000 + Math.round(Math.random() * 800_000);
+    const fail = (message) => {
+      setUploadError(message);
+      notify(message, 'error');
+    };
+    try {
+      checkUploadFile(file);
+    } catch (e) {
+      fail(e.message);
+      return;
+    }
     const k = key;
-    setUploading(0);
-    [25, 55, 80, 100].forEach((p, i) => later(() => setUploading(p), 180 * (i + 1)));
-    later(() => {
-      setUploading(null);
-      updateDraft({ file: { name, size, rows: INSTITUTIONS.length * 1200 + Math.round(Math.random() * 500) } }, k);
-      notify(`${name} 업로드가 완료되었습니다.`);
-    }, 900);
+    setUploadError(null);
+    setUploading(true);
+    (apiEnabled ? api.uploadPerformance(file) : parseUploadInBrowser(file))
+      .then((res) => {
+        if (!res.counts.length) {
+          throw new UploadError(
+            res.unmatched.length
+              ? `참가기관을 하나도 찾지 못했습니다. 기관명(또는 기관코드)을 확인해 주세요: ${res.unmatched.slice(0, 5).join(', ')}`
+              : '파일에 기관별 건수가 없습니다.',
+          );
+        }
+        updateDraft({ file: { ...res, name: file.name, size: file.size } }, k);
+        notify(
+          res.unmatched.length
+            ? `${file.name}: 실적 ${res.rowCount}행을 읽었고, 기관을 찾지 못한 ${res.unmatched.length}행은 제외했습니다.`
+            : `${file.name}: 실적 ${res.rowCount}행(${res.counts.length}개 기관)을 읽었습니다.`,
+          res.unmatched.length ? 'error' : undefined,
+        );
+      })
+      .catch((e) => fail(`${file.name}을(를) 읽지 못했습니다. ${e.message}`))
+      .finally(() => setUploading(false));
   };
 
   const addIssue = () => {
@@ -189,21 +216,41 @@ export default function FeeCalculation({
     }
     const k = key;
     const issues = draft.issues;
+    const upload = draft.file;
     const used = { calcType: skill.calcType, formula: skill.formula, summary: skill.summary };
     setLoadingStep(0);
     later(() => setLoadingStep(1), 550);
     later(() => setLoadingStep(2), 1100);
     const compute = apiEnabled
       ? api
-          .calculate({ businessId, from, to, issues: issues.map((i) => i.text), requestedBy: user.id })
+          .calculate({
+            businessId,
+            from,
+            to,
+            issues: issues.map((i) => i.text),
+            counts: upload.counts,
+            uploadFileName: upload.name,
+            requestedBy: user.id,
+          })
           .then((res) => ({ rows: res.rows, used: { ...used, calcType: res.calcType, formula: res.formula } }))
-      : new Promise((resolve) => resolve({ rows: calculateFees({ businessId, from, to, issues, skill }), used }));
+      : new Promise((resolve) =>
+          resolve({ rows: calculateFees({ businessId, from, to, issues, skill, counts: upload.counts }), used }),
+        );
     const minDelay = new Promise((resolve) => later(resolve, 1700));
     Promise.all([compute, minDelay])
       .then(([{ rows, used: applied }]) => {
         setRuns((r) => ({
           ...r,
-          [k]: { businessId, from, to, rows, issues, skill: applied, createdAt: new Date().toLocaleString('ko-KR') },
+          [k]: {
+            businessId,
+            from,
+            to,
+            rows,
+            issues,
+            skill: applied,
+            source: { fileName: upload.name, institutions: upload.counts.length, unmatched: upload.unmatched },
+            createdAt: new Date().toLocaleString('ko-KR'),
+          },
         }));
         notify('skill.md 수식으로 AI 회비 초안 산출이 완료되었습니다.');
       })
@@ -397,27 +444,70 @@ export default function FeeCalculation({
         <Card id="calc-input" step={2} title="데이터 입력 및 AI 이슈 반영" icon={Bot}>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <div>
-              <p className="text-xs font-medium text-slate-500 mb-1">실적 Raw Data (Excel)</p>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs font-medium text-slate-500">실적 Raw Data (Excel)</p>
+                <a
+                  href={SAMPLE_FILE}
+                  download="회비실적_예시.xlsx"
+                  className="flex items-center gap-1 text-[11px] text-brand-600 hover:underline"
+                >
+                  <Download className="w-3 h-3" /> 예시 파일 내려받기
+                </a>
+              </div>
+              <input
+                ref={fileInput}
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files[0];
+                  e.target.value = '';
+                  if (file) handleUpload(file);
+                }}
+              />
               {draft.file ? (
-                <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-                  <FileSpreadsheet className="w-9 h-9 text-emerald-600" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold truncate">{draft.file.name}</p>
-                    <p className="text-xs text-slate-500">
-                      {(draft.file.size / 1024 / 1024).toFixed(1)}MB · {fmt(draft.file.rows)}행 검증 완료
-                    </p>
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                  <div className="flex items-center gap-3">
+                    <FileSpreadsheet className="w-9 h-9 text-emerald-600" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{draft.file.name}</p>
+                      <p className="text-xs text-slate-500">
+                        {(draft.file.size / 1024).toFixed(1)}KB · 실적 {fmt(draft.file.rowCount)}행 ·{' '}
+                        {draft.file.counts.length}개 기관 · 합계 {fmt(draft.file.totalCount)}건
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => updateDraft({ file: null })}
+                      className="p-1.5 rounded hover:bg-emerald-100 text-slate-500"
+                      title="파일 제거"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
-                  <button
-                    onClick={() => updateDraft({ file: null })}
-                    className="p-1.5 rounded hover:bg-emerald-100 text-slate-500"
-                    title="파일 제거"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
+                    {draft.file.counts.map((c) => (
+                      <div key={c.institutionId} className="flex justify-between">
+                        <span className="text-slate-600">{c.name}</span>
+                        <span className="tabular-nums text-slate-800">{fmt(c.baseCount)}건</span>
+                      </div>
+                    ))}
+                  </div>
+                  {draft.file.unmatched.length > 0 && (
+                    <p className="mt-2 flex items-start gap-1 text-xs text-amber-700">
+                      <TriangleAlert className="w-3.5 h-3.5 mt-px shrink-0" />
+                      기관을 찾지 못해 제외한 행 {draft.file.unmatched.length}개: {draft.file.unmatched.slice(0, 5).join(', ')}
+                      {draft.file.unmatched.length > 5 && ' 외'}
+                    </p>
+                  )}
+                  {draft.file.counts.length < INSTITUTIONS.length && (
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      파일에 없는 참가기관 {INSTITUTIONS.length - draft.file.counts.length}곳은 산출 대상에서 빠집니다.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <button
-                  onClick={() => uploading === null && simulateUpload()}
+                  onClick={() => !uploading && fileInput.current?.click()}
                   onDragOver={(e) => {
                     e.preventDefault();
                     setDragOver(true);
@@ -426,19 +516,18 @@ export default function FeeCalculation({
                   onDrop={(e) => {
                     e.preventDefault();
                     setDragOver(false);
-                    if (uploading === null) simulateUpload(e.dataTransfer.files[0]);
+                    if (!uploading) handleUpload(e.dataTransfer.files[0]);
                   }}
                   className={`w-full h-36 rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-2 transition ${
                     dragOver ? 'border-brand-500 bg-brand-50' : 'border-slate-300 bg-slate-50 hover:border-brand-300'
                   }`}
                 >
-                  {uploading !== null ? (
+                  {uploading ? (
                     <>
                       <LoaderCircle className="w-7 h-7 text-brand-500 animate-spin" />
-                      <div className="w-48 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                        <div className="h-full bg-brand-500 transition-all" style={{ width: `${uploading}%` }} />
-                      </div>
-                      <p className="text-xs text-slate-500">업로드 중… {uploading}%</p>
+                      <p className="text-xs text-slate-500">
+                        {apiEnabled ? '서버에서 엑셀을 읽는 중…' : '브라우저에서 엑셀을 읽는 중…'}
+                      </p>
                     </>
                   ) : (
                     <>
@@ -447,11 +536,20 @@ export default function FeeCalculation({
                         Excel 파일을 끌어다 놓거나 <span className="text-brand-600 font-semibold">클릭</span>하세요
                       </p>
                       <p className="text-[11px] text-slate-400">
-                        .xlsx, .xls · 최대 50MB (시연용: 실제 파일은 읽지 않습니다)
+                        .xlsx, .xls · 최대 {MAX_UPLOAD_MB}MB · 첫 시트의 기관명(또는 기관코드)·건수 열을 읽습니다
                       </p>
+                      {!apiEnabled && (
+                        <p className="text-[11px] text-slate-400">서버 미연결: 파일을 브라우저에서 직접 읽어 계산합니다</p>
+                      )}
                     </>
                   )}
                 </button>
+              )}
+              {uploadError && !draft.file && (
+                <p className="mt-2 flex items-start gap-1 text-xs text-rose-600">
+                  <TriangleAlert className="w-3.5 h-3.5 mt-px shrink-0" />
+                  {uploadError}
+                </p>
               )}
             </div>
 
@@ -600,6 +698,11 @@ export default function FeeCalculation({
               </span>
               <span>산출일시 {run.createdAt}</span>
               <span>반영 이슈 {run.issues.length}건</span>
+              {run.source && (
+                <span>
+                  실적 출처 {run.source.fileName} ({run.source.institutions}개 기관)
+                </span>
+              )}
               {run.skill && <span>적용 기준 {run.skill.calcType} (skill.md)</span>}
               {isOperator && <span className="text-brand-500">대사 상태 배지를 누르면 상태가 바뀝니다.</span>}
             </div>
