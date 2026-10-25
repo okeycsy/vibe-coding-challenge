@@ -203,9 +203,12 @@ export function Sidebar({ role, active, activeSection, onSelect, adminBadge, sec
       className={`${open ? 'w-72' : 'w-16'} shrink-0 bg-white border-r border-slate-200 flex flex-col transition-[width] duration-200`}
     >
       <nav className="p-3 space-y-1">
-        <p className={`px-3 pt-2 pb-1 text-[11px] font-semibold text-slate-400 tracking-wider ${open ? '' : 'invisible'}`}>
-          {ROLE_MENU_TITLE[role]}
-        </p>
+        {/* 접힌 상태에서는 제목이 좁은 폭에 한 글자씩 줄바꿈돼 아이콘 위에 큰 빈칸이 생기므로 아예 그리지 않는다 */}
+        {open && (
+          <p className="px-3 pt-2 pb-1 text-[11px] font-semibold text-slate-400 tracking-wider whitespace-nowrap">
+            {ROLE_MENU_TITLE[role]}
+          </p>
+        )}
         {MENUS.filter(visible).map((m) => {
           const Icon = m.icon;
           const on = active === m.id;

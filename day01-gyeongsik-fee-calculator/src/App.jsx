@@ -269,20 +269,26 @@ export default function App() {
     setSkillVersion((v) => v + 1);
   };
 
-  // [ 키로 사이드바 접기/펴기. 입력창·md 편집기에 타이핑 중이거나 조합키와 함께 누른 경우는 무시한다.
+  // [ 키로 사이드바 접기/펴기. 글자 입력칸·md 편집기에 타이핑 중이거나 조합키와 함께 누른 경우는 무시한다.
   // 한글 입력 상태에서는 e.key가 '[' 대신 'Process'로 오기도 해서 물리 키(e.code)로도 확인한다.
   useEffect(() => {
     if (!isLoggedIn) return undefined;
     const onKey = (e) => {
       const bracket = e.key === '[' || (e.code === 'BracketLeft' && !e.shiftKey);
       if (!bracket || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+      // 글자를 입력하는 칸에서만 무시한다. 업무 선택(select)·버튼에 포커스가 남아 있어도 동작해야 한다
       const t = e.target;
-      if (t.isContentEditable || t.closest?.('input, textarea, select, [contenteditable]')) return;
+      const typing =
+        t.isContentEditable ||
+        t.tagName === 'TEXTAREA' ||
+        (t.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'submit', 'reset', 'file', 'range', 'color'].includes(t.type));
+      if (typing) return;
       e.preventDefault();
       setSidebarOpen((o) => !o);
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // 화면 안 요소가 keydown 전파를 막아도 받도록 캡처 단계에서 듣는다
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
   }, [isLoggedIn]);
 
   const selectMenu = (id, section = null) => {
