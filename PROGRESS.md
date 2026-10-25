@@ -25,6 +25,10 @@
 - 공개 배포는 Vercel Git 연결로 한다 (Root Directory `day01-gyeongsik-fee-calculator`, Production Branch `main`). 토큰·GitHub Actions 배포는 쓰지 않는다
 
 ## 세션 로그
+### 2026-10-25 (경식, CD공동망 테스트 기관 추가)
+- John이 준 CD공동망 테스트 실적 파일의 가상 기관 50곳(기관코드 T001~T058, 내부 ID t001 등)을 서버 DataInitializer와 프론트 mockData INSTITUTIONS에 추가. 파일은 `public/samples/cd-net-test-sample.xlsx`로 저장
+- 테스트 기관은 시연용 예시 실적(업로드 없이 산출)에는 나오지 않고(서버 가중치 0, 프론트 `test: true`), 업로드 파일에 있을 때만 산출 대상
+- 기관 이름·별칭 매칭을 '가장 길게 맞는 것'으로 변경(AI 이슈 문장·엑셀 기관명): '하나온은행'이 별칭 '하나'로 하나은행에 잡히던 문제 방지. `mvn test` 26개
 ### 2026-10-25 (경식, 업로드 엑셀로 회비 산출)
 - 회비 산출 STEP 2 업로드가 시연용(파일을 읽지 않고 예시 실적 사용)이던 것을 실제 파일을 읽도록 변경: 서버 연결 시 `POST /api/fee/uploads`(FeeExcelService.parseUpload), 미연결(Mock) 시 `src/utils/upload.js`가 같은 규칙(첫 시트, 기관·건수 머리글 탐색, 기관코드·이름·별칭 매칭, 합산, 합계 행 제외)으로 브라우저에서 읽음
 - 읽은 기관별 건수(counts)를 선택 업무 skill.md 수식으로 계산(서버 `/api/v1/fees/calculate`의 counts, 브라우저 calculateFees). 파일에 없는 기관은 산출 대상에서 빠짐. 미매칭 기관·머리글 없음·엑셀 아님·10MB 초과는 화면에 안내

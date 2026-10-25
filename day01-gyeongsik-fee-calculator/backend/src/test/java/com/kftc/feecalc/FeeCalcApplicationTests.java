@@ -208,6 +208,39 @@ class FeeCalcApplicationTests {
     }
 
     @Test
+    void CD공동망_테스트_실적파일의_가상기관_50곳을_코드로_매칭해_산출한다() throws Exception {
+        byte[] xlsx = java.nio.file.Files.readAllBytes(
+                java.nio.file.Path.of("../public/samples/cd-net-test-sample.xlsx"));
+        String body = mvc.perform(multipart("/api/fee/uploads").file(new MockMultipartFile("file", "cd.xlsx",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", xlsx)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.counts", hasSize(50)))
+                .andExpect(jsonPath("$.data.counts[0].institutionId", is("t001")))
+                .andExpect(jsonPath("$.data.counts[0].name", is("한빛은행")))
+                .andExpect(jsonPath("$.data.totalCount", is(21790183)))
+                .andExpect(jsonPath("$.data.unmatched", hasSize(0)))
+                .andReturn().getResponse().getContentAsString();
+
+        // '하나온은행'은 하나은행(별칭 '하나')이 아니라 가장 길게 맞는 하나온은행(T019)에서 차감한다
+        Map<String, Object> request = Map.of("businessId", "cd", "from", "2026-07-01", "to", "2026-09-30",
+                "issues", List.of("하나온은행 망 장애 재처리분 1,000건 차감해 줘"),
+                "counts", om.readTree(body).path("data").path("counts"), "uploadFileName", "cd.xlsx");
+        mvc.perform(post("/api/v1/fees/calculate").header("X-Employee-Id", "admin")
+                        .contentType(MediaType.APPLICATION_JSON).content(json(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.items", hasSize(50)))
+                .andExpect(jsonPath("$.data.issues[0].institutionId", is("t019")))
+                .andExpect(jsonPath("$.data.items[18].deduction", is(1000)));
+
+        // 업로드가 없을 때 시연용 예시 실적에는 테스트 기관이 나오지 않는다
+        mvc.perform(post("/api/v1/fees/calculate").header("X-Employee-Id", "admin")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("businessId", "cd", "from", "2026-07-01", "to", "2026-09-30"))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.items", hasSize(8)));
+    }
+
+    @Test
     void 엑셀이_아닌_파일은_안내_메시지와_함께_거부한다() throws Exception {
         mvc.perform(multipart("/api/fee/uploads").file(new MockMultipartFile("file", "memo.xlsx",
                         "application/octet-stream", "not an excel".getBytes())))

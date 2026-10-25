@@ -67,6 +67,57 @@ export const INSTITUTIONS = [
   { id: 'ibk', name: 'IBK기업은행', code: 'B003', aliases: ['기업', 'IBK', 'F은행'] },
   { id: 'kakao', name: '카카오뱅크', code: 'B090', aliases: ['카카오', 'G은행'] },
   { id: 'toss', name: '토스뱅크', code: 'B092', aliases: ['토스', 'H은행'] },
+  // 실적 엑셀 업로드 테스트용 가상 기관 (public/samples/cd-net-test-sample.xlsx). test: 시연용 예시 실적에는 나오지 않음
+  { id: 't001', name: '한빛은행', code: 'T001', aliases: [], test: true },
+  { id: 't002', name: '미래온은행', code: 'T002', aliases: [], test: true },
+  { id: 't003', name: '새누리은행', code: 'T003', aliases: [], test: true },
+  { id: 't004', name: '다온은행', code: 'T004', aliases: [], test: true },
+  { id: 't005', name: '한울은행', code: 'T005', aliases: [], test: true },
+  { id: 't006', name: '푸른솔은행', code: 'T006', aliases: [], test: true },
+  { id: 't007', name: '이음은행', code: 'T007', aliases: [], test: true },
+  { id: 't008', name: '가온은행', code: 'T008', aliases: [], test: true },
+  { id: 't009', name: '세림은행', code: 'T009', aliases: [], test: true },
+  { id: 't010', name: '태산은행', code: 'T010', aliases: [], test: true },
+  { id: 't011', name: '에버온은행', code: 'T011', aliases: [], test: true },
+  { id: 't012', name: '누리안은행', code: 'T012', aliases: [], test: true },
+  { id: 't013', name: '동해미래은행', code: 'T013', aliases: [], test: true },
+  { id: 't014', name: '서광은행', code: 'T014', aliases: [], test: true },
+  { id: 't015', name: '제일누리은행', code: 'T015', aliases: [], test: true },
+  { id: 't016', name: '신한울은행', code: 'T016', aliases: [], test: true },
+  { id: 't017', name: '온누리디지털은행', code: 'T017', aliases: [], test: true },
+  { id: 't018', name: '비전플러스은행', code: 'T018', aliases: [], test: true },
+  { id: 't019', name: '하나온은행', code: 'T019', aliases: [], test: true },
+  { id: 't020', name: '청명은행', code: 'T020', aliases: [], test: true },
+  { id: 't021', name: '드림웨이은행', code: 'T021', aliases: [], test: true },
+  { id: 't022', name: '한결은행', code: 'T022', aliases: [], test: true },
+  { id: 't023', name: '에이스온은행', code: 'T023', aliases: [], test: true },
+  { id: 't024', name: '대륙은행', code: 'T024', aliases: [], test: true },
+  { id: 't025', name: '코어뱅크', code: 'T025', aliases: [], test: true },
+  { id: 't026', name: '한빛투자증권', code: 'T026', aliases: [], test: true },
+  { id: 't027', name: '미래온증권', code: 'T027', aliases: [], test: true },
+  { id: 't028', name: '세림투자증권', code: 'T028', aliases: [], test: true },
+  { id: 't029', name: '다온증권', code: 'T029', aliases: [], test: true },
+  { id: 't030', name: '태산투자증권', code: 'T030', aliases: [], test: true },
+  { id: 't031', name: '블루웨이증권', code: 'T031', aliases: [], test: true },
+  { id: 't032', name: '프라임온증권', code: 'T032', aliases: [], test: true },
+  { id: 't033', name: '이음투자증권', code: 'T033', aliases: [], test: true },
+  { id: 't034', name: '한울증권', code: 'T034', aliases: [], test: true },
+  { id: 't035', name: '넥스트밸류증권', code: 'T035', aliases: [], test: true },
+  { id: 't036', name: '에버트러스트증권', code: 'T036', aliases: [], test: true },
+  { id: 't037', name: '코어인베스트증권', code: 'T037', aliases: [], test: true },
+  { id: 't038', name: '청명투자증권', code: 'T038', aliases: [], test: true },
+  { id: 't039', name: '비전캐피탈증권', code: 'T039', aliases: [], test: true },
+  { id: 't040', name: '오름투자증권', code: 'T040', aliases: [], test: true },
+  { id: 't041', name: '누리안증권', code: 'T041', aliases: [], test: true },
+  { id: 't042', name: '파인브릿지증권', code: 'T042', aliases: [], test: true },
+  { id: 't051', name: '한빛생명보험', code: 'T051', aliases: [], test: true },
+  { id: 't052', name: '미래온생명보험', code: 'T052', aliases: [], test: true },
+  { id: 't053', name: '다온생명보험', code: 'T053', aliases: [], test: true },
+  { id: 't054', name: '한울생명보험', code: 'T054', aliases: [], test: true },
+  { id: 't055', name: '세림생명보험', code: 'T055', aliases: [], test: true },
+  { id: 't056', name: '프라임온생명보험', code: 'T056', aliases: [], test: true },
+  { id: 't057', name: '에버라이프생명보험', code: 'T057', aliases: [], test: true },
+  { id: 't058', name: '청명생명보험', code: 'T058', aliases: [], test: true },
 ];
 
 // method: 'unit' = 건당 단가 방식, 'ratio' = 총액을 인정 건수 비율로 분담
@@ -160,7 +211,7 @@ const WEIGHTS = { shinhan: 1.15, kb: 1.25, woori: 1.0, hana: 0.95, nh: 1.1, ibk:
 // baseVolume은 한 분기(약 91일) 실적이다. 산출 기간이 분기가 아니면 일수에 비례해 줄이거나 늘린다(scale).
 export function getBaseCounts(businessId, from, to, scale = 1) {
   const biz = BUSINESSES.find((b) => b.id === businessId);
-  return INSTITUTIONS.map((inst) => {
+  return INSTITUTIONS.filter((inst) => !inst.test).map((inst) => {
     const r = seeded(`${businessId}-${from}-${to}-${inst.id}`);
     const volume = biz.baseVolume * scale * WEIGHTS[inst.id] * (0.85 + r * 0.3);
     const count = Math.max(10, Math.round(volume / 10) * 10);

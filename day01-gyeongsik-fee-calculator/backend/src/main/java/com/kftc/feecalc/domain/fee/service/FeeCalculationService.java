@@ -174,6 +174,9 @@ public class FeeCalculationService {
             return result;
         }
         for (Institution inst : institutions) {
+            if (inst.getVolumeWeight() <= 0) {
+                continue; // 업로드 테스트용 기관은 시연용 실적에서 뺀다
+            }
             result.put(inst.getCode(), demoVolumeGenerator.baseCount(business, period, inst));
         }
         return result;
