@@ -13,9 +13,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.kftc.feecalc.common.dto.ApiResponse;
 import com.kftc.feecalc.common.exception.BusinessException;
-import com.kftc.feecalc.domain.fee.ai.FormulaSyncService;
-import com.kftc.feecalc.domain.fee.dto.FormulaSyncRequest;
-import com.kftc.feecalc.domain.fee.dto.FormulaSyncResponse;
+import com.kftc.feecalc.domain.fee.ai.FormulaGeneratorService;
+import com.kftc.feecalc.domain.fee.dto.FormulaGenerateRequest;
+import com.kftc.feecalc.domain.fee.dto.FormulaGenerateResponse;
 import com.kftc.feecalc.domain.fee.dto.SkillDetailResponse;
 import com.kftc.feecalc.domain.fee.dto.SkillSaveRequest;
 import com.kftc.feecalc.domain.fee.dto.SkillSummaryResponse;
@@ -41,7 +41,7 @@ public class SkillManagementController {
     private final SkillFileService fileService;
     private final SkillAccessControlService accessControl;
     private final SkillEngineService skillEngine;
-    private final FormulaSyncService formulaSync;
+    private final FormulaGeneratorService formulaGenerator;
 
     /** 전체 업무와 접근 가능 여부, 파일 상태 (내용 없음) */
     @GetMapping
@@ -84,18 +84,19 @@ public class SkillManagementController {
     }
 
     /**
-     * "## 1. 비즈니스 규칙 요약"으로 "## 3. 정산 수식"을 새로 만든다 (AI, 키가 없으면 규칙 기반). 저장 권한과 같은 권한이 필요하고,
-     * 파일은 저장하지 않는다: 편집기에 바뀐 내용을 넣어 주면 담당자가 확인 후 [저장]한다(저장 때 수식 검사를 한 번 더 한다).
+     * "## 1. 비즈니스 규칙 요약" 텍스트로 "## 3. 정산 수식"을 만든다 (AI, 키가 없으면 내장 변환기). 저장 권한과 같은 권한이 필요하고
+     * (없으면 403), 파일은 저장하지 않는다: [AI 계산식 빌더]에서 확인·시뮬레이션 후 PUT 으로 저장한다(저장 때 검증을 한 번 더 한다).
      */
-    @PostMapping("/sync-formula")
-    public ApiResponse<FormulaSyncResponse> syncFormula(
+    @PostMapping("/{taskCode}/generate-formula")
+    public ApiResponse<FormulaGenerateResponse> generateFormula(
             @RequestHeader(value = EMPLOYEE_HEADER, required = false) String employeeId,
-            @Valid @RequestBody FormulaSyncRequest request) {
-        String code = accessControl.checkPermission(employeeId, request.taskCode());
-        FormulaSyncResponse res = formulaSync.sync(code, request.content());
+            @PathVariable String taskCode,
+            @Valid @RequestBody FormulaGenerateRequest request) {
+        String code = accessControl.checkPermission(employeeId, taskCode);
+        FormulaGenerateResponse res = formulaGenerator.generate(code, request.businessRulesText());
         return ApiResponse.ok("AI".equals(res.source())
-                ? "AI가 1번 규칙으로 3번 수식을 작성했습니다. 확인 후 저장해 주세요."
-                : "규칙 기반으로 3번 수식을 작성했습니다. 확인 후 저장해 주세요.", res);
+                ? "AI가 1번 규칙으로 3번 수식을 작성했습니다. 시뮬레이션 후 확정 반영해 주세요."
+                : "내장 변환기로 3번 수식을 작성했습니다. 시뮬레이션 후 확정 반영해 주세요.", res);
     }
 
     /** 섹션이 덜 채워진 파일(막 추가한 업무 등)도 열어서 고칠 수 있게 원문은 그대로 준다 */

@@ -14,7 +14,7 @@ import { builtInTasks } from './utils/skill';
 
 const MAX_ATTEMPTS = 5;
 // 하위 메뉴가 각각 한 페이지인 메뉴와 그 첫 페이지
-const PAGED_MENUS = { mypage: 'mypage-profile', admin: 'admin-members' };
+const PAGED_MENUS = { mypage: 'mypage-profile', admin: 'admin-members', skills: 'skills-document' };
 const nowLabel = () => {
   const d = new Date();
   const p = (n) => String(n).padStart(2, '0');
@@ -388,6 +388,8 @@ export default function App() {
                 setOverrides={setSkillOverrides}
                 onSaved={() => setSkillVersion((v) => v + 1)}
                 onRequestTask={() => selectMenu('mypage', 'mypage-tasks')}
+                page={activeSection ?? 'skills-document'}
+                onChangePage={(section) => selectMenu('skills', section)}
               />
             )}
             {menu === 'results' && canSee('results') && <ResultsManagement {...shared} />}

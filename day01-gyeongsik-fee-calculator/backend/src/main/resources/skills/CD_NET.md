@@ -22,5 +22,10 @@
 변수: `#finalCount` 기관 인정 건수, `#totalCount` 전체 인정 건수 합계, `#institutionCount` 참가기관 수, `#periodScale` 기간 환산 비율.
 
 ```formula
-300000000.0 * #periodScale * (0.3 / #institutionCount + (#totalCount == 0 ? 0 : 0.7 * #finalCount / #totalCount))
+300000000.0 * #periodScale * ((#institutionCount == 0 ? 0 : 0.3 / #institutionCount) + (#totalCount == 0 ? 0 : 0.7 * #finalCount / #totalCount))
 ```
+
+## 4. 최종 정산 특이사항
+
+- 참가기관 중 1개 기관(첫 번째 기관 또는 지정 기관)은 산출된 회비 총액을 10원 단위로 절상한다.
+- 절상으로 인해 발생한 차이분(초과액)은 최종 인정 실적(#finalCount)이 큰 기관 순서대로 1원씩 절삭하여 분기 총액을 맞춘다.

@@ -29,11 +29,15 @@ export const MENUS = [
     ],
   },
   {
-    // 업무별 skill.md 조회·수정. 일반담당자는 승인된 업무만, 시스템관리자는 전체
+    // 업무별 skill.md 조회·수정. 일반담당자는 승인된 업무만, 시스템관리자는 전체. 하위 메뉴마다 별도 페이지
     id: 'skills',
     label: '회비기준(Skill.md) 관리',
     icon: FileCode2,
     roles: ['operator', 'sysadmin'],
+    children: [
+      { section: 'skills-document', label: '① 기준 문서 편집' },
+      { section: 'skills-builder', label: '② AI 계산식 빌더' },
+    ],
   },
   {
     id: 'results',

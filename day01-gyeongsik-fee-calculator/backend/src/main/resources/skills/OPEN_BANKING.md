@@ -27,3 +27,5 @@
   + (#finalCount > 1000000 ? (#finalCount < 3000000 ? #finalCount : 3000000) - 1000000 : 0) * 15
   + (#finalCount > 3000000 ? #finalCount - 3000000 : 0) * 10
 ```
+
+## 4. 최종 정산 특이사항

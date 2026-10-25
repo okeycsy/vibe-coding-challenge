@@ -14,7 +14,6 @@ import com.kftc.feecalc.common.event.FeeCalculatedEvent;
 import com.kftc.feecalc.common.exception.BusinessException;
 import com.kftc.feecalc.common.exception.ErrorCode;
 import com.kftc.feecalc.domain.fee.ai.AiFeePostProcessor;
-import com.kftc.feecalc.domain.fee.ai.RuleBasedFeeRules;
 import com.kftc.feecalc.domain.fee.dto.BusinessRateUpdateRequest;
 import com.kftc.feecalc.domain.fee.dto.BusinessResponse;
 import com.kftc.feecalc.domain.fee.dto.CalculationRequest;
@@ -37,9 +36,10 @@ import lombok.RequiredArgsConstructor;
 
 /**
  * 회비 산출.
- * 1) 기관별 기준 실적(업로드 또는 시연용) → 2) Step A: 이슈 문장을 skill.md "## 2. AI 예외 차감 지침"으로 판별해 차감
- * → 3) Step B: skill.md 의 SpEL 수식으로 1차 회비 → 4) Step C: "## 1. 비즈니스 규칙 요약"의 단수 처리·예외 규정으로 최종 보정
- * (AI 단계는 {@link AiFeePostProcessor}, 키가 없으면 규칙 기반)
+ * 1) 기관별 기준 실적(업로드 또는 시연용) → 2) 이슈 문장을 skill.md "## 2. AI 예외 차감 지침"으로 판별해 차감
+ * ({@link AiFeePostProcessor}, 키가 없으면 규칙 기반) → 2단계 정산 파이프라인:
+ * Step 1: "## 3. 정산 수식"(SpEL)으로 1차 정밀 계산 + 원 단위 배분(균등분담분·실적분담분 분해)
+ * → Step 2: "## 4. 최종 정산 특이사항"으로 끝전·예외 후처리 ({@link SpecialRulePostProcessor}, 규칙 기반이라 프론트 Mock 과 같은 결과)
  * 산정 방식(구간 단가, 총액 분담, 기본료 등)은 Java 코드가 아니라 skill.md 에만 있다. {@link SkillEngineService} 참고
  */
 @Service
@@ -111,6 +111,7 @@ public class FeeCalculationService {
                 .skillCode(skill.taskCode())
                 .appliedCalcType(skill.calcType())
                 .appliedFormula(skill.formula())
+                .appliedSpecialRules(skill.specialRulesRaw())
                 .source(uploaded ? "UPLOAD" : "DEMO")
                 .uploadFileName(req.uploadFileName())
                 .calculatedBy(req.requestedBy())
@@ -159,12 +160,12 @@ public class FeeCalculationService {
                     .build());
         }
 
-        // Step B) 1차 회비: skill.md 수식 실행 → Step C) "## 1. 비즈니스 규칙 요약"의 특이사항으로 최종 보정
-        AiFeePostProcessor.Outcome adjusted = applySkill(calc.getItems(), skill, scale, byCode, allowAi);
+        // Step 1) "## 3. 정산 수식" 1차 계산 → Step 2) "## 4. 최종 정산 특이사항" 후처리
+        applySkill(calc.getItems(), skill, scale, byCode);
         calc.applyTotalFee(calc.getTotalFeeAmount());
-        calc.applyAiResult(aiMode(review.outcome(), adjusted).name(),
+        calc.applyAiResult(review.outcome().mode().name(),
                 allowAi && aiPostProcessor.aiEnabled() ? aiPostProcessor.model() : null,
-                joinNotes(review.outcome().note(), adjusted.note()));
+                trim(review.outcome().note()));
 
         FeeCalculation saved = calculationRepository.save(calc);
         eventPublisher.publishEvent(new FeeCalculatedEvent(saved.getId()));
@@ -206,29 +207,31 @@ public class FeeCalculationService {
     }
 
     /**
-     * 기관별로 skill.md 수식을 실행해 1차 회비를 매기고(Step B), 비즈니스 규칙 요약으로 최종 보정한다(Step C).
+     * Step 1: 기관별로 skill.md 수식을 실행해 원 단위로 배분하고(균등+실적 혼합형이면 균등분담분을 따로 계산),
+     * Step 2: "## 4. 최종 정산 특이사항"으로 보정한다. 보정액은 실적분담분에 들어간다.
      * 표시 단위가 "원/건"이면 실효 단가(최종 회비 ÷ 인정 건수), 그 밖에는 회비 합계 대비 비율을 rateLabel 로 남긴다.
      */
-    private AiFeePostProcessor.Outcome applySkill(List<FeeCalculationItem> items, SkillEngineService.ParsedSkill skill,
-                                                  double scale, Map<String, Institution> byCode, boolean allowAi) {
-        List<Long> primary = skillEngine.calculateAll(skill.taskCode(),
+    private void applySkill(List<FeeCalculationItem> items, SkillEngineService.ParsedSkill skill, double scale,
+                            Map<String, Institution> byCode) {
+        SkillEngineService.PrimaryFees primary = SkillEngineService.calculatePrimary(skill.formula(),
                 items.stream().map(i -> new SkillEngineService.Counts(i.getBaseCount(), i.getDeduction(), i.getFinalCount()))
                         .toList(),
                 scale);
-        List<RuleBasedFeeRules.FeeLine> lines = new ArrayList<>();
+        List<SpecialRulePostProcessor.FeeLine> lines = new ArrayList<>();
         for (int idx = 0; idx < items.size(); idx++) {
             FeeCalculationItem item = items.get(idx);
             Institution inst = byCode.get(item.getInstitutionCode());
-            lines.add(new RuleBasedFeeRules.FeeLine(item.getInstitutionCode(), item.getInstitutionName(),
-                    inst == null ? List.of() : inst.getAliases(), item.getFinalCount(), primary.get(idx)));
+            lines.add(new SpecialRulePostProcessor.FeeLine(item.getInstitutionCode(), item.getBankCode(),
+                    item.getInstitutionName(), inst == null ? List.of() : inst.getAliases(), item.getFinalCount(),
+                    primary.fees().get(idx)));
         }
-        AiFeePostProcessor.FeeReview review = aiPostProcessor.adjustFees(skill.summaryText(), skill.formula(), lines, allowAi);
-        long feeSum = review.adjustments().stream().mapToLong(RuleBasedFeeRules.Adjustment::finalFee).sum();
+        List<SpecialRulePostProcessor.Result> results = SpecialRulePostProcessor.apply(skill.specialRulesRaw(), lines);
+        long feeSum = results.stream().mapToLong(SpecialRulePostProcessor.Result::finalFee).sum();
         boolean perCount = skill.rateUnit().contains("건");
         for (int idx = 0; idx < items.size(); idx++) {
             FeeCalculationItem item = items.get(idx);
-            RuleBasedFeeRules.Adjustment adj = review.adjustments().get(idx);
-            long fee = adj.finalFee();
+            SpecialRulePostProcessor.Result r = results.get(idx);
+            long fee = r.finalFee();
             String label;
             if (perCount) {
                 double unit = item.getFinalCount() == 0 ? 0 : (double) fee / item.getFinalCount();
@@ -236,25 +239,15 @@ public class FeeCalculationService {
             } else {
                 label = String.format("%.2f%%", feeSum == 0 ? 0 : (double) fee / feeSum * 100);
             }
-            item.applyFee(primary.get(idx), fee, fee == primary.get(idx) ? null : adj.reason(), label);
+            item.applyFee(primary.fees().get(idx), primary.equalFees().get(idx), fee, r.reason(), label);
         }
-        return review.outcome();
     }
 
-    /** 두 단계 중 하나라도 AI 가 실패했으면 RULE_FALLBACK, 키가 없으면 RULE */
-    private static AiFeePostProcessor.Mode aiMode(AiFeePostProcessor.Outcome a, AiFeePostProcessor.Outcome b) {
-        if (a.mode() == AiFeePostProcessor.Mode.RULE_FALLBACK || b.mode() == AiFeePostProcessor.Mode.RULE_FALLBACK) {
-            return AiFeePostProcessor.Mode.RULE_FALLBACK;
-        }
-        return b.mode();
-    }
-
-    private static String joinNotes(String a, String b) {
-        String joined = String.join(" / ", java.util.stream.Stream.of(a, b).filter(n -> n != null && !n.isBlank()).toList());
-        if (joined.isEmpty()) {
+    private static String trim(String note) {
+        if (note == null || note.isBlank()) {
             return null;
         }
-        return joined.length() > 1000 ? joined.substring(0, 1000) : joined;
+        return note.length() > 1000 ? note.substring(0, 1000) : note;
     }
 
     private Business getBusiness(String code) {

@@ -1,47 +1,27 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  CircleCheck,
-  Columns2,
-  Eye,
-  FileCode2,
-  History,
-  LoaderCircle,
-  Lock,
-  RotateCcw,
-  Save,
-  Sparkles,
-  SquarePen,
-  TriangleAlert,
-  X,
-} from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { CircleCheck, FileCode2, FilePen, LoaderCircle, Lock, Sparkles } from 'lucide-react';
 import { api, apiEnabled } from '../utils/api';
-import { fmt } from '../utils/fee';
-import {
-  FORMULA_SAMPLES,
-  evaluateFormula,
-  localSkillDetail,
-  localSkillList,
-  parseSkill,
-  validateSkill,
-} from '../utils/skill';
-import { formulaOf, generateFormula, replaceFormula, summaryOf } from '../utils/aiRules';
+import { localSkillDetail, localSkillList, validateSkill } from '../utils/skill';
 import { Card, Modal } from './ui';
+import SkillDocumentEditor from './SkillDocumentEditor';
+import SkillFormulaBuilder from './SkillFormulaBuilder';
 
-const MODES = [
-  { id: 'editor', label: '편집기 (Editor)', icon: SquarePen },
-  { id: 'preview', label: '미리보기 (Preview)', icon: Eye },
-  { id: 'split', label: '나란히 보기 (Split)', icon: Columns2 },
-];
-const BLOCKED = '수식(formula) 블록 구문이 올바르지 않아 저장이 차단되었습니다.';
 const LOCKED_MSG = '해당 업무의 권한을 먼저 신청하여 승인받아야 합니다.';
+// [회비기준(Skill.md) 관리] 하위 메뉴 2개
+export const SKILL_PAGES = [
+  { id: 'skills-document', label: '① 기준 문서 편집', icon: FilePen, desc: '자연어 규칙(1·2·4번)과 머리말을 작성·관리합니다.' },
+  { id: 'skills-builder', label: '② AI 계산식 빌더', icon: Sparkles, desc: '1번 규칙으로 3번 정산 수식을 생성·시뮬레이션하고 반영합니다.' },
+];
 
 const nowLabel = () => {
   const d = new Date();
   const p = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 };
+const pickMeta = (d) => ({ lastModified: d.lastModified, size: d.size, version: d.version, modified: d.modified });
 
-// 업무별 회비분담기준(skill.md) 관리: 왼쪽 업무 목록(권한별 잠금) + 오른쪽 마크다운 편집기·미리보기
+// 업무별 회비분담기준(skill.md) 관리: 왼쪽 업무 목록(권한별 잠금) + 오른쪽 [① 기준 문서 편집] 또는 [② AI 계산식 빌더].
+// 두 화면은 같은 업무 선택·저장(PUT /api/v1/skills/{코드} 또는 Mock 상태)을 쓰고, 저장하면 skillVersion 을 올려 산출 화면과 맞춘다.
 export default function SkillManagementPage({
   user,
   notify,
@@ -52,45 +32,42 @@ export default function SkillManagementPage({
   onSaved,
   onRequestTask,
   tasks,
+  page,
+  onChangePage,
 }) {
   const [list, setList] = useState([]);
   const [listError, setListError] = useState(null);
   const [selected, setSelected] = useState(null); // 업무 ID
   const [detail, setDetail] = useState(null);
-  const [text, setText] = useState('');
-  const [mode, setMode] = useState('split');
+  const [detailSeq, setDetailSeq] = useState(0); // 저장·되돌리기마다 올려 편집 화면을 새 내용으로 다시 연다
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState(null);
   const [lockedItem, setLockedItem] = useState(null);
-  const [syncing, setSyncing] = useState(false);
-  const [syncResult, setSyncResult] = useState(null);
-  const dirty = detail && text !== detail.content;
+  const [dirty, setDirty] = useState(false);
+  const current = SKILL_PAGES.find((p) => p.id === page) ?? SKILL_PAGES[0];
 
-  // ── 업무 목록 (권한이 바뀌면 다시 읽는다) ──
-  const loadList = async () => {
-    if (!apiEnabled) return localSkillList(tasks, allowedTasks, overrides);
-    // 서버의 업무 목록 순서(기본 업무 → 추가한 업무) 그대로
-    return api.skills();
+  const showDetail = (d) => {
+    setDetail(d);
+    setDetailSeq((n) => n + 1);
+    setDirty(false);
   };
 
+  // ── 업무 목록 (권한이 바뀌면 다시 읽는다) ──
   useEffect(() => {
     let alive = true;
     setListError(null);
-    loadList()
+    (apiEnabled ? api.skills() : Promise.resolve(localSkillList(tasks, allowedTasks, overrides)))
       .then((rows) => alive && setList(rows))
       .catch((e) => alive && setListError(e.message));
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id, allowedTasks, overrides, tasks]);
 
   // 처음 열 때: 산출 화면에서 넘어온 업무 → 접근 가능한 첫 업무
   useEffect(() => {
     if (!list.length) return;
-    const current = list.find((r) => r.businessId === selected);
-    if (current?.accessible) return;
+    const cur = list.find((r) => r.businessId === selected);
+    if (cur?.accessible) return;
     const wanted = list.find((r) => r.businessId === target && r.accessible) ?? list.find((r) => r.accessible);
     if (wanted) open(wanted.businessId, true);
     else {
@@ -100,65 +77,20 @@ export default function SkillManagementPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list, target]);
 
-  // ── 업무 열기 ──
+  const confirmLeave = () => !dirty || window.confirm('저장하지 않은 수정 내용이 있습니다. 버리고 이동할까요?');
+
   const open = async (businessId, force = false) => {
-    if (!force && dirty && !window.confirm('저장하지 않은 수정 내용이 있습니다. 다른 업무로 이동할까요?')) return;
+    if (!force && !confirmLeave()) return;
     const task = tasks.find((t) => t.businessId === businessId);
     setSelected(businessId);
-    setSaveError(null);
     setLoading(true);
     try {
-      const d = apiEnabled ? await api.skill(businessId) : localSkillDetail(task, overrides);
-      setDetail(d);
-      setText(d.content);
-      setSyncResult(null);
+      showDetail(apiEnabled ? await api.skill(businessId) : localSkillDetail(task, overrides));
     } catch (e) {
       setDetail(null);
       notify(e.message, 'error');
     } finally {
       setLoading(false);
-    }
-  };
-
-  // ── 1번 규칙 → 3번 수식 자동 생성: 편집기 내용만 바꾸고 저장은 담당자가 확인 후 한다 ──
-  const syncFormula = async () => {
-    setSaveError(null);
-    setSyncResult(null);
-    setSyncing(true);
-    try {
-      let res;
-      if (apiEnabled) {
-        res = await api.syncFormula(detail.taskCode, text);
-      } else {
-        // 서버 미연결(Mock): 브라우저에 AI 키를 둘 수 없어 서버의 규칙 기반 생성기와 같은 규칙으로 만든다
-        const summary = summaryOf(text);
-        if (!summary) throw new Error("'## 1. 비즈니스 규칙 요약' 섹션에 규칙을 먼저 적어 주세요.");
-        const gen = generateFormula(summary);
-        if (!gen) {
-          throw new Error(
-            '서버 미연결 모드라 규칙 기반으로 만드는데, 알아듣는 표현(총액 N원·N% 균등, 기본료 N원 + 건당 N원, N건까지 건당 N원 구간, 건당 단가 N원·최저/최고 회비)이 요약에 없습니다. 수식을 직접 작성해 주세요.',
-          );
-        }
-        const content = replaceFormula(text, gen.formula);
-        const sample = evaluateFormula(gen.formula, FORMULA_SAMPLES_FOR_SYNC);
-        validateSkill(detail.taskCode, content);
-        res = {
-          formula: gen.formula,
-          previousFormula: formulaOf(text),
-          content,
-          source: 'RULE',
-          explanation: `규칙 기반 생성: ${gen.explanation}`,
-          note: '서버 미연결(Mock) 모드: AI 대신 규칙 기반으로 만들었습니다.',
-          sampleFee: Math.round(sample),
-        };
-      }
-      setText(res.content);
-      setSyncResult(res);
-      notify('3번 정산 수식을 새로 작성했습니다. 내용을 확인한 뒤 [저장 및 반영하기]를 눌러 주세요.');
-    } catch (e) {
-      setSaveError({ title: '수식을 자동으로 만들지 못했습니다.', detail: e.message });
-    } finally {
-      setSyncing(false);
     }
   };
 
@@ -170,36 +102,28 @@ export default function SkillManagementPage({
     if (row.businessId !== selected) open(row.businessId);
   };
 
-  // ── 저장·되돌리기 ──
-  const save = async () => {
-    setSaveError(null);
-    setSaving(true);
-    try {
-      if (apiEnabled) {
-        const saved = await api.saveSkill(detail.taskCode, text);
-        setDetail(saved);
-        setText(saved.content);
-        setList((rows) => rows.map((r) => (r.taskCode === saved.taskCode ? { ...r, ...pickMeta(saved) } : r)));
-      } else {
-        validateSkill(detail.taskCode, text);
-        const next = { ...overrides, [detail.taskCode]: { content: text, lastModified: nowLabel(), updatedBy: user.id } };
-        setOverrides(next);
-        setDetail(localSkillDetail(tasks.find((t) => t.businessId === selected), next));
-      }
-      onSaved();
-      notify(`${detail.taskName} 회비분담기준(skill.md)이 성공적으로 저장 및 반영되었습니다.`);
-    } catch (e) {
-      const formula = e.formula || /수식|formula/.test(e.message);
-      setSaveError({ title: formula ? BLOCKED : '저장하지 못했습니다.', detail: e.message });
-    } finally {
-      setSaving(false);
-    }
+  const switchPage = (id) => {
+    if (id === page || !confirmLeave()) return;
+    setDirty(false);
+    onChangePage(id);
   };
 
-  const revert = () => {
-    setText(detail.content);
-    setSaveError(null);
-    setSyncResult(null);
+  // ── 저장: 두 화면 공용. 서버는 3단계 검증(섹션·구문·시험 계산) 후 원자적 교체, Mock 은 같은 검증 후 화면 상태에 둔다 ──
+  const saveContent = async (content, message) => {
+    let saved;
+    if (apiEnabled) {
+      saved = await api.saveSkill(detail.taskCode, content);
+      setList((rows) => rows.map((r) => (r.taskCode === saved.taskCode ? { ...r, ...pickMeta(saved) } : r)));
+    } else {
+      validateSkill(detail.taskCode, content);
+      const next = { ...overrides, [detail.taskCode]: { content, lastModified: nowLabel(), updatedBy: user.id } };
+      setOverrides(next);
+      saved = localSkillDetail(tasks.find((t) => t.businessId === selected), next);
+    }
+    showDetail(saved);
+    onSaved();
+    notify(message ?? `${detail.taskName} 회비분담기준(skill.md)이 성공적으로 저장 및 반영되었습니다.`);
+    return saved;
   };
 
   const resetToDefault = async () => {
@@ -213,9 +137,7 @@ export default function SkillManagementPage({
         setOverrides(rest);
         d = localSkillDetail(tasks.find((t) => t.businessId === selected), rest);
       }
-      setDetail(d);
-      setText(d.content);
-      setSaveError(null);
+      showDetail(d);
       onSaved();
       notify('초기 기준 skill.md로 되돌렸습니다.');
     } catch (e) {
@@ -223,26 +145,35 @@ export default function SkillManagementPage({
     }
   };
 
-  // ── 입력 중 실시간 검사 ──
-  const live = useMemo(() => {
-    if (!detail) return null;
-    try {
-      return { parsed: parseSkill(detail.taskCode, text) };
-    } catch (e) {
-      return { error: e.message };
-    }
-  }, [text, detail]);
-
   const accessibleCount = list.filter((r) => r.accessible).length;
+  const shared = { user, notify, detail, saveContent, onDirty: setDirty };
 
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className="text-xl font-bold text-brand-900">회비기준(Skill.md) 관리</h2>
-        <p className="text-sm text-slate-500 mt-0.5">
-          업무마다 skill.md 파일 1개로 회비분담기준과 정산 수식을 관리합니다. 저장하면 다음 회비 산출부터 바로 반영됩니다.
-          {user.role === 'sysadmin' ? ' 시스템관리자는 모든 업무를 수정할 수 있습니다.' : ' 승인받은 업무만 열람·수정할 수 있습니다.'}
-        </p>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-xl font-bold text-brand-900">회비기준(Skill.md) 관리 · {current.label}</h2>
+          <p className="text-sm text-slate-500 mt-0.5">
+            {current.desc} 업무마다 skill.md 파일 1개(1. 비즈니스 규칙 요약 · 2. AI 예외 차감 지침 · 3. 정산 수식 · 4. 최종 정산 특이사항)로
+            관리하며, 저장하면 다음 회비 산출부터 바로 반영됩니다.
+            {user.role === 'sysadmin' ? ' 시스템관리자는 모든 업무를 수정할 수 있습니다.' : ' 승인받은 업무만 열람·수정할 수 있습니다.'}
+          </p>
+        </div>
+        <div className="flex rounded-lg border border-slate-200 bg-white p-0.5 text-sm shadow-sm" role="tablist">
+          {SKILL_PAGES.map((p) => (
+            <button
+              key={p.id}
+              role="tab"
+              aria-selected={p.id === current.id}
+              onClick={() => switchPage(p.id)}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 ${
+                p.id === current.id ? 'bg-brand-700 text-white' : 'text-slate-500 hover:text-brand-700'
+              }`}
+            >
+              <p.icon className="w-4 h-4" /> {p.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-5 items-start">
@@ -265,11 +196,7 @@ export default function SkillManagementPage({
                     }`}
                   >
                     <div className="flex items-center gap-2">
-                      {r.accessible ? (
-                        <FileCode2 className="w-4 h-4 text-brand-500 shrink-0" />
-                      ) : (
-                        <Lock className="w-4 h-4 shrink-0" />
-                      )}
+                      {r.accessible ? <FileCode2 className="w-4 h-4 text-brand-500 shrink-0" /> : <Lock className="w-4 h-4 shrink-0" />}
                       <span className={`font-semibold text-sm ${r.accessible ? 'text-brand-900' : ''}`}>{r.taskName}</span>
                       {r.modified && r.accessible && (
                         <span className="ml-auto rounded bg-amber-50 border border-amber-200 px-1.5 text-[10px] text-amber-700">수정됨</span>
@@ -294,10 +221,10 @@ export default function SkillManagementPage({
           </ul>
         </Card>
 
-        {/* 오른쪽: 편집기 */}
-        <section className="xl:col-span-3 bg-white rounded-xl border border-slate-200 shadow-sm min-w-0">
+        {/* 오른쪽: 선택한 하위 메뉴 */}
+        <div className="xl:col-span-3 min-w-0">
           {!detail ? (
-            <div className="py-24 text-center text-sm text-slate-400">
+            <section className="bg-white rounded-xl border border-slate-200 shadow-sm py-24 text-center text-sm text-slate-400">
               {loading ? (
                 <LoaderCircle className="w-6 h-6 mx-auto animate-spin text-brand-400" />
               ) : accessibleCount === 0 && list.length ? (
@@ -305,143 +232,18 @@ export default function SkillManagementPage({
               ) : (
                 '왼쪽에서 업무를 선택하세요.'
               )}
-            </div>
+            </section>
+          ) : current.id === 'skills-builder' ? (
+            <SkillFormulaBuilder key={detailSeq} {...shared} onGoDocument={() => switchPage('skills-document')} />
           ) : (
-            <>
-              {/* 툴바 */}
-              <div className="flex flex-wrap items-center gap-3 px-5 py-3.5 border-b border-slate-100">
-                <div className="min-w-0">
-                  <p className="font-semibold text-brand-900 flex items-center gap-2">
-                    {detail.taskName} 회비분담기준
-                    <span className="font-mono text-xs font-normal text-slate-400">{detail.fileName ?? `${detail.taskCode}.md`}</span>
-                    {dirty && <span className="rounded bg-sky-50 border border-sky-200 px-1.5 text-[10px] text-sky-700">편집 중</span>}
-                  </p>
-                  <p className="text-[11px] text-slate-500 flex items-center gap-1">
-                    <History className="w-3 h-3" />
-                    최종 수정 {detail.lastModified ?? '초기 기준'}
-                    {detail.updatedBy && ` · ${detail.updatedBy}`}
-                    {detail.version && ` · v${detail.version}`}
-                    {` · ${fmt(detail.size)}바이트`}
-                  </p>
-                </div>
-                <div className="flex rounded-lg border border-slate-200 p-0.5 text-xs">
-                  {MODES.map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => setMode(m.id)}
-                      className={`flex items-center gap-1 rounded-md px-2.5 py-1 ${
-                        mode === m.id ? 'bg-brand-700 text-white' : 'text-slate-500 hover:text-brand-700'
-                      }`}
-                    >
-                      <m.icon className="w-3.5 h-3.5" /> {m.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="ml-auto flex items-center gap-2">
-                  {user.role === 'sysadmin' && detail.modified && (
-                    <button
-                      onClick={resetToDefault}
-                      className="text-[11px] text-slate-400 underline-offset-2 hover:text-rose-600 hover:underline"
-                      title="서버의 skill.md를 처음 배포된 기준으로 되돌립니다"
-                    >
-                      초기 기준 복원
-                    </button>
-                  )}
-                  <button
-                    onClick={revert}
-                    disabled={!dirty || saving}
-                    className="flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-                    title="저장하지 않은 수정 내용을 버리고 마지막 저장본으로 돌아갑니다"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" /> 원래대로 되돌리기
-                  </button>
-                  <button
-                    onClick={save}
-                    disabled={!dirty || saving}
-                    className="flex items-center gap-1 rounded-lg bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800 disabled:bg-slate-300"
-                  >
-                    {saving ? <LoaderCircle className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                    저장 및 반영하기
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-5 space-y-3">
-                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-violet-200 bg-violet-50/60 px-3 py-2">
-                  <button
-                    onClick={syncFormula}
-                    disabled={syncing || saving}
-                    className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:bg-slate-300"
-                  >
-                    {syncing ? <LoaderCircle className="w-3.5 h-3.5 animate-spin" /> : '✨'} 1번 규칙 기반으로 3번 수식 자동 생성
-                  </button>
-                  <p className="text-[11px] text-violet-800 leading-snug">
-                    &apos;## 1. 비즈니스 규칙 요약&apos;을 한글로 고친 뒤 누르면 AI가 3번 formula를 새로 씁니다 (서버에 AI 키가 없거나 서버 미연결이면
-                    규칙 기반). 바로 저장되지 않으니 확인 후 저장하세요.
-                  </p>
-                </div>
-                {syncResult && (
-                  <div className="rounded-lg border border-violet-200 bg-white px-4 py-3 text-xs text-slate-700">
-                    <div className="flex items-start gap-2">
-                      <Sparkles className="w-4 h-4 text-violet-500 shrink-0 mt-0.5" />
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <p className="font-semibold text-violet-800">
-                          {syncResult.source === 'AI' ? `AI가 작성한 수식${syncResult.model ? ` (${syncResult.model})` : ''}` : '규칙 기반으로 작성한 수식'}
-                          <span className="ml-2 font-normal text-slate-500">구문 검사·시험 계산 통과 · 시험 계산(90만 건 / 전체 900만 건 / 8개 기관) {fmt(syncResult.sampleFee)}원</span>
-                        </p>
-                        {syncResult.explanation && <p>{syncResult.explanation}</p>}
-                        {syncResult.note && <p className="text-amber-700">{syncResult.note}</p>}
-                        <div className="grid gap-2 md:grid-cols-2">
-                          <div>
-                            <p className="text-[11px] text-slate-400">이전 수식</p>
-                            <pre className="whitespace-pre-wrap break-all rounded bg-slate-100 p-2 font-mono text-[11px] text-slate-500">{syncResult.previousFormula || '(없음)'}</pre>
-                          </div>
-                          <div>
-                            <p className="text-[11px] text-slate-400">새 수식</p>
-                            <pre className="whitespace-pre-wrap break-all rounded bg-slate-900 p-2 font-mono text-[11px] text-emerald-200">{syncResult.formula}</pre>
-                          </div>
-                        </div>
-                      </div>
-                      <button onClick={() => setSyncResult(null)} className="text-slate-400 hover:text-slate-600" aria-label="닫기">
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {saveError && (
-                  <div role="alert" className="flex gap-2 rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                    <TriangleAlert className="w-5 h-5 shrink-0" />
-                    <div>
-                      <p className="font-semibold">{saveError.title}</p>
-                      <p className="text-xs mt-0.5 break-all">{saveError.detail}</p>
-                    </div>
-                  </div>
-                )}
-                {live?.error && !saveError && (
-                  <p className="flex items-center gap-1.5 text-xs text-amber-700">
-                    <TriangleAlert className="w-3.5 h-3.5" /> {live.error}
-                  </p>
-                )}
-
-                <div className={`grid gap-4 ${mode === 'split' ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
-                  {mode !== 'preview' && <CodeEditor value={text} onChange={setText} />}
-                  {mode !== 'editor' && (
-                    <div className="h-[34rem] overflow-y-auto rounded-lg border border-slate-200 p-5">
-                      <MarkdownPreview markdown={text} />
-                      {live?.parsed && <FormulaTrial formula={live.parsed.formula} />}
-                    </div>
-                  )}
-                </div>
-                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  수식 변수: <code>#rawCount</code> 기본건수, <code>#deductedCount</code> AI 차감건수, <code>#finalCount</code> 최종인정건수,{' '}
-                  <code>#totalCount</code> 전체 인정건수 합계, <code>#institutionCount</code> 참가기관 수, <code>#periodScale</code> 기간 환산
-                  비율. 보안을 위해 <code>T(...)</code> 타입 참조·메서드 호출·생성자는 쓸 수 없습니다. 비율은 <code>120000000.0</code>처럼 소수점을
-                  붙여야 정수 나눗셈이 되지 않습니다.
-                </p>
-              </div>
-            </>
+            <SkillDocumentEditor
+              key={detailSeq}
+              {...shared}
+              onReset={user.role === 'sysadmin' && detail.modified ? resetToDefault : null}
+              onGoBuilder={() => switchPage('skills-builder')}
+            />
           )}
-        </section>
+        </div>
       </div>
 
       {lockedItem && (
@@ -477,136 +279,6 @@ export default function SkillManagementPage({
           </div>
         </Modal>
       )}
-    </div>
-  );
-}
-
-// 자동 생성 수식 시험 계산 값 (서버 FormulaSyncService 와 같다)
-const FORMULA_SAMPLES_FOR_SYNC = FORMULA_SAMPLES[0];
-
-const pickMeta = (d) => ({ lastModified: d.lastModified, size: d.size, version: d.version, modified: d.modified });
-
-// 줄 번호가 붙은 고정폭 편집기 (textarea와 줄 번호 스크롤을 맞춘다)
-function CodeEditor({ value, onChange }) {
-  const gutter = useRef(null);
-  const lines = value.split('\n').length;
-  return (
-    <div className="flex h-[34rem] overflow-hidden rounded-lg border border-slate-700 bg-slate-900 focus-within:ring-2 focus-within:ring-brand-300">
-      <div ref={gutter} aria-hidden="true" className="select-none overflow-hidden bg-slate-800 py-3 pl-3 pr-2 text-right font-mono text-xs leading-5 text-slate-500">
-        {Array.from({ length: lines }, (_, i) => (
-          <div key={i}>{i + 1}</div>
-        ))}
-      </div>
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onScroll={(e) => {
-          if (gutter.current) gutter.current.scrollTop = e.target.scrollTop;
-        }}
-        spellCheck={false}
-        aria-label="skill.md 편집기"
-        wrap="off"
-        className="flex-1 resize-none bg-transparent px-3 py-3 font-mono text-xs leading-5 text-slate-100 caret-emerald-300 focus:outline-none"
-      />
-    </div>
-  );
-}
-
-// 회비기준 문서에 쓰는 마크다운만 그린다: 제목, 목록, 문단, 코드 블록(formula 강조), `인라인 코드`, **굵게**
-function MarkdownPreview({ markdown }) {
-  const blocks = [];
-  const lines = markdown.replace(/\r\n/g, '\n').split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const fence = line.match(/^```(\w*)/);
-    if (fence) {
-      const body = [];
-      for (i++; i < lines.length && !lines[i].startsWith('```'); i++) body.push(lines[i]);
-      blocks.push({ type: 'code', lang: fence[1], text: body.join('\n') });
-    } else if (/^#{1,6}\s/.test(line)) {
-      blocks.push({ type: 'h', level: line.match(/^#+/)[0].length, text: line.replace(/^#+\s*/, '') });
-    } else if (/^\s*([-*]|\d+\.)\s+/.test(line)) {
-      const last = blocks[blocks.length - 1];
-      const item = line.replace(/^\s*([-*]|\d+\.)\s+/, '');
-      if (last?.type === 'ul') last.items.push(item);
-      else blocks.push({ type: 'ul', items: [item] });
-    } else if (line.trim()) {
-      blocks.push({ type: 'p', text: line });
-    }
-  }
-  return (
-    <div className="space-y-2.5 text-sm text-slate-700">
-      {blocks.map((b, idx) => {
-        if (b.type === 'h') {
-          const cls = b.level === 1 ? 'text-lg font-bold text-brand-900' : b.level === 2 ? 'pt-2 text-base font-semibold text-brand-800 border-b border-slate-100 pb-1' : 'font-semibold';
-          return <p key={idx} className={cls}>{inline(b.text)}</p>;
-        }
-        if (b.type === 'ul') {
-          return (
-            <ul key={idx} className="list-disc pl-5 space-y-1">
-              {b.items.map((t, k) => (
-                <li key={k}>{inline(t)}</li>
-              ))}
-            </ul>
-          );
-        }
-        if (b.type === 'code') {
-          return (
-            <div key={idx}>
-              {b.lang === 'formula' && <p className="text-[11px] font-semibold text-emerald-700 mb-1">정산 수식 (SpEL)</p>}
-              <pre className={`whitespace-pre-wrap rounded-lg p-3 font-mono text-xs ${b.lang === 'formula' ? 'bg-slate-900 text-emerald-200 ring-2 ring-emerald-300/40' : 'bg-slate-100 text-slate-700'}`}>
-                {b.text}
-              </pre>
-            </div>
-          );
-        }
-        return <p key={idx}>{inline(b.text)}</p>;
-      })}
-    </div>
-  );
-}
-
-function inline(text) {
-  return text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g).map((part, i) => {
-    if (part.startsWith('`') && part.endsWith('`') && part.length > 1) {
-      return <code key={i} className="rounded bg-slate-100 px-1 font-mono text-[12px] text-brand-800">{part.slice(1, -1)}</code>;
-    }
-    if (part.startsWith('**') && part.endsWith('**') && part.length > 3) return <b key={i}>{part.slice(2, -2)}</b>;
-    return <Fragment key={i}>{part}</Fragment>;
-  });
-}
-
-// 수식 시험 계산 (한 기관 기준)
-const TRIAL = { rawCount: 1_000_000, deductedCount: 0, finalCount: 1_000_000, totalCount: 8_000_000, institutionCount: 8, periodScale: 1 };
-
-function FormulaTrial({ formula }) {
-  const [vars, setVars] = useState(TRIAL);
-  let result;
-  try {
-    result = { fee: evaluateFormula(formula, vars) };
-  } catch (e) {
-    result = { error: e.message };
-  }
-  return (
-    <div className="mt-5 rounded-lg border border-brand-100 bg-brand-50/50 p-3 text-xs">
-      <p className="font-semibold text-brand-800 mb-2">수식 시험 계산 (한 기관)</p>
-      <div className="grid grid-cols-3 gap-2">
-        {Object.keys(TRIAL).map((k) => (
-          <label key={k} className="block">
-            <span className="block text-[11px] text-slate-500">#{k}</span>
-            <input
-              type="number"
-              step={k === 'periodScale' ? 0.01 : 1}
-              value={vars[k]}
-              onChange={(e) => setVars((v) => ({ ...v, [k]: Number(e.target.value) }))}
-              className="w-full rounded border border-slate-300 bg-white px-2 py-1 tabular-nums"
-            />
-          </label>
-        ))}
-      </div>
-      <p className="mt-2">
-        {result.error ? <span className="text-rose-600">{result.error}</span> : <>결과 <b className="text-sm text-brand-800">{fmt(result.fee)}원</b></>}
-      </p>
     </div>
   );
 }

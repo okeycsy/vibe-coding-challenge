@@ -61,6 +61,10 @@ public class FeeCalculation {
     @Column(length = 2000)
     private String appliedFormula;
 
+    /** 산출에 적용한 "## 4. 최종 정산 특이사항" 원문 (없으면 빈 문자열) */
+    @Column(length = 4000)
+    private String appliedSpecialRules;
+
     /** 실적 출처: UPLOAD(엑셀 업로드) | DEMO(시연용 생성) */
     @Column(length = 10)
     private String source;
@@ -72,7 +76,7 @@ public class FeeCalculation {
 
     private LocalDateTime calculatedAt;
 
-    /** AI 단계(이슈 판별·최종 보정) 동작 방식: AI / RULE(키 없음) / RULE_FALLBACK(AI 실패) */
+    /** AI 단계(이슈 차감 판별) 동작 방식: AI / RULE(키 없음) / RULE_FALLBACK(AI 실패) */
     @Column(length = 20)
     private String aiMode;
 
@@ -93,7 +97,7 @@ public class FeeCalculation {
     @Builder
     private FeeCalculation(Business business, LocalDate periodFrom, LocalDate periodTo, double periodScale,
                            Long appliedUnitPrice, Long appliedTotalFee, String skillCode, String appliedCalcType,
-                           String appliedFormula, String source, String uploadFileName,
+                           String appliedFormula, String appliedSpecialRules, String source, String uploadFileName,
                            String calculatedBy, LocalDateTime calculatedAt) {
         this.business = business;
         this.periodFrom = periodFrom;
@@ -104,6 +108,7 @@ public class FeeCalculation {
         this.skillCode = skillCode;
         this.appliedCalcType = appliedCalcType;
         this.appliedFormula = appliedFormula;
+        this.appliedSpecialRules = appliedSpecialRules;
         this.source = source;
         this.uploadFileName = uploadFileName;
         this.calculatedBy = calculatedBy;

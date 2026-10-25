@@ -23,3 +23,5 @@
 ```formula
 (#finalCount > 0 ? 900000 * #periodScale : 0) + #finalCount * 8
 ```
+
+## 4. 최종 정산 특이사항

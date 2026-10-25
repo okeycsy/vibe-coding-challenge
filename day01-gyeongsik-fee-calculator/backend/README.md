@@ -128,24 +128,22 @@ src/main/java/com/kftc/feecalc/
 - 회비: 업무별 skill.md의 SpEL 수식으로 계산합니다 (아래 fee v1 참고). `PUT /businesses/{code}/rate`로 바꾼 단가·총액은 더 이상 산출에 쓰이지 않습니다
 - `requestedBy`를 주면 업무 산출 권한을 확인합니다(사용자는 부여받은 업무만, 참가기관은 불가)
 
-### AI 2단계 파이프라인 (`domain/fee/ai`)
-`POST /api/v1/fees/calculate`(와 `/api/fee/calculations`)는 아래 순서로 산출합니다. AI는 OpenAI Chat Completions 호환 API를 RestClient로 부릅니다(`LlmClient`, JSON 응답만 받음).
+### 2단계 정산 파이프라인 (`domain/fee/service`, `domain/fee/ai`)
+`POST /api/v1/fees/calculate`(와 `/api/fee/calculations`)는 아래 순서로 산출합니다. 금액 계산에는 AI를 쓰지 않습니다(같은 입력이면 늘 같은 금액, 서버·Mock 동일).
 
-1. **Step A 이슈 차감 판별**: 이슈 문장의 기관·건수는 기존 해석기로 찾고, AI가 skill.md `## 2. AI 예외 차감 지침`에 비춰 차감 대상인지만 정합니다(예: CD공동망 "기관 자체 ATM 장애는 차감하지 않는다"). 응답 `issues[].applied`·`judgement`
-2. **Step B 1차 수식 계산**: 기존처럼 `SkillEngineService`가 `formula`로 기관별 1차 회비 → `items[].primaryFee`
-3. **Step C 최종 보정**(`AiFeePostProcessor`): AI에 `## 1. 비즈니스 규칙 요약` 원문, 정산 수식, 기관별 (기관 ID·기관명·최종 인정 건수·1차 회비)와 합계를 주고, 수식에 없는 단수 처리·예외 규정을 반영한 `finalFee`·`adjustReason`을 받습니다 → `items[].fee`(최종)·`aiAdjustReason`. 원 단위 정수가 아니거나 음수거나 1차 금액의 2배(최소 1,000원)를 넘게 바뀐 값은 버리고 1차 금액을 둡니다.
+skill.md 표준 4섹션: `## 1. 비즈니스 규칙 요약`(필수) · `## 2. AI 예외 차감 지침`(선택) · `## 3. 정산 수식`(필수, ```formula 블록, 2000자 이하) · `## 4. 최종 정산 특이사항`(선택). 3번 섹션은 다음 `## ` 제목 앞에서 끝나고, 4번의 `- ` 목록은 `specialRules`(줄 목록)·`specialRulesRaw`(원문)로 응답에 실립니다.
 
-응답의 `aiMode`는 `AI`(AI 응답 반영) / `RULE`(키 없음) / `RULE_FALLBACK`(AI 호출 실패·응답 이상으로 규칙 기반), `aiModel`, `aiNote`(전환 사유), `totalPrimaryFee`. 서버 기동 시 시연 데이터 산출 1건은 기동이 AI를 기다리지 않게 규칙 기반으로만 합니다.
-
-규칙 기반(`RuleBasedFeeRules`, 프론트 `src/utils/aiRules.js`와 같은 규칙)이 알아듣는 표현
-- 이슈 판별: 지침 중 "차감하지 않는다 / 차감 대상이 아니다 / 차감 제외" 줄의 핵심 낱말이 이슈 문장에 절반 이상 있으면 제외
-- 최종 보정: "최저/최고 회비 N원", "(기관명) N원 단위로 절상·절사·절삭·반올림"(기관명이 없으면 전 기관), 같은 줄의 "차이분은 … 실적이 큰 순서대로 1원씩"(대상 기관을 뺀 나머지에서 실적순으로 1원씩 되돌려 합계 유지)
-- 예: 금거정 skill.md의 "NH농협은행은 회비를 10원 단위로 절상하고, 절상 차이분은 나머지 기관 중 실적이 큰 순서대로 1원씩 절삭해 회비 합계 = 총액을 유지"
+1. **이슈 차감 판별**: 이슈 문장의 기관·건수는 기존 해석기로 찾고, AI(키가 없으면 규칙 기반 `RuleBasedFeeRules`)가 `## 2. AI 예외 차감 지침`에 비춰 차감 대상인지만 정합니다. 응답 `issues[].applied`·`judgement`, `aiMode`(`AI`/`RULE`/`RULE_FALLBACK`)는 이 판별에만 해당
+2. **Step 1 1차 수식 계산**: `SkillEngineService.calculatePrimary`가 `formula`로 기관별 금액을 내고 원 단위로 배분(정수 부분 + 백만분의 1원 단위 나머지 큰 순, 합계 = 반올림한 총합) → `items[].beforeSpecialFee`. 수식에 `#institutionCount`와 `#finalCount`가 함께 있으면 균등분 = 실적 0으로 계산한 값, 실적분 = 나머지로 나눠 `equalFee`·`perfFee`
+3. **Step 2 특이사항 후처리**(`SpecialRulePostProcessor`, 프론트 `src/utils/specialRules.js`와 같은 규칙): `## 4. 최종 정산 특이사항`을 적용 → `items[].fee`(최종)·`specialRuleApplied`·`specialAdjustment`·`specialReason`
+   - "최저/최고 회비 N원": 상하한(문장에 기관이 있으면 그 기관만)
+   - "N원 단위로 절상" + "차이분(초과액)은 … 실적이 큰 기관 순서대로 1원씩 절삭": 지정 기관(없으면 첫 번째 기관)을 `((fee+9)/10)*10`처럼 올리고, 늘어난 금액만큼 나머지 기관을 최종 인정 실적 내림차순(동률은 기관코드 순)으로 1원씩 깎아 합계 유지. 사유 예: `특이사항 반영: 10원 단위 절상 (+6원)`, `특이사항 반영: 절상 차이분 실적순 절삭 (-1원)`
+   - "N원 미만 절사(버림)": 대상(없으면 전체)을 N원 단위로 버림
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
 | GET | `/api/v1/ai/status` | `{ enabled, model, mode }` (키 값은 내보내지 않음) |
-| POST | `/api/v1/skills/sync-formula` | `{ taskCode, content }`(편집기의 저장 전 전문) → 1번 규칙으로 3번 `formula`를 새로 써서 `{ formula, previousFormula, content, source(AI/RULE/RULE_FALLBACK), model, explanation, note, sampleFee }`. 권한은 skill.md 저장과 같고(`X-Employee-Id`), **파일은 저장하지 않음**. AI가 만든 수식도 저장과 같은 SpEL 구문 검사·예시 값 시험 계산을 통과해야 하고, 못 하면 규칙 기반 생성기(총액 N원·N% 균등 / 기본료 N원 + 건당 N원 / N건까지 건당 N원 구간 / 건당 단가 N원·최저·최고 회비)로 만듭니다. 그것도 못 하면 400 |
+| POST | `/api/v1/skills/{taskCode}/generate-formula` | `{ businessRulesText }`(1번 비즈니스 규칙) → `{ generatedFormula, detectedPattern, explanation[], validationPassed, validationMessage, sampleResultNormal, sampleResultZero, source(AI/RULE/RULE_FALLBACK), model, note }`. `X-Employee-Id`로 업무 권한 확인(없으면 403), **파일은 저장하지 않음**. AI 수식도 길이·SpEL 구문 검사를 통과해야 하고, 못 하면 규칙 기반 생성기(`RuleBasedFormulaGenerator`, 프론트 `src/utils/formulaGenerator.js`와 동일)로 만듭니다: 균등 X% + 실적 Y% 혼합 / 구간별 차등 단가 / 기본료 + 건당 단가 / 건당 단가 + 최저·최고 한도 / 총액 대비 단순 실적 비율. 그것도 못 하면 400 |
 
 ### skills — `/api/v1/skills` (업무별 회비분담기준 skill.md 관리)
 모든 요청에 `X-Employee-Id: <로그인 ID>` 헤더가 필요합니다(없으면 401). 시스템관리자는 전체 업무, 일반담당자는 승인된 업무 권한(신청 승인 또는 관리자 부여)이 있는 업무만, 참가기관은 접근할 수 없습니다(403 "해당 업무의 회비분담기준(skill.md) 접근 권한이 없습니다.").
@@ -153,7 +151,7 @@ src/main/java/com/kftc/feecalc/
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
 | GET | `/api/v1/skills` | 전체 업무와 `accessible`(접근 가능 여부), 최종 수정 일시·크기·버전(내용 해시 8자리)·수정 여부. 내용은 주지 않음 |
-| GET | `/api/v1/skills/{taskCode}` | `{ taskCode, taskName, content, formula, summary, aiGuide, calcType, rateUnit, lastModified, size, version, modified, updatedBy }`. `taskCode`는 `OPEN_BANKING` 또는 업무 ID `openbanking` |
+| GET | `/api/v1/skills/{taskCode}` | `{ taskCode, taskName, content, formula, summary, aiGuide, specialRules, specialRulesRaw, calcType, rateUnit, lastModified, size, version, modified, updatedBy }`. `taskCode`는 `OPEN_BANKING` 또는 업무 ID `openbanking` |
 | PUT | `/api/v1/skills/{taskCode}` | `{ content }` 저장. 섹션 확인 → 수식 SpEL 구문 검사 → 예시 값 시험 계산을 통과해야 파일을 덮어씀. 구문 오류는 400 "수식(formula) 구문 오류가 발견되었습니다." |
 | POST | `/api/v1/skills/{taskCode}/reset` | 초기 기준(`resources/skills`)으로 되돌리기 (시스템관리자만) |
 | POST | `/api/v1/fees/calculate` | skill.md 수식으로 산출. 헤더(또는 `requestedBy`)의 사번이 그 업무 권한이 있어야 함. 응답에 `skillCode`·`calcType`·`formula` |
@@ -162,7 +160,7 @@ src/main/java/com/kftc/feecalc/
 | 메서드 | 경로 | 설명 |
 |---|---|---|
 | GET | `/api/v1/tasks` | 업무 목록: `{ taskCode, businessId, name, fileName, builtIn, createdAt, createdBy, lastModified, size, ready, memberCount }`. `ready`는 요약·수식 섹션이 있어 산출에 쓸 수 있는지 |
-| POST | `/api/v1/tasks` | `{ taskCode, name, fileName }`로 업무 추가 (시스템관리자만, `X-Employee-Id`). `fileName`은 `.md` 생략 가능, 비우면 `{업무코드}.md`. 업무 코드·업무명·파일명(대소문자 무관)이 겹치면 409. md 파일은 기본 템플릿 뼈대(`# {업무명} 회비 산정 기준 ({업무코드})`, 업무명·산정 유형·표시 단위 항목, `## 1~3` 섹션 제목, 빈 ```formula 블록)로 만듦 |
+| POST | `/api/v1/tasks` | `{ taskCode, name, fileName }`로 업무 추가 (시스템관리자만, `X-Employee-Id`). `fileName`은 `.md` 생략 가능, 비우면 `{업무코드}.md`. 업무 코드·업무명·파일명(대소문자 무관)이 겹치면 409. md 파일은 기본 템플릿 뼈대(`# {업무명} 회비 산정 기준 ({업무코드})`, 업무명·산정 유형·표시 단위 항목, `## 1~4` 섹션 제목, 빈 ```formula 블록)로 만듦 |
 | DELETE | `/api/v1/tasks/{taskCode}` | 업무 삭제 (시스템관리자만). 연결된 md 파일 삭제, 회원의 그 업무 권한 해제, 승인 대기 신청 반려 |
 
 - 새 업무의 skill.md는 섹션이 없어 `GET /api/v1/skills/{taskCode}`에서 `parseError`와 원문만 주고, 섹션을 채워 `PUT`으로 저장해야 산출에 쓸 수 있습니다. 회비 산출 화면은 실적 예시 데이터가 있는 기본 업무만 보여 줍니다

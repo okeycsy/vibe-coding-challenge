@@ -24,6 +24,8 @@ public record CalculationResponse(
         String skillCode,
         String calcType,
         String formula,
+        /** 적용한 "## 4. 최종 정산 특이사항" 원문 */
+        String specialRules,
         String source,
         String uploadFileName,
         String calculatedBy,
@@ -32,9 +34,11 @@ public record CalculationResponse(
         long totalDeduction,
         long totalFinalCount,
         long totalFeeAmount,
-        /** 1차 수식 회비 합계 (최종 보정 전) */
-        long totalPrimaryFee,
-        /** AI 단계 동작: AI / RULE(키 없음, 규칙 기반) / RULE_FALLBACK(AI 실패로 규칙 기반) */
+        /** Step 1(수식) 회비 합계 (특이사항 보정 전) */
+        long totalBeforeSpecialFee,
+        long totalEqualFee,
+        long totalPerfFee,
+        /** 이슈 차감 판별 AI 단계 동작: AI / RULE(키 없음, 규칙 기반) / RULE_FALLBACK(AI 실패로 규칙 기반) */
         String aiMode,
         String aiModel,
         String aiNote,
@@ -42,15 +46,16 @@ public record CalculationResponse(
         List<Issue> issues) {
 
     public record Item(Long id, String institutionId, String name, String code, long baseCount, long deduction,
-                       long finalCount, String rateLabel, long primaryFee, long fee, String aiAdjustReason,
+                       long finalCount, String rateLabel, long equalFee, long perfFee, long fee,
+                       boolean specialRuleApplied, long beforeSpecialFee, long specialAdjustment, String specialReason,
                        List<String> reasons) {
 
         static Item from(FeeCalculationItem i) {
             List<String> reasons = i.getDeductionReasons() == null || i.getDeductionReasons().isBlank()
                     ? List.of() : Arrays.asList(i.getDeductionReasons().split("\n"));
             return new Item(i.getId(), i.getInstitutionCode(), i.getInstitutionName(), i.getBankCode(),
-                    i.getBaseCount(), i.getDeduction(), i.getFinalCount(), i.getRateLabel(), i.getPrimaryFee(), i.getFee(),
-                    i.getAiAdjustReason(), reasons);
+                    i.getBaseCount(), i.getDeduction(), i.getFinalCount(), i.getRateLabel(), i.getEqualFee(), i.getPerfFee(), i.getFee(),
+                    i.isSpecialRuleApplied(), i.getBeforeSpecialFee(), i.getSpecialAdjustment(), i.getSpecialReason(), reasons);
         }
     }
 
@@ -69,13 +74,15 @@ public record CalculationResponse(
                 c.getBusiness().getMethod().getCode(), c.getPeriodFrom(), c.getPeriodTo(),
                 new Period(c.getPeriodFrom(), c.getPeriodTo()).label(), c.getPeriodScale(),
                 c.getAppliedUnitPrice(), c.getAppliedTotalFee(), c.getSkillCode(), c.getAppliedCalcType(),
-                c.getAppliedFormula(), c.getSource(), c.getUploadFileName(),
+                c.getAppliedFormula(), c.getAppliedSpecialRules() == null ? "" : c.getAppliedSpecialRules(), c.getSource(), c.getUploadFileName(),
                 c.getCalculatedBy(), c.getCalculatedAt(),
                 items.stream().mapToLong(Item::baseCount).sum(),
                 items.stream().mapToLong(Item::deduction).sum(),
                 items.stream().mapToLong(Item::finalCount).sum(),
                 items.stream().mapToLong(Item::fee).sum(),
-                items.stream().mapToLong(Item::primaryFee).sum(),
+                items.stream().mapToLong(Item::beforeSpecialFee).sum(),
+                items.stream().mapToLong(Item::equalFee).sum(),
+                items.stream().mapToLong(Item::perfFee).sum(),
                 c.getAiMode(), c.getAiModel(), c.getAiNote(),
                 items, c.getIssues().stream().map(Issue::from).toList());
     }
