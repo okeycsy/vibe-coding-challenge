@@ -85,6 +85,9 @@ export const api = {
   // → { generatedFormula, detectedPattern, explanation[], validationPassed, sampleResultNormal, sampleResultZero, source, ... }
   generateFormula: (taskCode, businessRulesText) =>
     request('POST', `/api/v1/skills/${taskCode}/generate-formula`, { businessRulesText }),
+  // → { generatedScript, explanation[], unsupported[], validationPassed, validationMessage, sample[], checks[], notes[], source, model, note }
+  generatePostprocess: (taskCode, specialRulesText) =>
+    request('POST', `/api/v1/skills/${taskCode}/generate-postprocess`, { specialRulesText }),
   aiStatus: () => request('GET', '/api/v1/ai/status'),
   // 업무 관리 (추가·삭제는 시스템관리자만). 업무 1개 = md 파일 1개
   tasks: () => request('GET', '/api/v1/tasks'),

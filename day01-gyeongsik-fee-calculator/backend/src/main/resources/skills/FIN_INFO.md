@@ -29,3 +29,12 @@
 ## 4. 최종 정산 특이사항
 
 - NH농협은행은 회비를 10원 단위로 절상하고, 절상 차이분은 나머지 기관 중 실적이 큰 순서대로 1원씩 절삭해 회비 합계 = 총액을 유지
+
+```postprocess
+allocate(fee)
+roundUp(fee, 10, "NH농협은행")
+spreadDiff(perf, others, perfDesc)
+assert fee("NH농협은행") % 10 == 0
+assert sum(fee) == before
+assert all(fee >= 0)
+```

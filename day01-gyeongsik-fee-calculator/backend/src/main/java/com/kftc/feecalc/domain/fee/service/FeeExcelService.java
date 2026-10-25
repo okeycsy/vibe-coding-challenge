@@ -47,8 +47,9 @@ import lombok.RequiredArgsConstructor;
 @Transactional(readOnly = true)
 public class FeeExcelService {
 
-    private static final java.util.Map<String, String> SPECIAL_MODE = java.util.Map.of(
-            "AI", "AI 해석", "RULE", "규칙 기반 해석 (AI 키 없음)", "RULE_FALLBACK", "규칙 기반 해석 (AI 해석 실패)");
+    private static final java.util.Map<String, String> POSTPROCESS_SOURCE = java.util.Map.of(
+            "SCRIPT", "skill.md 후처리 스크립트", "AUTO_RULE", "자연어 특이사항을 내장 변환기로 변환 (스크립트 미확정)",
+            "DEFAULT", "특이사항 없음 · 기본 배분");
 
     private final InstitutionRepository institutionRepository;
     private final FeeCalculationService calculationService;
@@ -226,14 +227,19 @@ public class FeeExcelService {
             for (String line : special) {
                 writeRow(basis, b++, null, "4. 최종 정산 특이사항", line);
             }
-            if (calc.getSpecialRuleMode() != null && !special.isEmpty()) {
-                writeRow(basis, b++, null, "4번 해석 방식", SPECIAL_MODE.getOrDefault(calc.getSpecialRuleMode(), calc.getSpecialRuleMode())
-                        + (calc.getSpecialRuleModel() == null ? "" : " · " + calc.getSpecialRuleModel()));
-                for (CalculationResponse.Action a : CalculationResponse.actions(calc.getSpecialActionsJson())) {
-                    writeRow(basis, b++, null, "4번 보정 동작", a.description());
+            if (calc.getPostprocessSource() != null) {
+                writeRow(basis, b++, null, "4번 스크립트 출처",
+                        POSTPROCESS_SOURCE.getOrDefault(calc.getPostprocessSource(), calc.getPostprocessSource()));
+                for (String line : SkillEngineService.lines(calc.getAppliedPostprocess())) {
+                    writeRow(basis, b++, null, "4번 후처리 스크립트", line);
                 }
-                for (String line : CalculationResponse.unsupported(calc.getSpecialActionsJson())) {
-                    writeRow(basis, b++, null, "4번 미적용 문장", line);
+                CalculationResponse.PostprocessResult pr = CalculationResponse.result(calc.getPostprocessResultJson());
+                for (CalculationResponse.Check c : pr.checks()) {
+                    writeRow(basis, b++, null, "4번 검증", (c.passed() ? "통과" : "실패") + " · " + c.label()
+                            + (c.actual() == null ? "" : " (실제 " + c.actual() + ")"));
+                }
+                for (String line : pr.notes()) {
+                    writeRow(basis, b++, null, "4번 참고", line);
                 }
             }
             autosize(basis, 2);

@@ -43,7 +43,7 @@ Docker 지원 무료 호스팅인 [Render](https://render.com)에 이 폴더의 
 - **인증이 없습니다.** 주소를 아는 누구나 회원 목록 조회, 가입 승인, 권한 부여, 비밀번호 초기화 같은 관리자 API를 호출할 수 있습니다. 예시 데이터만 넣고, 실제 회원·실적은 절대 올리지 마세요.
 - Vercel 주소가 바뀌거나 미리보기 주소에서도 쓰려면 Render 환경변수 `CORS_ALLOWED_ORIGINS`에 쉼표로 이어 적습니다(기본값을 덮어쓰므로 localhost 주소도 함께).
 - Mattermost: 환경변수 `MATTERMOST_WEBHOOK_URL`에 Incoming Webhook 주소를 넣으면 실제로 발송하고, 비어 있으면 로그만 남깁니다.
-- AI(LLM): Render Environment에 `AI_API_KEY`를 넣으면 회비 산출의 이슈 판별, 4번 특이사항 해석(문장 → 보정 동작), 수식 자동 생성에 AI를 씁니다. 금액 계산 자체는 AI가 하지 않습니다. **키는 저장소에 절대 커밋하지 않고 환경변수로만** 넣습니다. 비어 있으면 규칙 기반으로 동작합니다(아래 "2단계 정산 파이프라인").
+- AI(LLM): Render Environment에 `AI_API_KEY`를 넣으면 회비 산출의 이슈 판별과, AI 계산식 빌더의 3번 수식 생성·4번 후처리 스크립트 생성에 AI를 씁니다. 4번 특이사항은 산출 때 AI를 부르지 않고 확정된 스크립트만 실행합니다. 금액 계산 자체는 AI가 하지 않습니다. **키는 저장소에 절대 커밋하지 않고 환경변수로만** 넣습니다. 비어 있으면 규칙 기반으로 동작합니다(아래 "2단계 정산 파이프라인").
   | 환경변수 | 기본값 | 설명 |
   |------|----|----|
   | `AI_API_KEY` | (없음) | OpenAI 또는 Gemini API 키 |
@@ -129,22 +129,38 @@ src/main/java/com/kftc/feecalc/
 - `requestedBy`를 주면 업무 산출 권한을 확인합니다(사용자는 부여받은 업무만, 참가기관은 불가)
 
 ### 2단계 정산 파이프라인 (`domain/fee/service`, `domain/fee/ai`)
-`POST /api/v1/fees/calculate`(와 `/api/fee/calculations`)는 아래 순서로 산출합니다. AI는 문장을 해석만 하고, 금액은 늘 코드가 계산합니다.
+`POST /api/v1/fees/calculate`(와 `/api/fee/calculations`)는 아래 순서로 산출합니다. AI는 이슈 판별과 빌더의 문장 해석에만 쓰고, 금액은 늘 코드가 계산합니다.
 
-skill.md 표준 4섹션: `## 1. 비즈니스 규칙 요약`(필수) · `## 2. AI 예외 차감 지침`(선택) · `## 3. 정산 수식`(필수, ```formula 블록, 2000자 이하) · `## 4. 최종 정산 특이사항`(선택). 3번 섹션은 다음 `## ` 제목 앞에서 끝나고, 4번의 `- ` 목록은 `specialRules`(줄 목록)·`specialRulesRaw`(원문)로 응답에 실립니다.
+skill.md 표준 4섹션: `## 1. 비즈니스 규칙 요약`(필수) · `## 2. AI 예외 차감 지침`(선택) · `## 3. 정산 수식`(필수) · `## 4. 최종 정산 특이사항`(선택). 3번 섹션은 다음 `## ` 제목 앞에서 끝납니다.
+
+- **3번 수식 블록** (각 2000자 이하): ```` ```formula ````(회비 총액) 하나, 또는 ```` ```formula:equal ````(균등분담회비) + ```` ```formula:perf ````(실적분담회비) 분리형. 분리형이면 ```` ```formula ```` 통합식은 선택(표시용, 없으면 `(균등) + (실적)`). 블록 사이의 `### 3-1.` 같은 소제목·설명은 그대로 둡니다. 응답: `formula`, `equalFormula`, `perfFormula`(분리형이 아니면 null)
+- **4번**: 자연어 문장(`specialRules`·`specialRulesRaw`) + ```` ```postprocess ```` 후처리 스크립트 블록(`postprocess`, 빌더에서 만들어 확정)
 
 1. **이슈 차감 판별**: 이슈 문장의 기관·건수는 기존 해석기로 찾고, AI(키가 없으면 규칙 기반 `RuleBasedFeeRules`)가 `## 2. AI 예외 차감 지침`에 비춰 차감 대상인지만 정합니다. 응답 `issues[].applied`·`judgement`, `aiMode`(`AI`/`RULE`/`RULE_FALLBACK`)는 이 판별에만 해당
-2. **Step 1 1차 수식 계산**: `SkillEngineService.calculatePrimary`가 `formula`로 기관별 금액을 내고 원 단위로 배분(정수 부분 + 백만분의 1원 단위 나머지 큰 순, 합계 = 반올림한 총합) → `items[].beforeSpecialFee`. 수식에 `#institutionCount`와 `#finalCount`가 함께 있으면 균등분 = 실적 0으로 계산한 값, 실적분 = 나머지로 나눠 `equalFee`·`perfFee`
-3. **Step 2 특이사항 후처리**: `## 4. 최종 정산 특이사항`을 두 단계로 적용 → `items[].fee`(최종)·`specialRuleApplied`·`specialAdjustment`·`specialReason`
-   - **해석** (`SpecialRuleInterpreter`): AI가 문장을 정해진 보정 동작 JSON으로만 바꿉니다. 동작: `MIN_FEE`/`MAX_FEE`(`amount`), `ROUND`(`unit`, `rounding` UP 절상·DOWN 절사·HALF_UP 반올림, `redistribute` NONE·PERF_DESC·PERF_ASC = 차이분을 나머지 기관에 실적 큰/작은 순 1원씩 되돌림), 대상 `target` ALL·FIRST(첫 번째 기관)·NAMED(`institutions`). AI 결과는 허용 목록 검사(`SpecialRulePostProcessor.validate`: 종류·단위 2~1억·금액 범위·산출 대상에 있는 기관만, 최대 20개)를 통과해야 쓰고, 같은 문장·기관 목록의 AI 해석은 서버가 기억해 다시 산출해도 같은 동작을 씁니다. 키가 없으면 `RULE`, AI 실패·형식 오류면 `RULE_FALLBACK`으로 규칙 기반 해석기(`SpecialRulePostProcessor.interpret`, 프론트 `specialRules.js`와 동일)가 같은 구조를 만듭니다. 바꾸지 못한 문장은 `specialUnsupported`로 남고 적용되지 않습니다
-   - **실행** (`SpecialRulePostProcessor.execute`, 프론트 `executeSpecialActions`와 동일): 동작대로 금액을 계산(결정적, 상하한 먼저). 사유 예: `특이사항 반영: 10원 단위 절상 (+6원)`, `특이사항 반영: 절상 차이분 실적순 절삭 (-1원)`
-   - 응답: `specialRuleMode`(AI/RULE/RULE_FALLBACK), `specialRuleModel`, `specialRuleNote`, `specialActions[]`(동작 + `description` 한 줄 설명), `specialUnsupported[]`. 대사용 엑셀 산출기준 시트에도 남깁니다
-   - 규칙 기반 해석기가 알아듣는 문장: "최저/최고 회비 N원"(문장에 기관이 있으면 그 기관만), "N원 단위로 절상" + "차이분(초과액)은 … 실적이 큰 기관 순서대로 1원씩 절삭"(지정 기관, 없으면 첫 번째 기관을 올리고 나머지에서 실적 내림차순·동률은 기관코드 순으로 1원씩 깎아 합계 유지), "N원 미만 절사(버림)"(대상, 없으면 전체)
+2. **Step 1 원시값**: `SkillEngineService.computeRaw`가 기관별 균등분담분·실적분담분을 원 미만까지(백만분의 1원 정수) 계산. 분리형은 각 수식, 단일 수식은 `#institutionCount`·`#finalCount`가 함께 있으면 실적 0일 때 값을 균등분으로 봅니다
+3. **Step 2 후처리 스크립트** (`PostprocessScript` 파서 + `PostprocessEngine` 실행기, 프론트 `src/utils/postprocess.js`와 동일): 스크립트를 위에서 아래로 실행 → `items[].equalFee`·`perfFee`·`fee`·`beforeSpecialFee`(처음 모든 금액이 정수가 된 시점)·`specialAdjustment`·`specialReason`
+   - 실행할 스크립트(`postprocessSource`): `SCRIPT`(skill.md 블록) / `AUTO_RULE`(블록 없이 자연어만 있으면 내장 변환기 `SpecialRuleConverter`로 바꿔 실행) / `DEFAULT`(4번 없음 → `allocate(fee)`, 이전 Step 1 배분과 같은 결과)
+   - 연산: `allocate(comp)` 원 단위 배분 · `roundUp|roundDown|roundHalf(comp[, 단위][, 대상][, addTo=equal|perf])` · `fixSum(comp, 금액|N%, over=정렬, under=정렬)` 합계를 목표에 1원씩 보정 · `spreadDiff(equal|perf[, 대상][, 정렬][, step=N])` 앞 단계에서 늘거나 준 금액을 되돌림 · `min|max|add|set(comp, 금액[, 대상])` · `assert sum(comp) == 금액|N%|before`, `assert comp("기관") % N == 0`, `assert all(comp >= N)`, `assert integer`. 구성요소 `equal`·`perf`·`fee`, 대상 `all`·`first`·`last`·`others`·`"기관명"`(이름·별칭·기관코드), 정렬 `perfDesc/perfAsc`·`countDesc/countAsc`·`feeDesc/feeAsc`·`equalDesc/equalAsc`·`codeAsc`(동률은 기관코드 오름차순). 최대 50줄
+   - 예 (균등 25% + 실적 75%, 우체국 10원 절상):
+     ```
+     roundHalf(equal)
+     roundHalf(perf)
+     fixSum(equal, 25%, over=perfDesc, under=perfAsc)
+     fixSum(perf, 75%, over=perfDesc, under=perfAsc)
+     roundUp(fee, 10, "우체국", addTo=perf)
+     spreadDiff(perf, others, perfDesc)
+     assert sum(equal) == 25%
+     assert fee("우체국") % 10 == 0
+     assert sum(fee) == before
+     ```
+   - 응답: `postprocess`(실행한 스크립트), `postprocessSource`, `checks[]`(`expression`, `label`, `passed`, `actual`), `notes[]`(예: 산출 대상에 없는 기관이라 건너뜀). assert 실패는 산출을 막지 않고 화면·대사용 엑셀에 실패로 표시. 지정 기관(예: 우체국)은 기관 관리에 먼저 등록해야 합니다
+   - 저장 검증: 수식 구문·시험 계산 2벌 + 스크립트 문법·시험 실행 2벌(`PostprocessEngine.trial`, 시험용 기관 7곳). 정수화 전에 `fixSum`을 쓰는 등 실행 오류는 `400 INVALID_FORMULA "후처리 스크립트 N행: …"`
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
 | GET | `/api/v1/ai/status` | `{ enabled, model, mode }` (키 값은 내보내지 않음) |
-| POST | `/api/v1/skills/{taskCode}/generate-formula` | `{ businessRulesText }`(1번 비즈니스 규칙) → `{ generatedFormula, detectedPattern, explanation[], validationPassed, validationMessage, sampleResultNormal, sampleResultZero, source(AI/RULE/RULE_FALLBACK), model, note }`. `X-Employee-Id`로 업무 권한 확인(없으면 403), **파일은 저장하지 않음**. AI 수식도 길이·SpEL 구문 검사를 통과해야 하고, 못 하면 규칙 기반 생성기(`RuleBasedFormulaGenerator`, 프론트 `src/utils/formulaGenerator.js`와 동일)로 만듭니다: 균등 X% + 실적 Y% 혼합 / 구간별 차등 단가 / 기본료 + 건당 단가 / 건당 단가 + 최저·최고 한도 / 총액 대비 단순 실적 비율. 그것도 못 하면 400 |
+| POST | `/api/v1/skills/{taskCode}/generate-postprocess` | `{ specialRulesText }`(4번 자연어) → `{ generatedScript, explanation[], unsupported[], validationPassed, validationMessage, sample[](시험용 기관 7곳 실행 결과), checks[], notes[], source(AI/RULE/RULE_FALLBACK), model, note }`. 권한 확인은 generate-formula와 같고(403), **파일은 저장하지 않음**. AI 스크립트도 문법·시험 실행을 통과해야 하고, 못 하면 내장 변환기(`SpecialRuleConverter`, 프론트 `convertSpecialRules`와 동일): 소수점 반올림 → roundHalf, "균등/실적 합계 … N% … 보정" → fixSum(총액 유지 문장이 있으면 다른 쪽도 나머지 %로), 최저/최고 회비, "N원 단위 절상/절사/반올림"(문장의 기관, 차이분 문장이 있으면 첫 번째 기관) + "차이분/증액분 … 실적 … 1원씩 차감" → spreadDiff, 총액 유지·0원 이상 → assert |
+| POST | `/api/v1/skills/{taskCode}/generate-formula` | `{ businessRulesText }`(1번 비즈니스 규칙) → `{ generatedFormula, equalFormula, perfFormula(혼합형이면 분리 수식, 아니면 null), detectedPattern, explanation[], validationPassed, validationMessage, sampleResultNormal, sampleResultZero, source(AI/RULE/RULE_FALLBACK), model, note }`. `X-Employee-Id`로 업무 권한 확인(없으면 403), **파일은 저장하지 않음**. AI 수식도 길이·SpEL 구문 검사를 통과해야 하고, 못 하면 규칙 기반 생성기(`RuleBasedFormulaGenerator`, 프론트 `src/utils/formulaGenerator.js`와 동일)로 만듭니다: 균등 X% + 실적 Y% 혼합 / 구간별 차등 단가 / 기본료 + 건당 단가 / 건당 단가 + 최저·최고 한도 / 총액 대비 단순 실적 비율. 그것도 못 하면 400 |
 
 ### skills — `/api/v1/skills` (업무별 회비분담기준 skill.md 관리)
 모든 요청에 `X-Employee-Id: <로그인 ID>` 헤더가 필요합니다(없으면 401). 시스템관리자는 전체 업무, 일반담당자는 승인된 업무 권한(신청 승인 또는 관리자 부여)이 있는 업무만, 참가기관은 접근할 수 없습니다(403 "해당 업무의 회비분담기준(skill.md) 접근 권한이 없습니다.").

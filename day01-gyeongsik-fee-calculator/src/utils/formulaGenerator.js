@@ -3,7 +3,7 @@
 // 브라우저에 AI 키를 둘 수 없어 늘 이 변환기로, 서버 연결 시에는 서버가 AI(키가 없으면 같은 변환기)로 만든다.
 // 찾는 순서: 구간별 차등 단가 → 기본료 + 건당 단가 → 균등 + 실적비례 혼합 → 건당 단가 + 최저·최고 한도 → 총액 대비 단순 실적 비율
 import { FORMULA_SAMPLES, evaluateFormula, lines } from './skill';
-import { parseAmount } from './specialRules';
+import { parseAmount } from './postprocess';
 
 const AMOUNT = String.raw`\d[\d,]*(?:\.\d+)?\s*(?:억|만|천)?(?:\s*\d[\d,]*\s*(?:만|천))?\s*원`;
 const TOTAL = new RegExp(String.raw`총액\s*(${AMOUNT})`);
@@ -95,7 +95,10 @@ function mixed(rules) {
     `실적 ${pct(perfPct)}%${p ? '' : '(나머지)'} → ${perf} * #finalCount / #totalCount (전체 인정 건수가 0이면 0)`,
   ];
   if (Number((equalPct + perfPct).toFixed(10)) !== 100) steps.push('주의: 균등·실적 비율의 합이 100%가 아니어서 회비 합계가 총액과 달라집니다.');
+  steps.push('분리 수식: 균등분담분(formula:equal)과 실적분담분(formula:perf)을 따로 두면 4번 후처리에서 각 합계를 따로 맞출 수 있습니다.');
   return {
+    equalFormula: `#institutionCount == 0 ? 0 : ${total}.0 * #periodScale * ${eq} / #institutionCount`,
+    perfFormula: `#totalCount == 0 ? 0 : ${total}.0 * #periodScale * ${perf} * #finalCount / #totalCount`,
     formula: `${total}.0 * #periodScale * ((#institutionCount == 0 ? 0 : ${eq} / #institutionCount) + (#totalCount == 0 ? 0 : ${perf} * #finalCount / #totalCount))`,
     pattern: `균등 ${pct(equalPct)}% + 실적비례 ${pct(perfPct)}% 혼합분담`,
     steps,
@@ -167,6 +170,8 @@ export function generateFormulaLocally(taskCode, businessRulesText) {
   return {
     taskCode,
     generatedFormula: g.formula,
+    equalFormula: g.equalFormula ?? null,
+    perfFormula: g.perfFormula ?? null,
     detectedPattern: g.pattern,
     explanation: g.steps,
     validationPassed: passed,

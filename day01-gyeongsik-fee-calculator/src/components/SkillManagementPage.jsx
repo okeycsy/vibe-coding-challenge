@@ -10,7 +10,7 @@ const LOCKED_MSG = '해당 업무의 권한을 먼저 신청하여 승인받아�
 // [회비기준(Skill.md) 관리] 하위 메뉴 2개
 export const SKILL_PAGES = [
   { id: 'skills-document', label: '① 기준 문서 편집', icon: FilePen, desc: '자연어 규칙(1·2·4번)과 머리말을 작성·관리합니다.' },
-  { id: 'skills-builder', label: '② AI 계산식 빌더', icon: Sparkles, desc: '1번 규칙으로 3번 정산 수식을 생성·시뮬레이션하고 반영합니다.' },
+  { id: 'skills-builder', label: '② AI 계산식 빌더', icon: Sparkles, desc: '1번 규칙으로 3번 정산 수식을, 4번 특이사항으로 후처리 스크립트를 생성·시뮬레이션하고 반영합니다.' },
 ];
 
 const nowLabel = () => {
@@ -43,6 +43,7 @@ export default function SkillManagementPage({
   const [loading, setLoading] = useState(false);
   const [lockedItem, setLockedItem] = useState(null);
   const [dirty, setDirty] = useState(false);
+  const [builderTab, setBuilderTab] = useState('formula'); // AI 계산식 빌더: 3번 수식 | 4번 후처리 스크립트
   const current = SKILL_PAGES.find((p) => p.id === page) ?? SKILL_PAGES[0];
 
   const showDetail = (d) => {
@@ -234,13 +235,28 @@ export default function SkillManagementPage({
               )}
             </section>
           ) : current.id === 'skills-builder' ? (
-            <SkillFormulaBuilder key={detailSeq} {...shared} onGoDocument={() => switchPage('skills-document')} />
+            <SkillFormulaBuilder
+              key={`${detailSeq}-${builderTab}`}
+              {...shared}
+              tab={builderTab}
+              onTab={(t) => {
+                if (t === builderTab || (dirty && !window.confirm('저장하지 않은 수정 내용이 있습니다. 다른 탭으로 이동할까요?'))) return;
+                setDirty(false);
+                setBuilderTab(t);
+              }}
+              onGoDocument={() => switchPage('skills-document')}
+            />
           ) : (
             <SkillDocumentEditor
               key={detailSeq}
               {...shared}
               onReset={user.role === 'sysadmin' && detail.modified ? resetToDefault : null}
-              onGoBuilder={() => switchPage('skills-builder')}
+              onGoBuilder={(t = 'formula') => {
+                if (page === 'skills-builder' || !confirmLeave()) return;
+                setBuilderTab(t);
+                setDirty(false);
+                onChangePage('skills-builder');
+              }}
             />
           )}
         </div>
