@@ -18,8 +18,8 @@ import lombok.extern.slf4j.Slf4j;
  * {@link #reviewIssues}: 이슈 문장을 "## 2. AI 예외 차감 지침"에 비춰 차감 대상인지 판별한다.
  * AI 키가 없으면 {@link RuleBasedFeeRules}로, AI 호출이 실패하거나 응답이 이상하면 규칙 기반으로 바꿔 산출을 이어 간다.
  * <p>
- * 금액 계산(1차 수식, "## 4. 최종 정산 특이사항" 후처리)은 AI 를 쓰지 않는다: 같은 입력이면 서버·브라우저 어디서나
- * 같은 금액이 나와야 하므로 {@link com.kftc.feecalc.domain.fee.service.SpecialRulePostProcessor}가 규칙대로 계산한다.
+ * 금액은 AI 가 정하지 않는다: 1차 수식은 SpEL 로, "## 4. 최종 정산 특이사항"은 {@link SpecialRuleInterpreter}가 AI 로
+ * 보정 동작을 해석한 뒤 {@link com.kftc.feecalc.domain.fee.service.SpecialRulePostProcessor#execute}가 그 동작대로 계산한다.
  */
 @Slf4j
 @Service

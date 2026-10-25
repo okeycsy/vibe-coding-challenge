@@ -2,7 +2,7 @@ import { INSTITUTIONS, getBaseCounts } from '../data/mockData';
 import { asQuarter, daysBetween } from './period';
 import { calculatePrimary, rateLabel } from './skill';
 import { reviewIssues } from './aiRules';
-import { applySpecialRules } from './specialRules';
+import { describeAction, executeSpecialActions, interpretSpecialRules } from './specialRules';
 import { longestMatch } from './institutions';
 
 export { longestMatch };
@@ -77,10 +77,10 @@ export function calculateFees({ businessId, from, to, issues, skill, counts }) {
   });
 
   const primary = calculatePrimary(skill.formula, rows, scale);
-  const special = applySpecialRules(
-    skill.specialRulesRaw ?? '',
-    rows.map((r, idx) => ({ ...r, fee: primary.fees[idx] })),
-  );
+  const lines = rows.map((r, idx) => ({ ...r, fee: primary.fees[idx] }));
+  // 4번 특이사항: 규칙 기반 해석(브라우저엔 AI 키가 없음) → 보정 동작대로 실행
+  const interpretation = interpretSpecialRules(skill.specialRulesRaw ?? '', lines);
+  const special = executeSpecialActions(interpretation.actions, lines);
   const feeSum = special.reduce((s, a) => s + a.finalFee, 0);
   return {
     rows: rows.map(({ aliases, ...r }, idx) => {
@@ -99,6 +99,13 @@ export function calculateFees({ businessId, from, to, issues, skill, counts }) {
       };
     }),
     issues: reviewed,
+    special: {
+      mode: 'MOCK',
+      model: null,
+      note: null,
+      actions: interpretation.actions.map((a) => ({ ...a, description: describeAction(a) })),
+      unsupported: interpretation.unsupported,
+    },
     ai: { mode: 'MOCK', model: null, note: '서버 미연결(Mock) 모드: 브라우저에 AI 키를 둘 수 없어 이슈 차감은 서버와 같은 규칙 기반으로 판별했습니다.' },
   };
 }

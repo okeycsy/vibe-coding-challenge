@@ -43,7 +43,7 @@ Docker 지원 무료 호스팅인 [Render](https://render.com)에 이 폴더의 
 - **인증이 없습니다.** 주소를 아는 누구나 회원 목록 조회, 가입 승인, 권한 부여, 비밀번호 초기화 같은 관리자 API를 호출할 수 있습니다. 예시 데이터만 넣고, 실제 회원·실적은 절대 올리지 마세요.
 - Vercel 주소가 바뀌거나 미리보기 주소에서도 쓰려면 Render 환경변수 `CORS_ALLOWED_ORIGINS`에 쉼표로 이어 적습니다(기본값을 덮어쓰므로 localhost 주소도 함께).
 - Mattermost: 환경변수 `MATTERMOST_WEBHOOK_URL`에 Incoming Webhook 주소를 넣으면 실제로 발송하고, 비어 있으면 로그만 남깁니다.
-- AI(LLM): Render Environment에 `AI_API_KEY`를 넣으면 회비 산출의 이슈 판별·최종 보정과 수식 자동 생성에 AI를 씁니다. **키는 저장소에 절대 커밋하지 않고 환경변수로만** 넣습니다. 비어 있으면 규칙 기반으로 동작합니다(아래 "AI 2단계 파이프라인").
+- AI(LLM): Render Environment에 `AI_API_KEY`를 넣으면 회비 산출의 이슈 판별, 4번 특이사항 해석(문장 → 보정 동작), 수식 자동 생성에 AI를 씁니다. 금액 계산 자체는 AI가 하지 않습니다. **키는 저장소에 절대 커밋하지 않고 환경변수로만** 넣습니다. 비어 있으면 규칙 기반으로 동작합니다(아래 "2단계 정산 파이프라인").
   | 환경변수 | 기본값 | 설명 |
   |------|----|----|
   | `AI_API_KEY` | (없음) | OpenAI 또는 Gemini API 키 |
@@ -129,16 +129,17 @@ src/main/java/com/kftc/feecalc/
 - `requestedBy`를 주면 업무 산출 권한을 확인합니다(사용자는 부여받은 업무만, 참가기관은 불가)
 
 ### 2단계 정산 파이프라인 (`domain/fee/service`, `domain/fee/ai`)
-`POST /api/v1/fees/calculate`(와 `/api/fee/calculations`)는 아래 순서로 산출합니다. 금액 계산에는 AI를 쓰지 않습니다(같은 입력이면 늘 같은 금액, 서버·Mock 동일).
+`POST /api/v1/fees/calculate`(와 `/api/fee/calculations`)는 아래 순서로 산출합니다. AI는 문장을 해석만 하고, 금액은 늘 코드가 계산합니다.
 
 skill.md 표준 4섹션: `## 1. 비즈니스 규칙 요약`(필수) · `## 2. AI 예외 차감 지침`(선택) · `## 3. 정산 수식`(필수, ```formula 블록, 2000자 이하) · `## 4. 최종 정산 특이사항`(선택). 3번 섹션은 다음 `## ` 제목 앞에서 끝나고, 4번의 `- ` 목록은 `specialRules`(줄 목록)·`specialRulesRaw`(원문)로 응답에 실립니다.
 
 1. **이슈 차감 판별**: 이슈 문장의 기관·건수는 기존 해석기로 찾고, AI(키가 없으면 규칙 기반 `RuleBasedFeeRules`)가 `## 2. AI 예외 차감 지침`에 비춰 차감 대상인지만 정합니다. 응답 `issues[].applied`·`judgement`, `aiMode`(`AI`/`RULE`/`RULE_FALLBACK`)는 이 판별에만 해당
 2. **Step 1 1차 수식 계산**: `SkillEngineService.calculatePrimary`가 `formula`로 기관별 금액을 내고 원 단위로 배분(정수 부분 + 백만분의 1원 단위 나머지 큰 순, 합계 = 반올림한 총합) → `items[].beforeSpecialFee`. 수식에 `#institutionCount`와 `#finalCount`가 함께 있으면 균등분 = 실적 0으로 계산한 값, 실적분 = 나머지로 나눠 `equalFee`·`perfFee`
-3. **Step 2 특이사항 후처리**(`SpecialRulePostProcessor`, 프론트 `src/utils/specialRules.js`와 같은 규칙): `## 4. 최종 정산 특이사항`을 적용 → `items[].fee`(최종)·`specialRuleApplied`·`specialAdjustment`·`specialReason`
-   - "최저/최고 회비 N원": 상하한(문장에 기관이 있으면 그 기관만)
-   - "N원 단위로 절상" + "차이분(초과액)은 … 실적이 큰 기관 순서대로 1원씩 절삭": 지정 기관(없으면 첫 번째 기관)을 `((fee+9)/10)*10`처럼 올리고, 늘어난 금액만큼 나머지 기관을 최종 인정 실적 내림차순(동률은 기관코드 순)으로 1원씩 깎아 합계 유지. 사유 예: `특이사항 반영: 10원 단위 절상 (+6원)`, `특이사항 반영: 절상 차이분 실적순 절삭 (-1원)`
-   - "N원 미만 절사(버림)": 대상(없으면 전체)을 N원 단위로 버림
+3. **Step 2 특이사항 후처리**: `## 4. 최종 정산 특이사항`을 두 단계로 적용 → `items[].fee`(최종)·`specialRuleApplied`·`specialAdjustment`·`specialReason`
+   - **해석** (`SpecialRuleInterpreter`): AI가 문장을 정해진 보정 동작 JSON으로만 바꿉니다. 동작: `MIN_FEE`/`MAX_FEE`(`amount`), `ROUND`(`unit`, `rounding` UP 절상·DOWN 절사·HALF_UP 반올림, `redistribute` NONE·PERF_DESC·PERF_ASC = 차이분을 나머지 기관에 실적 큰/작은 순 1원씩 되돌림), 대상 `target` ALL·FIRST(첫 번째 기관)·NAMED(`institutions`). AI 결과는 허용 목록 검사(`SpecialRulePostProcessor.validate`: 종류·단위 2~1억·금액 범위·산출 대상에 있는 기관만, 최대 20개)를 통과해야 쓰고, 같은 문장·기관 목록의 AI 해석은 서버가 기억해 다시 산출해도 같은 동작을 씁니다. 키가 없으면 `RULE`, AI 실패·형식 오류면 `RULE_FALLBACK`으로 규칙 기반 해석기(`SpecialRulePostProcessor.interpret`, 프론트 `specialRules.js`와 동일)가 같은 구조를 만듭니다. 바꾸지 못한 문장은 `specialUnsupported`로 남고 적용되지 않습니다
+   - **실행** (`SpecialRulePostProcessor.execute`, 프론트 `executeSpecialActions`와 동일): 동작대로 금액을 계산(결정적, 상하한 먼저). 사유 예: `특이사항 반영: 10원 단위 절상 (+6원)`, `특이사항 반영: 절상 차이분 실적순 절삭 (-1원)`
+   - 응답: `specialRuleMode`(AI/RULE/RULE_FALLBACK), `specialRuleModel`, `specialRuleNote`, `specialActions[]`(동작 + `description` 한 줄 설명), `specialUnsupported[]`. 대사용 엑셀 산출기준 시트에도 남깁니다
+   - 규칙 기반 해석기가 알아듣는 문장: "최저/최고 회비 N원"(문장에 기관이 있으면 그 기관만), "N원 단위로 절상" + "차이분(초과액)은 … 실적이 큰 기관 순서대로 1원씩 절삭"(지정 기관, 없으면 첫 번째 기관을 올리고 나머지에서 실적 내림차순·동률은 기관코드 순으로 1원씩 깎아 합계 유지), "N원 미만 절사(버림)"(대상, 없으면 전체)
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|

@@ -1,5 +1,9 @@
 // 2단계 정산의 Step 2: skill.md "## 4. 최종 정산 특이사항"을 1차 계산 결과(수식 + 원 단위 배분)에 적용한다.
-// 서버 SpecialRulePostProcessor 와 같은 규칙이다 (서버 연결 여부와 상관없이 같은 금액). 알아듣는 문장:
+// 해석(문장 → 보정 동작)과 실행(동작대로 금액 계산)으로 나뉜다. 서버는 AI 가 해석하고(키가 없거나 실패하면 규칙 기반),
+// 서버 미연결(Mock) 모드는 브라우저에 AI 키를 둘 수 없어 늘 아래 규칙 기반 해석기를 쓴다. 실행은 서버
+// SpecialRulePostProcessor.execute 와 같다. 보정 동작: { type: MIN_FEE|MAX_FEE|ROUND, amount, unit, rounding: UP|DOWN|HALF_UP,
+// target: ALL|FIRST|NAMED, institutions, redistribute: NONE|PERF_DESC|PERF_ASC, rule }
+// 규칙 기반 해석기가 알아듣는 문장:
 // 1) "최저/최소/최고/최대 (회비|금액|한도) N원": 상하한. 문장에 기관 이름·별칭이 있으면 그 기관만, 없으면 전체
 // 2) "N원 단위로 절상(올림·반올림)" + 섹션 안에 "차이분(차액·초과액)은 … 실적 … 1원씩 절삭(차감)" 문장이 있으면:
 //    절상 대상(문장에 기관이 있으면 그 기관, 없으면 첫 번째 기관)을 N원 단위로 올리고, 늘어난 금액만큼 나머지 기관을
@@ -17,7 +21,6 @@ const CLAMP = new RegExp(String.raw`(최저|최소|최고|최대)\s*(?:회비|�
 const DIFF = /차이|차액|초과/;
 const CUT = /절삭|차감|1원씩/;
 const ASC = /(작은|적은)\s*(순|기관)/;
-const LABEL = { 올림: '절상', 버림: '절사', 내림: '절사' };
 
 // "50만원", "1억 2,000만원", "900,000원" → 원
 export function parseAmount(text) {
@@ -34,9 +37,9 @@ export const signed = (d) => `${d > 0 ? '+' : '-'}${won(d)}`;
 // "차이분 … 실적 … 1원씩 절삭" 처럼 절상 차이분을 다른 기관에서 되돌리는 문장인지
 export const isShareBack = (rule) => DIFF.test(rule) && rule.includes('실적') && CUT.test(rule);
 
-function round(fee, unit, mode) {
-  if (mode === '절상' || mode === '올림') return Math.floor((fee + unit - 1) / unit) * unit;
-  if (mode === '반올림') return Math.floor((fee + Math.floor(unit / 2)) / unit) * unit;
+function round(fee, unit, rounding) {
+  if (rounding === 'UP') return Math.floor((fee + unit - 1) / unit) * unit;
+  if (rounding === 'HALF_UP') return Math.floor((fee + Math.floor(unit / 2)) / unit) * unit;
   return Math.floor(fee / unit) * unit;
 }
 
@@ -54,61 +57,130 @@ export function named(rule, rows) {
     .map((f) => f.idx);
 }
 
-const orAll = (idx, n) => (idx.length ? idx : Array.from({ length: n }, (_, i) => i));
+const MAX_UNIT = 100_000_000;
+const ROUNDING_OF = { 절상: 'UP', 올림: 'UP', 반올림: 'HALF_UP' };
+const ROUNDING_LABEL = { UP: '절상', DOWN: '절사', HALF_UP: '반올림' };
 
-// rows: [{ institutionId, code, name, aliases, finalCount, fee }] → [{ finalFee, adjustment, reason, applied }]
-export function applySpecialRules(specialRules, rows) {
+// 규칙 기반 해석기: 문장 → { actions, unsupported } (서버 SpecialRulePostProcessor.interpret 과 같음)
+export function interpretSpecialRules(specialRules, rows) {
   const n = rows.length;
-  const fee = rows.map((r) => r.fee);
-  const reasons = rows.map(() => []);
   const rules = lines(specialRules);
   const shareBackRules = rules.filter(isShareBack);
+  const asc = shareBackRules.some((r) => ASC.test(r));
+  const used = rules.map(() => false);
+  const names = (rule) => named(rule, rows).map((i) => rows[i].name);
+  const actions = [];
 
-  // 1) 최저·최고 회비
-  rules.forEach((rule) => {
+  rules.forEach((rule, k) => {
     for (const m of rule.matchAll(CLAMP)) {
-      const limit = parseAmount(m[2]);
-      const min = m[1] === '최저' || m[1] === '최소';
-      orAll(named(rule, rows), n).forEach((i) => {
-        const next = min ? Math.max(fee[i], limit) : Math.min(fee[i], limit);
-        if (next !== fee[i]) {
-          reasons[i].push(`${m[1]} 회비 ${won(limit)} 적용 (${signed(next - fee[i])})`);
-          fee[i] = next;
-        }
+      const hit = names(rule);
+      actions.push({
+        type: m[1] === '최저' || m[1] === '최소' ? 'MIN_FEE' : 'MAX_FEE',
+        amount: parseAmount(m[2]),
+        unit: null,
+        rounding: null,
+        target: hit.length ? 'NAMED' : 'ALL',
+        institutions: hit,
+        redistribute: 'NONE',
+        rule,
       });
+      used[k] = true;
     }
   });
 
-  // 2) 원 단위 절상(+ 차이분 실적순 1원 절삭)·절사·반올림
-  rules.forEach((rule) => {
+  let sharedBack = false;
+  rules.forEach((rule, k) => {
     const m = rule.match(ROUNDING);
     if (!m) return;
     const unit = Number(m[1].replace(/,/g, ''));
-    if (unit <= 1) return;
-    const label = LABEL[m[2]] ?? m[2];
-    const raise = label !== '절사' && label !== '절삭';
-    const shareBack = raise && shareBackRules.length > 0 && n > 0;
-    const hit = named(rule, rows);
-    const targets = hit.length ? hit : shareBack ? [0] : orAll(hit, n);
+    if (unit <= 1 || unit > MAX_UNIT) return;
+    const rounding = ROUNDING_OF[m[2]] ?? 'DOWN';
+    const shareBack = rounding !== 'DOWN' && shareBackRules.length > 0 && n > 0;
+    const hit = names(rule);
+    actions.push({
+      type: 'ROUND',
+      amount: null,
+      unit,
+      rounding,
+      target: hit.length ? 'NAMED' : shareBack ? 'FIRST' : 'ALL',
+      institutions: hit,
+      redistribute: !shareBack ? 'NONE' : asc ? 'PERF_ASC' : 'PERF_DESC',
+      rule,
+    });
+    used[k] = true;
+    sharedBack ||= shareBack;
+  });
+
+  return { actions, unsupported: rules.filter((r, k) => !used[k] && !(sharedBack && isShareBack(r))) };
+}
+
+// 화면용 한 줄 설명 (서버 SpecialAction.describe 와 같음)
+export function describeAction(a) {
+  const who = a.target === 'ALL' ? '전체 기관' : a.target === 'FIRST' ? '첫 번째 기관' : a.institutions.join('·');
+  if (a.type !== 'ROUND') return `${who} ${a.type === 'MIN_FEE' ? '최저' : '최고'} 회비 ${won(a.amount)}`;
+  const text = `${who} ${won(a.unit)} 단위 ${ROUNDING_LABEL[a.rounding]}`;
+  if (a.redistribute === 'PERF_DESC') return `${text} → 차이분은 나머지 기관에 실적 큰 순 1원씩 되돌림`;
+  if (a.redistribute === 'PERF_ASC') return `${text} → 차이분은 나머지 기관에 실적 작은 순 1원씩 되돌림`;
+  return text;
+}
+
+// 기관명·기관 ID·기관코드가 같거나 별칭에 든 행 (없으면 -1)
+function indexOf(name, rows) {
+  const i = rows.findIndex((r) => name === r.name || name === r.institutionId || name === r.code);
+  return i >= 0 ? i : rows.findIndex((r) => (r.aliases ?? []).includes(name));
+}
+
+function targetsOf(a, rows) {
+  if (a.target === 'FIRST') return rows.length ? [0] : [];
+  if (a.target === 'NAMED') {
+    const idx = [];
+    a.institutions.forEach((name) => {
+      const i = indexOf(name, rows);
+      if (i >= 0 && !idx.includes(i)) idx.push(i);
+    });
+    return idx;
+  }
+  return rows.map((_, i) => i);
+}
+
+// 보정 동작 실행 (결정적). rows: [{ institutionId, code, name, aliases, finalCount, fee }] → [{ finalFee, adjustment, reason, applied }]
+export function executeSpecialActions(actions, rows) {
+  const fee = rows.map((r) => r.fee);
+  const reasons = rows.map(() => []);
+
+  actions.forEach((a) => {
+    const targets = targetsOf(a, rows);
+    if (a.type !== 'ROUND') {
+      const min = a.type === 'MIN_FEE';
+      targets.forEach((i) => {
+        const next = min ? Math.max(fee[i], a.amount) : Math.min(fee[i], a.amount);
+        if (next !== fee[i]) {
+          reasons[i].push(`${min ? '최저' : '최고'} 회비 ${won(a.amount)} 적용 (${signed(next - fee[i])})`);
+          fee[i] = next;
+        }
+      });
+      return;
+    }
+    const label = ROUNDING_LABEL[a.rounding];
     let diff = 0;
     targets.forEach((i) => {
-      const next = round(fee[i], unit, m[2]);
+      const next = round(fee[i], a.unit, a.rounding);
       if (next !== fee[i]) {
-        reasons[i].push(`${unit.toLocaleString('ko-KR')}원 단위 ${label} (${signed(next - fee[i])})`);
+        reasons[i].push(`${a.unit.toLocaleString('ko-KR')}원 단위 ${label} (${signed(next - fee[i])})`);
         diff += next - fee[i];
         fee[i] = next;
       }
     });
-    if (!shareBack || diff === 0) return;
-    const asc = shareBackRules.some((r) => ASC.test(r));
+    if (a.redistribute === 'NONE' || diff === 0) return;
+    const asc = a.redistribute === 'PERF_ASC';
     const order = rows
       .map((_, i) => i)
       .filter((i) => !targets.includes(i))
       .sort(
-        (a, b) =>
-          (asc ? rows[a].finalCount - rows[b].finalCount : rows[b].finalCount - rows[a].finalCount) ||
-          compareCode(rows[a].code, rows[b].code) ||
-          a - b,
+        (x, y) =>
+          (asc ? rows[x].finalCount - rows[y].finalCount : rows[y].finalCount - rows[x].finalCount) ||
+          compareCode(rows[x].code, rows[y].code) ||
+          x - y,
       );
     const delta = rows.map(() => 0);
     const step = diff > 0 ? -1 : 1;
@@ -136,6 +208,11 @@ export function applySpecialRules(specialRules, rows) {
     reason: reasons[i].length ? PREFIX + reasons[i].join(', ') : null,
     applied: reasons[i].length > 0,
   }));
+}
+
+// 규칙 기반 해석 + 실행 (서버 미연결 모드)
+export function applySpecialRules(specialRules, rows) {
+  return executeSpecialActions(interpretSpecialRules(specialRules, rows).actions, rows);
 }
 
 // 서버 String.compareTo 와 같은 순서 (기관코드는 영문·숫자라 UTF-16 비교와 같다)
