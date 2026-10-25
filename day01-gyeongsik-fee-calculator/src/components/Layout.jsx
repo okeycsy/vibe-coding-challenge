@@ -14,6 +14,7 @@ export const MENUS = [
       { section: 'admin-members', label: '회원 관리' },
       { section: 'admin-tasks', label: '업무 권한 관리' },
       { section: 'admin-business', label: '업무 관리' },
+      { section: 'admin-institutions', label: '기관 관리' },
     ],
   },
   {

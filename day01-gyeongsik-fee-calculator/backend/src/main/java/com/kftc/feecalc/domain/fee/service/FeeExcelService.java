@@ -63,7 +63,8 @@ public class FeeExcelService {
         if (file == null || file.isEmpty()) {
             throw new BusinessException(ErrorCode.INVALID_EXCEL, "업로드할 파일을 선택해 주세요.");
         }
-        List<Institution> institutions = institutionRepository.findAllByOrderBySortOrder();
+        // 기관 관리에서 추가·수정한 기관이 바로 반영되도록 요청마다 DB에서 읽는다 (비활성 기관 제외)
+        List<Institution> institutions = institutionRepository.findByActiveTrueOrderBySortOrder();
         DataFormatter fmt = new DataFormatter(Locale.KOREA);
 
         try (InputStream in = file.getInputStream(); Workbook wb = WorkbookFactory.create(in)) {
@@ -144,7 +145,7 @@ public class FeeExcelService {
             CellStyle header = headerStyle(wb);
             writeRow(sheet, 0, header, "기관코드", "기관명", "건수");
             int r = 1;
-            for (Institution inst : institutionRepository.findAllByOrderBySortOrder()) {
+            for (Institution inst : institutionRepository.findByActiveTrueOrderBySortOrder()) {
                 writeRow(sheet, r++, null, inst.getBankCode(), inst.getName(), 0L);
             }
             autosize(sheet, 3);
@@ -268,7 +269,8 @@ public class FeeExcelService {
 
     // ---------- helpers ----------
 
-    private Institution matchInstitution(String value, List<Institution> institutions) {
+    /** 엑셀 기관 칸 값 → 기관. 기관코드·내부 ID·기관명이 같으면 그 기관, 아니면 이름·별칭이 가장 길게 들어 있는 기관 */
+    public static Institution matchInstitution(String value, List<Institution> institutions) {
         String v = value.replace(" ", "");
         for (Institution i : institutions) {
             if (v.equalsIgnoreCase(i.getBankCode()) || v.equalsIgnoreCase(i.getCode()) || v.equals(i.getName())) {

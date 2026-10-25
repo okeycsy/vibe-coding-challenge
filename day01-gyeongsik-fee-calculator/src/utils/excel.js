@@ -93,3 +93,29 @@ export function downloadRevenueResolution({ business, from, to, rows }) {
     `${business.name}_${periodTag(from, to)}_수입결의.xlsx`,
   );
 }
+
+// 관리자 설정 > 기관 관리 목록 (화면에 보이는 필터 결과 그대로)
+export function downloadInstitutions(rows) {
+  save(
+    [
+      {
+        name: '기관목록',
+        rows: rows.map((r) => ({
+          기관명: r.name,
+          기관코드: r.code,
+          '내부 ID': r.id,
+          구분: r.typeLabel,
+          별칭: r.aliases.join(', '),
+          상태: r.active ? '사용' : '사용 중지',
+          '시연 실적': r.uploadOnly ? '업로드 전용' : '포함',
+          '산출 이력(건)': r.calculationCount,
+          '대사(건)': r.reconcileCount,
+          '테스트 결과(건)': r.testCount,
+          '연결 회원(명)': r.memberCount,
+        })),
+        widths: [18, 10, 10, 6, 28, 9, 11, 12, 9, 13, 12],
+      },
+    ],
+    `기관목록_${new Date().toISOString().slice(0, 10)}.xlsx`,
+  );
+}

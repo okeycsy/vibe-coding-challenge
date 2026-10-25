@@ -29,8 +29,11 @@ public enum ErrorCode {
     TASK_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "업무 권한 신청을 찾을 수 없습니다."),
     RECONCILE_NOT_FOUND(HttpStatus.NOT_FOUND, "대사 내역을 찾을 수 없습니다."),
     TEST_RESULT_NOT_FOUND(HttpStatus.NOT_FOUND, "테스트 결과를 찾을 수 없습니다."),
+    INSTITUTION_NOT_FOUND(HttpStatus.NOT_FOUND, "기관을 찾을 수 없습니다."),
 
     DUPLICATE_TASK(HttpStatus.CONFLICT, "이미 있는 업무입니다."),
+    DUPLICATE_INSTITUTION(HttpStatus.CONFLICT, "다른 기관과 겹치는 값입니다."),
+    INSTITUTION_IN_USE(HttpStatus.CONFLICT, "산출 이력이나 회원이 연결된 기관은 삭제할 수 없습니다. 사용 중지로 바꿔 주세요."),
     DUPLICATE_TASK_REQUEST(HttpStatus.CONFLICT, "이미 승인 대기 중인 신청이 있습니다."),
     ALREADY_GRANTED(HttpStatus.CONFLICT, "이미 보유한 업무 권한입니다."),
     INVALID_STATE(HttpStatus.CONFLICT, "현재 상태에서는 처리할 수 없습니다."),

@@ -416,9 +416,11 @@ function MemberManagement({
                   onChange={(e) => setField('institutionId', e.target.value)}
                   className={inputCls}
                 >
-                  {INSTITUTIONS.map((i) => (
+                  {/* 사용 중지 기관은 이미 그 기관 소속인 회원을 고칠 때만 보인다 */}
+                  {INSTITUTIONS.filter((i) => i.active !== false || i.id === form.institutionId).map((i) => (
                     <option key={i.id} value={i.id}>
                       {i.name}
+                      {i.active === false ? ' (사용 중지)' : ''}
                     </option>
                   ))}
                 </select>

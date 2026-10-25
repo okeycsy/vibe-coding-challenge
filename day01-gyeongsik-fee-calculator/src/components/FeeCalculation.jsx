@@ -71,6 +71,7 @@ export default function FeeCalculation({
   onRequestTask,
   skillOverrides,
   skillVersion,
+  institutionVersion = 0,
   onOpenSkill,
   businesses = BUSINESSES,
 }) {
@@ -197,7 +198,8 @@ export default function FeeCalculation({
               : '파일에 기관별 건수가 없습니다.',
           );
         }
-        updateDraft({ file: { ...res, name: file.name, size: file.size } }, k);
+        // 읽을 때의 기관 목록 버전을 남겨, 그 뒤 기관 관리에서 기관이 바뀌면 다시 올리도록 안내한다
+        updateDraft({ file: { ...res, name: file.name, size: file.size, institutionVersion } }, k);
         notify(
           res.unmatched.length
             ? `${file.name}: 실적 ${res.rowCount}행을 읽었고, 기관을 찾지 못한 ${res.unmatched.length}행은 제외했습니다.`
@@ -554,6 +556,13 @@ export default function FeeCalculation({
                     </p>
                   )}
                   <p className="mt-1 text-[11px] text-slate-500">파일에 있는 기관만 산출 대상이 됩니다.</p>
+                  {draft.file.institutionVersion !== institutionVersion && (
+                    <p role="alert" className="mt-2 flex items-start gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+                      <TriangleAlert className="w-3.5 h-3.5 mt-px shrink-0" />
+                      이 파일을 읽은 뒤 기관 관리에서 기관 정보가 바뀌었습니다. 바뀐 기관명·코드·별칭으로 다시 매칭하려면 파일을 다시
+                      올려 주세요. (사용 중지한 기관이 들어 있으면 산출이 거부됩니다)
+                    </p>
+                  )}
                 </div>
               ) : (
                 <button

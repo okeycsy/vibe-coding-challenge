@@ -1,6 +1,5 @@
 import * as XLSX from 'xlsx';
-import { INSTITUTIONS } from '../data/mockData';
-import { longestMatch } from './fee';
+import { activeInstitutions, matchExcelValue } from './institutions';
 
 // 실적 엑셀 업로드. 서버(FeeExcelService.parseUpload)와 같은 규칙으로 읽는다:
 // 첫 시트 위쪽 21행 안에서 기관(기관·금융회사·코드)과 건수(건수·실적) 열이 함께 있는 머리글 행을 찾고,
@@ -22,15 +21,8 @@ export function checkUploadFile(file) {
 
 const squash = (v) => String(v ?? '').replace(/\s/g, '');
 
-function matchInstitution(value) {
-  const v = squash(value);
-  const lower = v.toLowerCase();
-  return (
-    INSTITUTIONS.find((i) => lower === i.code.toLowerCase() || lower === i.id.toLowerCase() || v === i.name) ??
-    longestMatch(v)?.inst ??
-    null
-  );
-}
+// 기관 관리에서 추가·수정한 기관이 바로 반영되도록 읽을 때마다 현재 목록(사용 중인 기관)으로 매칭한다
+const matchInstitution = (value) => matchExcelValue(value)?.inst ?? null;
 
 function readCount(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return Math.round(value);
@@ -82,7 +74,7 @@ export async function parseUploadInBrowser(file) {
     rowCount++;
   });
 
-  const counts = INSTITUTIONS.filter((i) => sums.has(i.id)).map((i) => ({
+  const counts = activeInstitutions().filter((i) => sums.has(i.id)).map((i) => ({
     institutionId: i.id,
     name: i.name,
     baseCount: sums.get(i.id),

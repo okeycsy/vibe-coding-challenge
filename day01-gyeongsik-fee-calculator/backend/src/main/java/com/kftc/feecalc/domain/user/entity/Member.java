@@ -124,6 +124,11 @@ public class Member {
         this.extension = extension;
     }
 
+    /** 기관 관리에서 소속 기관 이름을 바꿨을 때 */
+    public void changeOrg(String org) {
+        this.org = org;
+    }
+
     public void approve() {
         this.status = MemberStatus.ACTIVE;
     }
