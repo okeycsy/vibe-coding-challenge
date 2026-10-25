@@ -18,7 +18,7 @@ export function downloadReconciliation({ business, from, to, rows, issues }) {
     [
       {
         name: '대사내역',
-        widths: [14, 30, 8, 14, 12, 16, 14, 16, 18, 10, 50],
+        widths: [14, 30, 8, 14, 12, 16, 14, 16, 18, 18, 40, 10, 50],
         rows: rows.map((r) => ({
           업무: business.name,
           산출기간: period,
@@ -28,7 +28,9 @@ export function downloadReconciliation({ business, from, to, rows, issues }) {
           'AI 예외 차감 건수': r.deduction,
           '최종 인정 건수': r.finalCount,
           '적용 단가/분담률': r.rateLabel,
+          '1차 수식 회비(원)': r.primaryFee ?? r.fee,
           '산출 회비(초안, 원)': r.fee,
+          'AI 규칙 보정 사유': r.aiAdjustReason ?? '',
           대사상태: r.status,
           '차감 사유': r.reasons.join(' / '),
         })),
@@ -40,12 +42,14 @@ export function downloadReconciliation({ business, from, to, rows, issues }) {
       },
       {
         name: 'AI 이슈 이력',
-        widths: [6, 70, 14, 12],
+        widths: [6, 70, 14, 12, 10, 60],
         rows: issues.map((i, idx) => ({
           순번: idx + 1,
           이슈내용: i.text,
           대상기관: i.parsed.institutionName,
           차감건수: i.parsed.count,
+          차감반영: i.applied === false ? '제외' : '반영',
+          '판별 근거': i.judgement ?? '',
         })),
       },
     ],

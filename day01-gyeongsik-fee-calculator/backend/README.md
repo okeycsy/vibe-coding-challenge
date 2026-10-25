@@ -43,6 +43,13 @@ Docker 지원 무료 호스팅인 [Render](https://render.com)에 이 폴더의 
 - **인증이 없습니다.** 주소를 아는 누구나 회원 목록 조회, 가입 승인, 권한 부여, 비밀번호 초기화 같은 관리자 API를 호출할 수 있습니다. 예시 데이터만 넣고, 실제 회원·실적은 절대 올리지 마세요.
 - Vercel 주소가 바뀌거나 미리보기 주소에서도 쓰려면 Render 환경변수 `CORS_ALLOWED_ORIGINS`에 쉼표로 이어 적습니다(기본값을 덮어쓰므로 localhost 주소도 함께).
 - Mattermost: 환경변수 `MATTERMOST_WEBHOOK_URL`에 Incoming Webhook 주소를 넣으면 실제로 발송하고, 비어 있으면 로그만 남깁니다.
+- AI(LLM): Render Environment에 `AI_API_KEY`를 넣으면 회비 산출의 이슈 판별·최종 보정과 수식 자동 생성에 AI를 씁니다. **키는 저장소에 절대 커밋하지 않고 환경변수로만** 넣습니다. 비어 있으면 규칙 기반으로 동작합니다(아래 "AI 2단계 파이프라인").
+  | 환경변수 | 기본값 | 설명 |
+  |------|----|----|
+  | `AI_API_KEY` | (없음) | OpenAI 또는 Gemini API 키 |
+  | `AI_MODEL` | `gpt-4o-mini` | Gemini면 예: `gemini-2.0-flash` |
+  | `AI_BASE_URL` | `https://api.openai.com/v1` | Gemini면 `https://generativelanguage.googleapis.com/v1beta/openai` (OpenAI 호환 주소) |
+  | `AI_TIMEOUT_SECONDS` | `20` | 호출 한 번의 제한 시간. 넘으면 규칙 기반으로 이어서 산출 |
 
 ## 기술 스택
 Java 17, Spring Boot 3.3 (Web, Data JPA, Validation), H2, Apache POI 5.3(엑셀), spring-security-crypto(BCrypt), Lombok
@@ -120,6 +127,25 @@ src/main/java/com/kftc/feecalc/
 - AI 이슈: 기관 이름·별칭과 `N건`을 모두 찾은 문장만 차감(기관 실적보다 많이 빼지 않음). 못 찾은 문장은 `applied: false`로 남김
 - 회비: 업무별 skill.md의 SpEL 수식으로 계산합니다 (아래 fee v1 참고). `PUT /businesses/{code}/rate`로 바꾼 단가·총액은 더 이상 산출에 쓰이지 않습니다
 - `requestedBy`를 주면 업무 산출 권한을 확인합니다(사용자는 부여받은 업무만, 참가기관은 불가)
+
+### AI 2단계 파이프라인 (`domain/fee/ai`)
+`POST /api/v1/fees/calculate`(와 `/api/fee/calculations`)는 아래 순서로 산출합니다. AI는 OpenAI Chat Completions 호환 API를 RestClient로 부릅니다(`LlmClient`, JSON 응답만 받음).
+
+1. **Step A 이슈 차감 판별**: 이슈 문장의 기관·건수는 기존 해석기로 찾고, AI가 skill.md `## 2. AI 예외 차감 지침`에 비춰 차감 대상인지만 정합니다(예: CD공동망 "기관 자체 ATM 장애는 차감하지 않는다"). 응답 `issues[].applied`·`judgement`
+2. **Step B 1차 수식 계산**: 기존처럼 `SkillEngineService`가 `formula`로 기관별 1차 회비 → `items[].primaryFee`
+3. **Step C 최종 보정**(`AiFeePostProcessor`): AI에 `## 1. 비즈니스 규칙 요약` 원문, 정산 수식, 기관별 (기관 ID·기관명·최종 인정 건수·1차 회비)와 합계를 주고, 수식에 없는 단수 처리·예외 규정을 반영한 `finalFee`·`adjustReason`을 받습니다 → `items[].fee`(최종)·`aiAdjustReason`. 원 단위 정수가 아니거나 음수거나 1차 금액의 2배(최소 1,000원)를 넘게 바뀐 값은 버리고 1차 금액을 둡니다.
+
+응답의 `aiMode`는 `AI`(AI 응답 반영) / `RULE`(키 없음) / `RULE_FALLBACK`(AI 호출 실패·응답 이상으로 규칙 기반), `aiModel`, `aiNote`(전환 사유), `totalPrimaryFee`. 서버 기동 시 시연 데이터 산출 1건은 기동이 AI를 기다리지 않게 규칙 기반으로만 합니다.
+
+규칙 기반(`RuleBasedFeeRules`, 프론트 `src/utils/aiRules.js`와 같은 규칙)이 알아듣는 표현
+- 이슈 판별: 지침 중 "차감하지 않는다 / 차감 대상이 아니다 / 차감 제외" 줄의 핵심 낱말이 이슈 문장에 절반 이상 있으면 제외
+- 최종 보정: "최저/최고 회비 N원", "(기관명) N원 단위로 절상·절사·절삭·반올림"(기관명이 없으면 전 기관), 같은 줄의 "차이분은 … 실적이 큰 순서대로 1원씩"(대상 기관을 뺀 나머지에서 실적순으로 1원씩 되돌려 합계 유지)
+- 예: 금거정 skill.md의 "NH농협은행은 회비를 10원 단위로 절상하고, 절상 차이분은 나머지 기관 중 실적이 큰 순서대로 1원씩 절삭해 회비 합계 = 총액을 유지"
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| GET | `/api/v1/ai/status` | `{ enabled, model, mode }` (키 값은 내보내지 않음) |
+| POST | `/api/v1/skills/sync-formula` | `{ taskCode, content }`(편집기의 저장 전 전문) → 1번 규칙으로 3번 `formula`를 새로 써서 `{ formula, previousFormula, content, source(AI/RULE/RULE_FALLBACK), model, explanation, note, sampleFee }`. 권한은 skill.md 저장과 같고(`X-Employee-Id`), **파일은 저장하지 않음**. AI가 만든 수식도 저장과 같은 SpEL 구문 검사·예시 값 시험 계산을 통과해야 하고, 못 하면 규칙 기반 생성기(총액 N원·N% 균등 / 기본료 N원 + 건당 N원 / N건까지 건당 N원 구간 / 건당 단가 N원·최저·최고 회비)로 만듭니다. 그것도 못 하면 400 |
 
 ### skills — `/api/v1/skills` (업무별 회비분담기준 skill.md 관리)
 모든 요청에 `X-Employee-Id: <로그인 ID>` 헤더가 필요합니다(없으면 401). 시스템관리자는 전체 업무, 일반담당자는 승인된 업무 권한(신청 승인 또는 관리자 부여)이 있는 업무만, 참가기관은 접근할 수 없습니다(403 "해당 업무의 회비분담기준(skill.md) 접근 권한이 없습니다.").

@@ -1,6 +1,7 @@
 import { INSTITUTIONS, getBaseCounts } from '../data/mockData';
 import { asQuarter, daysBetween } from './period';
 import { allocate, evaluateFormula, rateLabel } from './skill';
+import { postProcess, reviewIssues } from './aiRules';
 
 export const fmt = (n) => Math.round(n).toLocaleString('ko-KR');
 
@@ -43,15 +44,19 @@ export function parseIssue(text) {
 // 분기 기준 값(실적·총액)에 곱할 비율. 정확히 한 분기면 1, 아니면 산출 기간 일수 ÷ 91일.
 export const periodScale = (from, to) => (asQuarter(from, to) ? 1 : daysBetween(from, to) / 91);
 
-// 서버가 없을 때 브라우저에서 산출한다. skill(parseSkill 결과)의 정산 수식을 기관마다 실행한다.
+// 서버가 없을 때 브라우저에서 산출한다 (서버 FeeCalculationService.calculate 와 같은 순서, AI 단계는 규칙 기반).
+// Step A: 이슈 문장을 skill.md "## 2. AI 예외 차감 지침"으로 판별해 차감 대상만 차감
+// Step B: skill(parseSkill 결과)의 정산 수식을 기관마다 실행해 1차 회비(primaryFee)
+// Step C: "## 1. 비즈니스 규칙 요약"의 단수 처리·예외 규정(절상·절삭·최저/최고 회비)으로 최종 회비(fee)와 보정 사유(aiAdjustReason)
 // counts(업로드 실적 [{ institutionId, baseCount }])가 있으면 그 건수를 그대로 쓰고, 없으면 시연용 예시 실적을 만든다.
 export function calculateFees({ businessId, from, to, issues, skill, counts }) {
   const scale = periodScale(from, to);
   const base = counts?.length ? counts : getBaseCounts(businessId, from, to, scale);
+  const reviewed = reviewIssues(skill.aiGuide, issues);
 
   const rows = base.map(({ institutionId, baseCount }) => {
     const inst = INSTITUTIONS.find((i) => i.id === institutionId);
-    const related = issues.filter((i) => i.parsed.institutionId === institutionId);
+    const related = reviewed.filter((i) => i.applied && i.parsed.institutionId === institutionId);
     const deduction = Math.min(
       baseCount,
       related.reduce((s, i) => s + i.parsed.count, 0),
@@ -60,6 +65,7 @@ export function calculateFees({ businessId, from, to, issues, skill, counts }) {
       institutionId,
       name: inst.name,
       code: inst.code,
+      aliases: inst.aliases,
       baseCount,
       deduction,
       reasons: related.map((i) => i.text),
@@ -68,7 +74,7 @@ export function calculateFees({ businessId, from, to, issues, skill, counts }) {
   });
 
   const totalCount = rows.reduce((s, r) => s + r.finalCount, 0);
-  const fees = allocate(
+  const primary = allocate(
     rows.map((r) =>
       evaluateFormula(skill.formula, {
         rawCount: r.baseCount,
@@ -80,13 +86,23 @@ export function calculateFees({ businessId, from, to, issues, skill, counts }) {
       }),
     ),
   );
-  const feeSum = fees.reduce((s, f) => s + f, 0);
-  return rows.map((r, idx) => ({
-    ...r,
-    rateLabel: rateLabel(skill, fees[idx], r.finalCount, feeSum),
-    fee: fees[idx],
-    status: '대기',
-  }));
+  const adjusted = postProcess(
+    skill.summaryText,
+    rows.map((r, idx) => ({ ...r, primaryFee: primary[idx] })),
+  );
+  const feeSum = adjusted.reduce((s, a) => s + a.finalFee, 0);
+  return {
+    rows: rows.map(({ aliases, ...r }, idx) => ({
+      ...r,
+      rateLabel: rateLabel(skill, adjusted[idx].finalFee, r.finalCount, feeSum),
+      primaryFee: primary[idx],
+      fee: adjusted[idx].finalFee,
+      aiAdjustReason: adjusted[idx].finalFee === primary[idx] ? null : adjusted[idx].reason,
+      status: '대기',
+    })),
+    issues: reviewed,
+    ai: { mode: 'MOCK', model: null, note: '서버 미연결(Mock) 모드: 브라우저에 AI 키를 둘 수 없어 서버와 같은 규칙 기반으로 판별·보정했습니다.' },
+  };
 }
 
 export const runKey = (businessId, from, to) => `${businessId}-${from}-${to}`;

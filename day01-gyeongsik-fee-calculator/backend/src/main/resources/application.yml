@@ -45,6 +45,16 @@ app:
     webhook-url: ${MATTERMOST_WEBHOOK_URL:}
     channel: fee-calc-alert
 
+ai:
+  # 회비 산출 AI(LLM) 설정. OpenAI Chat Completions 호환 API(OpenAI, Gemini OpenAI 호환 주소 등)를 RestClient 로 호출한다.
+  # 공개 저장소이므로 키는 절대 이 파일에 적지 않는다. Render 등 호스팅의 환경변수 AI_API_KEY 로만 넣는다.
+  # 키가 비어 있으면 AI 를 부르지 않고 규칙 기반(Rule-based) 보정·수식 생성으로 동작해 시연이 끊기지 않는다.
+  api-key: ${AI_API_KEY:}
+  model: ${AI_MODEL:gpt-4o-mini}
+  # Gemini 예: https://generativelanguage.googleapis.com/v1beta/openai (AI_MODEL=gemini-2.0-flash)
+  base-url: ${AI_BASE_URL:https://api.openai.com/v1}
+  timeout-seconds: ${AI_TIMEOUT_SECONDS:20}
+
 logging:
   level:
     com.kftc.feecalc: DEBUG

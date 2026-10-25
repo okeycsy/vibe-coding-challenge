@@ -9,18 +9,22 @@ import {
   Lock,
   RotateCcw,
   Save,
+  Sparkles,
   SquarePen,
   TriangleAlert,
+  X,
 } from 'lucide-react';
 import { api, apiEnabled } from '../utils/api';
 import { fmt } from '../utils/fee';
 import {
+  FORMULA_SAMPLES,
   evaluateFormula,
   localSkillDetail,
   localSkillList,
   parseSkill,
   validateSkill,
 } from '../utils/skill';
+import { formulaOf, generateFormula, replaceFormula, summaryOf } from '../utils/aiRules';
 import { Card, Modal } from './ui';
 
 const MODES = [
@@ -59,6 +63,8 @@ export default function SkillManagementPage({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [lockedItem, setLockedItem] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
   const dirty = detail && text !== detail.content;
 
   // ── 업무 목록 (권한이 바뀌면 다시 읽는다) ──
@@ -105,11 +111,54 @@ export default function SkillManagementPage({
       const d = apiEnabled ? await api.skill(businessId) : localSkillDetail(task, overrides);
       setDetail(d);
       setText(d.content);
+      setSyncResult(null);
     } catch (e) {
       setDetail(null);
       notify(e.message, 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ── 1번 규칙 → 3번 수식 자동 생성: 편집기 내용만 바꾸고 저장은 담당자가 확인 후 한다 ──
+  const syncFormula = async () => {
+    setSaveError(null);
+    setSyncResult(null);
+    setSyncing(true);
+    try {
+      let res;
+      if (apiEnabled) {
+        res = await api.syncFormula(detail.taskCode, text);
+      } else {
+        // 서버 미연결(Mock): 브라우저에 AI 키를 둘 수 없어 서버의 규칙 기반 생성기와 같은 규칙으로 만든다
+        const summary = summaryOf(text);
+        if (!summary) throw new Error("'## 1. 비즈니스 규칙 요약' 섹션에 규칙을 먼저 적어 주세요.");
+        const gen = generateFormula(summary);
+        if (!gen) {
+          throw new Error(
+            '서버 미연결 모드라 규칙 기반으로 만드는데, 알아듣는 표현(총액 N원·N% 균등, 기본료 N원 + 건당 N원, N건까지 건당 N원 구간, 건당 단가 N원·최저/최고 회비)이 요약에 없습니다. 수식을 직접 작성해 주세요.',
+          );
+        }
+        const content = replaceFormula(text, gen.formula);
+        const sample = evaluateFormula(gen.formula, FORMULA_SAMPLES_FOR_SYNC);
+        validateSkill(detail.taskCode, content);
+        res = {
+          formula: gen.formula,
+          previousFormula: formulaOf(text),
+          content,
+          source: 'RULE',
+          explanation: `규칙 기반 생성: ${gen.explanation}`,
+          note: '서버 미연결(Mock) 모드: AI 대신 규칙 기반으로 만들었습니다.',
+          sampleFee: Math.round(sample),
+        };
+      }
+      setText(res.content);
+      setSyncResult(res);
+      notify('3번 정산 수식을 새로 작성했습니다. 내용을 확인한 뒤 [저장 및 반영하기]를 눌러 주세요.');
+    } catch (e) {
+      setSaveError({ title: '수식을 자동으로 만들지 못했습니다.', detail: e.message });
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -150,6 +199,7 @@ export default function SkillManagementPage({
   const revert = () => {
     setText(detail.content);
     setSaveError(null);
+    setSyncResult(null);
   };
 
   const resetToDefault = async () => {
@@ -317,6 +367,47 @@ export default function SkillManagementPage({
               </div>
 
               <div className="p-5 space-y-3">
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-violet-200 bg-violet-50/60 px-3 py-2">
+                  <button
+                    onClick={syncFormula}
+                    disabled={syncing || saving}
+                    className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:bg-slate-300"
+                  >
+                    {syncing ? <LoaderCircle className="w-3.5 h-3.5 animate-spin" /> : '✨'} 1번 규칙 기반으로 3번 수식 자동 생성
+                  </button>
+                  <p className="text-[11px] text-violet-800 leading-snug">
+                    &apos;## 1. 비즈니스 규칙 요약&apos;을 한글로 고친 뒤 누르면 AI가 3번 formula를 새로 씁니다 (서버에 AI 키가 없거나 서버 미연결이면
+                    규칙 기반). 바로 저장되지 않으니 확인 후 저장하세요.
+                  </p>
+                </div>
+                {syncResult && (
+                  <div className="rounded-lg border border-violet-200 bg-white px-4 py-3 text-xs text-slate-700">
+                    <div className="flex items-start gap-2">
+                      <Sparkles className="w-4 h-4 text-violet-500 shrink-0 mt-0.5" />
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <p className="font-semibold text-violet-800">
+                          {syncResult.source === 'AI' ? `AI가 작성한 수식${syncResult.model ? ` (${syncResult.model})` : ''}` : '규칙 기반으로 작성한 수식'}
+                          <span className="ml-2 font-normal text-slate-500">구문 검사·시험 계산 통과 · 시험 계산(90만 건 / 전체 900만 건 / 8개 기관) {fmt(syncResult.sampleFee)}원</span>
+                        </p>
+                        {syncResult.explanation && <p>{syncResult.explanation}</p>}
+                        {syncResult.note && <p className="text-amber-700">{syncResult.note}</p>}
+                        <div className="grid gap-2 md:grid-cols-2">
+                          <div>
+                            <p className="text-[11px] text-slate-400">이전 수식</p>
+                            <pre className="whitespace-pre-wrap break-all rounded bg-slate-100 p-2 font-mono text-[11px] text-slate-500">{syncResult.previousFormula || '(없음)'}</pre>
+                          </div>
+                          <div>
+                            <p className="text-[11px] text-slate-400">새 수식</p>
+                            <pre className="whitespace-pre-wrap break-all rounded bg-slate-900 p-2 font-mono text-[11px] text-emerald-200">{syncResult.formula}</pre>
+                          </div>
+                        </div>
+                      </div>
+                      <button onClick={() => setSyncResult(null)} className="text-slate-400 hover:text-slate-600" aria-label="닫기">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {saveError && (
                   <div role="alert" className="flex gap-2 rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                     <TriangleAlert className="w-5 h-5 shrink-0" />
@@ -389,6 +480,9 @@ export default function SkillManagementPage({
     </div>
   );
 }
+
+// 자동 생성 수식 시험 계산 값 (서버 FormulaSyncService 와 같다)
+const FORMULA_SAMPLES_FOR_SYNC = FORMULA_SAMPLES[0];
 
 const pickMeta = (d) => ({ lastModified: d.lastModified, size: d.size, version: d.version, modified: d.modified });
 

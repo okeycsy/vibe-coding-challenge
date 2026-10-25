@@ -167,17 +167,19 @@ public class FeeExcelService {
 
             Sheet detail = wb.createSheet("대사내역");
             writeRow(detail, 0, header, "기관코드", "기관명", "기준 실적", "AI 차감", "최종 인정 건수",
-                    "적용 단가/분담률", "산출 회비(원)", "차감 사유");
+                    "적용 단가/분담률", "1차 수식 회비(원)", "산출 회비(원)", "AI 규칙 보정 사유", "차감 사유");
             int r = 1;
             for (FeeCalculationItem i : calc.getItems()) {
                 writeRow(detail, r++, null, i.getBankCode(), i.getInstitutionName(), i.getBaseCount(), i.getDeduction(),
-                        i.getFinalCount(), i.getRateLabel(), i.getFee(),
+                        i.getFinalCount(), i.getRateLabel(), i.getPrimaryFee(), i.getFee(),
+                        i.getAiAdjustReason() == null ? "" : i.getAiAdjustReason(),
                         i.getDeductionReasons() == null ? "" : i.getDeductionReasons().replace("\n", " / "));
             }
             writeRow(detail, r, header, "합계", "", calc.getItems().stream().mapToLong(FeeCalculationItem::getBaseCount).sum(),
                     calc.getItems().stream().mapToLong(FeeCalculationItem::getDeduction).sum(),
-                    calc.getTotalFinalCount(), "", calc.getTotalFeeAmount(), "");
-            autosize(detail, 8);
+                    calc.getTotalFinalCount(), "", calc.getItems().stream().mapToLong(FeeCalculationItem::getPrimaryFee).sum(),
+                    calc.getTotalFeeAmount(), "", "");
+            autosize(detail, 10);
 
             Sheet basis = wb.createSheet("산출기준");
             int b = 0;

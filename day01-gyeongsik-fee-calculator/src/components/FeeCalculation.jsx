@@ -28,7 +28,19 @@ import { TASK_CODES, builtInTasks, localSkillDetail } from '../utils/skill';
 import { MAX_UPLOAD_MB, SAMPLE_FILE, UploadError, checkUploadFile, parseUploadInBrowser } from '../utils/upload';
 
 const NEXT_STATUS = { 대기: '확인중', 확인중: '완료', 완료: '대기' };
-const LOADING_STEPS = ['Raw Data 검증 중…', 'AI 이슈 해석 및 예외 건 차감 중…', '회비분담기준 적용 중…'];
+const LOADING_STEPS = [
+  'Raw Data 검증 중…',
+  'AI 예외 차감 지침으로 이슈 판별 중…',
+  '정산 수식(formula)으로 1차 회비 계산 중…',
+  'AI가 비즈니스 규칙 특이사항으로 최종 보정 중…',
+];
+// 산출 결과의 AI 단계 동작 방식 (서버 aiMode)
+const AI_MODE_LABEL = {
+  AI: 'AI 판별·보정',
+  RULE: '규칙 기반 판별·보정 (AI 키 없음)',
+  RULE_FALLBACK: '규칙 기반 판별·보정 (AI 호출 실패)',
+  MOCK: '규칙 기반 판별·보정 (서버 미연결)',
+};
 
 // 기간 빠른 선택. 기본값은 오늘 기준 직전 분기(회비는 분기 종료 후 산출)다.
 function periodPresets(today = new Date()) {
@@ -219,8 +231,9 @@ export default function FeeCalculation({
     const upload = draft.file;
     const used = { calcType: skill.calcType, formula: skill.formula, summary: skill.summary };
     setLoadingStep(0);
-    later(() => setLoadingStep(1), 550);
-    later(() => setLoadingStep(2), 1100);
+    later(() => setLoadingStep(1), 500);
+    later(() => setLoadingStep(2), 1000);
+    later(() => setLoadingStep(3), 1500);
     const compute = apiEnabled
       ? api
           .calculate({
@@ -232,13 +245,19 @@ export default function FeeCalculation({
             uploadFileName: upload.name,
             requestedBy: user.id,
           })
-          .then((res) => ({ rows: res.rows, used: { ...used, calcType: res.calcType, formula: res.formula } }))
+          .then((res) => ({
+            rows: res.rows,
+            // 서버는 빈 문장을 빼지 않은 같은 순서로 판별 결과를 돌려준다
+            issues: issues.map((i, idx) => ({ ...i, applied: res.issues[idx]?.applied, judgement: res.issues[idx]?.judgement })),
+            ai: { mode: res.aiMode, model: res.aiModel, note: res.aiNote },
+            used: { ...used, calcType: res.calcType, formula: res.formula },
+          }))
       : new Promise((resolve) =>
-          resolve({ rows: calculateFees({ businessId, from, to, issues, skill, counts: upload.counts }), used }),
+          resolve({ ...calculateFees({ businessId, from, to, issues, skill, counts: upload.counts }), used }),
         );
-    const minDelay = new Promise((resolve) => later(resolve, 1700));
+    const minDelay = new Promise((resolve) => later(resolve, 2100));
     Promise.all([compute, minDelay])
-      .then(([{ rows, used: applied }]) => {
+      .then(([{ rows, issues: reviewed, ai, used: applied }]) => {
         setRuns((r) => ({
           ...r,
           [k]: {
@@ -246,13 +265,17 @@ export default function FeeCalculation({
             from,
             to,
             rows,
-            issues,
+            issues: reviewed,
+            ai,
             skill: applied,
             source: { fileName: upload.name, institutions: upload.counts.length, unmatched: upload.unmatched },
             createdAt: new Date().toLocaleString('ko-KR'),
           },
         }));
-        notify('skill.md 수식으로 AI 회비 초안 산출이 완료되었습니다.');
+        const adjustedCount = rows.filter((r) => r.aiAdjustReason).length;
+        notify(
+          `skill.md 수식으로 1차 산출 후 ${adjustedCount ? `${adjustedCount}개 기관을 비즈니스 규칙으로 보정했습니다` : '비즈니스 규칙 보정 대상은 없었습니다'}.`,
+        );
       })
       .catch((e) => notify(`산출하지 못했습니다: ${e.message}`, 'error'))
       .finally(() => setLoadingStep(-1));
@@ -693,7 +716,26 @@ export default function FeeCalculation({
                 {periodLabel(from, to)} · {business.name}
               </span>
               <span>산출일시 {run.createdAt}</span>
-              <span>반영 이슈 {run.issues.length}건</span>
+              <span>
+                반영 이슈 {run.issues.filter((i) => i.applied !== false).length}건
+                {run.issues.some((i) => i.applied === false) &&
+                  ` (차감 제외 ${run.issues.filter((i) => i.applied === false).length}건)`}
+              </span>
+              {run.ai?.mode && (
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 ${
+                    run.ai.mode === 'AI'
+                      ? 'border-violet-200 bg-violet-50 text-violet-700'
+                      : run.ai.mode === 'RULE_FALLBACK'
+                        ? 'border-amber-200 bg-amber-50 text-amber-700'
+                        : 'border-slate-200 bg-slate-50 text-slate-600'
+                  }`}
+                  title={run.ai.note ?? undefined}
+                >
+                  <Bot className="w-3 h-3" /> {AI_MODE_LABEL[run.ai.mode] ?? run.ai.mode}
+                  {run.ai.model && ` · ${run.ai.model}`}
+                </span>
+              )}
               {run.source && (
                 <span>
                   실적 출처 {run.source.fileName} ({run.source.institutions}개 기관)
@@ -744,7 +786,7 @@ export default function FeeCalculation({
                               className="inline-flex items-center gap-1 font-semibold text-rose-600 cursor-help"
                               onMouseEnter={(e) => {
                                 const rect = e.currentTarget.getBoundingClientRect();
-                                setTooltip({ x: rect.right, y: rect.bottom + 6, reasons: r.reasons });
+                                setTooltip({ kind: 'deduction', x: rect.right, y: rect.bottom + 6, reasons: r.reasons });
                               }}
                               onMouseLeave={() => setTooltip(null)}
                             >
@@ -756,7 +798,26 @@ export default function FeeCalculation({
                         </td>
                         <td className="px-4 py-2.5 text-right tabular-nums font-medium">{fmt(r.finalCount)}</td>
                         <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">{r.rateLabel}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-brand-900">
+                        <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-brand-900 whitespace-nowrap">
+                          {r.aiAdjustReason && (
+                            <span
+                              className="mr-1.5 inline-flex items-center gap-0.5 rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 cursor-help align-middle"
+                              onMouseEnter={(e) => {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setTooltip({ kind: 'ai', x: rect.right, y: rect.bottom + 6, row: r });
+                              }}
+                              onMouseLeave={() => setTooltip(null)}
+                              onFocus={(e) => {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setTooltip({ kind: 'ai', x: rect.right, y: rect.bottom + 6, row: r });
+                              }}
+                              onBlur={() => setTooltip(null)}
+                              tabIndex={0}
+                              aria-label={`AI 규칙 보정: 보정 전 ${fmt(r.primaryFee)}원, ${r.aiAdjustReason}`}
+                            >
+                              <Sparkles className="w-3 h-3" />AI 규칙 보정
+                            </span>
+                          )}
                           {fmt(r.fee)}원
                         </td>
                         <td className="px-4 py-2.5 text-center">
@@ -813,6 +874,27 @@ export default function FeeCalculation({
                 )}
               </table>
             </div>
+            {visibleRows.some((r) => r.aiAdjustReason) && (
+              <p className="mt-2 text-xs text-violet-700 flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5" /> [AI 규칙 보정] 배지는 1차 수식 회비를 skill.md 1번 비즈니스 규칙(단수 처리·예외
+                규정)으로 보정한 기관입니다. 배지에 마우스를 올리면 보정 전 금액과 사유가 보입니다.
+              </p>
+            )}
+            {isOperator && run.issues.some((i) => i.applied === false) && (
+              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-xs font-semibold text-slate-600 mb-1.5">차감하지 않은 이슈 (AI 예외 차감 지침 판별)</p>
+                <ul className="space-y-1 text-xs text-slate-600">
+                  {run.issues
+                    .filter((i) => i.applied === false)
+                    .map((i) => (
+                      <li key={i.id}>
+                        · <span className="text-slate-800">{i.text}</span>
+                        <span className="ml-1 text-slate-500">→ {i.judgement}</span>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            )}
             {visibleRows.some((r) => r.deduction > 0) && (
               <p className="mt-2 text-xs text-amber-700 flex items-center gap-1">
                 <TriangleAlert className="w-3.5 h-3.5" /> 노란색 행은 AI 이슈로 건수가 차감된 기관입니다. 차감 건수에
@@ -828,12 +910,26 @@ export default function FeeCalculation({
           className="fixed z-50 max-w-sm -translate-x-full rounded-lg bg-brand-900 px-3 py-2 text-xs text-white shadow-xl"
           style={{ left: tooltip.x, top: tooltip.y }}
         >
-          <p className="font-semibold text-accent-300 mb-1">AI 차감 사유</p>
-          <ul className="space-y-1">
-            {tooltip.reasons.map((t) => (
-              <li key={t}>· {t}</li>
-            ))}
-          </ul>
+          {tooltip.kind === 'ai' ? (
+            <>
+              <p className="font-semibold text-violet-300 mb-1">AI 규칙 보정 (skill.md 1번 비즈니스 규칙)</p>
+              <p className="tabular-nums">
+                보정 전 1차 수식 회비 {fmt(tooltip.row.primaryFee)}원 → 최종 {fmt(tooltip.row.fee)}원 (
+                {tooltip.row.fee - tooltip.row.primaryFee > 0 ? '+' : ''}
+                {fmt(tooltip.row.fee - tooltip.row.primaryFee)}원)
+              </p>
+              <p className="mt-1 text-slate-200">{tooltip.row.aiAdjustReason}</p>
+            </>
+          ) : (
+            <>
+              <p className="font-semibold text-accent-300 mb-1">AI 차감 사유</p>
+              <ul className="space-y-1">
+                {tooltip.reasons.map((t) => (
+                  <li key={t}>· {t}</li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
       )}
     </div>
