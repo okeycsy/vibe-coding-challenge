@@ -269,13 +269,15 @@ export default function App() {
     setSkillVersion((v) => v + 1);
   };
 
-  // [ 키로 사이드바 접기/펴기. 입력창에 타이핑 중이거나 조합키와 함께 누른 경우는 무시한다.
+  // [ 키로 사이드바 접기/펴기. 입력창·md 편집기에 타이핑 중이거나 조합키와 함께 누른 경우는 무시한다.
+  // 한글 입력 상태에서는 e.key가 '[' 대신 'Process'로 오기도 해서 물리 키(e.code)로도 확인한다.
   useEffect(() => {
     if (!isLoggedIn) return undefined;
     const onKey = (e) => {
-      if (e.key !== '[' || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+      const bracket = e.key === '[' || (e.code === 'BracketLeft' && !e.shiftKey);
+      if (!bracket || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
       const t = e.target;
-      if (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName)) return;
+      if (t.isContentEditable || t.closest?.('input, textarea, select, [contenteditable]')) return;
       e.preventDefault();
       setSidebarOpen((o) => !o);
     };
@@ -352,7 +354,8 @@ export default function App() {
           sectionBadges={adminCounts}
         />
         <main className="flex-1 overflow-y-auto p-6">
-          <div className="max-w-7xl mx-auto">
+          {/* 메뉴를 접으면 폭 제한을 풀어 본문이 아이콘 레일 바로 옆부터 채운다 */}
+          <div className={sidebarOpen ? 'max-w-7xl mx-auto' : 'w-full'}>
             {/* 업로드·이슈 입력 상태를 메뉴 이동 후에도 유지하려고 숨기기만 한다 */}
             <div className={menu === 'calc' && canSee('calc') ? '' : 'hidden'}>
               <FeeCalculation
