@@ -112,7 +112,7 @@ src/main/java/com/kftc/feecalc/
 |--------|------|------|
 | GET | `/businesses`, `/businesses/{code}` | 업무별 회비 기준(방식·단가·총액·분담기준 요약) |
 | PUT | `/businesses/{code}/rate` | 단가(건당 방식)·총액(분담 방식) 변경 |
-| GET | `/institutions` | 참가기관과 별칭 |
+| GET | `/institutions` | 참가기관과 별칭 (사용 중지 기관 포함): `{ id, name, code, aliases, type, active, uploadOnly }` |
 | POST | `/uploads` | 실적 엑셀 업로드(multipart `file`). '기관명/기관코드'와 '건수' 열을 찾아 기관별 합산 |
 | GET | `/uploads/template` | 업로드 양식 엑셀 |
 | POST | `/issues/parse` | AI 이슈 문장 미리보기 해석 `{ text }` → 기관·건수·일자·사유 |
@@ -164,6 +164,20 @@ skill.md 표준 4섹션: `## 1. 비즈니스 규칙 요약`(필수) · `## 2. AI
 | DELETE | `/api/v1/tasks/{taskCode}` | 업무 삭제 (시스템관리자만). 연결된 md 파일 삭제, 회원의 그 업무 권한 해제, 승인 대기 신청 반려 |
 
 - 새 업무의 skill.md는 섹션이 없어 `GET /api/v1/skills/{taskCode}`에서 `parseError`와 원문만 주고, 섹션을 채워 `PUT`으로 저장해야 산출에 쓸 수 있습니다. 회비 산출 화면은 실적 예시 데이터가 있는 기본 업무만 보여 줍니다
+
+### institutions — `/api/v1/institutions` (기관 관리, 모두 시스템관리자만 · `X-Employee-Id`)
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| GET | `/api/v1/institutions` | 전체 기관(사용 중지 포함)과 사용 현황: `{ id, name, code, aliases, type, typeLabel, active, uploadOnly, calculationCount, reconcileCount, testCount, memberCount, deletable, updatedAt, updatedBy }` |
+| POST | `/api/v1/institutions` | `{ id?, name, code, type?, aliases[] }`로 추가. `id` 비우면 기관코드 소문자, 새 기관은 시연 실적 가중치 0(업로드 전용) |
+| PUT | `/api/v1/institutions/{id}` | 이름·기관코드·구분·별칭 수정(내부 ID는 못 바꿈). 이름을 바꾸면 연결 회원의 소속(org)도 바꿈 |
+| POST | `/api/v1/institutions/{id}/deactivate` · `/activate` | 사용 중지·다시 사용 |
+| DELETE | `/api/v1/institutions/{id}` | 산출 이력·대사·테스트 결과·연결 회원이 하나도 없을 때만 삭제, 아니면 409 |
+| GET | `/api/v1/institutions/match?value=` | 매칭 시험: `{ excel, issue }` 각각 엑셀 기관 칸·AI 이슈 문장 규칙으로 잡히는 기관 |
+
+- 검증(400/409, `data.field`로 칸 표시): 기관명 1~50자·공백 없음, 기관코드 영문 대문자·숫자 2~10자, 내부 ID 소문자 시작 2~30자, 별칭 공백 없이 30자·10개 이하. 기관코드·내부 ID끼리(대소문자 무시), 이름·별칭끼리, 별칭과 다른 기관 코드·ID가 겹치면 409. 사용 중지 기관도 겹침 검사에 포함
+- 엑셀 매칭(`FeeExcelService.matchInstitution`)·AI 이슈 인식·산출은 요청마다 DB의 **사용 중인** 기관을 읽으므로 추가·수정이 다음 업로드부터 바로 반영. 사용 중지 기관이 든 실적으로 산출하면 400
+- 산출 이력(`FeeCalculationItem`)·대사 내역은 산출 당시 기관명·코드를 따로 저장하므로 이름 변경·사용 중지 후에도 그대로
 
 skill.md 저장 (`SkillFileService`)
 - 1업무 = 1파일: 업무 목록은 `{SKILLS_DIR}/tasks.json`(없으면 기본 5개 업무로 생성), 업무마다 md 파일 하나(기본 업무는 `{업무코드}.md`, 추가한 업무는 지정한 파일명). 기본 `./data/skills`, Docker 이미지에서는 `/app/data/skills`. 목록에 연결되지 않은 `.md`는 읽지 않습니다(기동 로그에 경고)

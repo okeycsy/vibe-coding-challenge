@@ -10,6 +10,8 @@ import LoginPage from './components/LoginPage';
 import { api, apiEnabled, setEmployeeId } from './utils/api';
 import SkillManagementPage from './components/SkillManagementPage';
 import TaskManagementPage from './components/TaskManagementPage';
+import InstitutionManagementPage from './components/InstitutionManagementPage';
+import { replaceInstitutions } from './utils/institutions';
 import { builtInTasks } from './utils/skill';
 
 const MAX_ATTEMPTS = 5;
@@ -36,6 +38,8 @@ export default function App() {
   const [skillTarget, setSkillTarget] = useState(null);
   // 업무 목록 (업무 1개 = md 파일 1개). 관리자가 업무 관리에서 추가·삭제한다. 서버가 있으면 서버 목록을 받는다.
   const [tasks, setTasks] = useState(() => builtInTasks(BUSINESSES));
+  // 기관 목록(data/mockData INSTITUTIONS)은 기관 관리에서 그 자리에서 바뀐다. 바뀔 때마다 올려 화면이 다시 읽게 한다
+  const [institutionVersion, setInstitutionVersion] = useState(0);
   const [toast, setToast] = useState(null);
   // 상단바 알림. 서버 API가 없어 서버 연결 여부와 관계없이 예시 데이터로 동작하고, 읽음 표시는 새로고침 전까지 유지된다.
   const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
@@ -87,6 +91,14 @@ export default function App() {
     setLoginLocks(locks);
     // 업무 관리 API가 아직 배포되지 않은 서버면 기본 업무 목록을 그대로 쓴다
     api.tasks().then(setTasks).catch(() => {});
+    // 기관 목록도 서버 것으로 맞춘다 (기관 관리에서 추가·수정한 기관 이름 표시용)
+    api
+      .institutions()
+      .then((list) => {
+        replaceInstitutions(list);
+        setInstitutionVersion((v) => v + 1);
+      })
+      .catch(() => {});
   };
   // 화면은 바로 바꾸고 서버에 같은 변경을 보낸다. 서버가 거절하면 알리고 서버 값으로 되돌린다.
   const persist = (call) => {
@@ -269,6 +281,18 @@ export default function App() {
     setSkillVersion((v) => v + 1);
   };
 
+  // ── 기관 관리 (관리자) ──
+  // 이름을 바꾸면 참가기관 회원의 소속 표시도 바꾼다 (서버는 같은 처리를 하므로 회원 목록을 다시 받는다)
+  const institutionsChanged = ({ renamed } = {}) => {
+    setInstitutionVersion((v) => v + 1);
+    if (!renamed) return;
+    if (apiEnabled) {
+      syncFromServer().catch(() => {});
+      return;
+    }
+    setMembers((ms) => ms.map((m) => (m.institutionId === renamed.id ? { ...m, org: renamed.name } : m)));
+  };
+
   // [ 키로 사이드바 접기/펴기. 글자 입력칸·md 편집기에 타이핑 중이거나 조합키와 함께 누른 경우는 무시한다.
   // 한글 입력 상태에서는 e.key가 '[' 대신 'Process'로 오기도 해서 물리 키(e.code)로도 확인한다.
   useEffect(() => {
@@ -371,6 +395,7 @@ export default function App() {
                 onRequestTask={() => selectMenu('mypage', 'mypage-tasks')}
                 skillOverrides={skillOverrides}
                 skillVersion={skillVersion}
+                institutionVersion={institutionVersion}
                 onOpenSkill={(businessId) => {
                   setSkillTarget(businessId);
                   selectMenu('skills');
@@ -421,7 +446,17 @@ export default function App() {
                 notify={notify}
               />
             )}
-            {menu === 'admin' && canSee('admin') && activeSection !== 'admin-business' && (
+            {menu === 'admin' && canSee('admin') && activeSection === 'admin-institutions' && (
+              <InstitutionManagementPage
+                user={user}
+                runs={runs}
+                members={members}
+                version={institutionVersion}
+                onChanged={institutionsChanged}
+                notify={notify}
+              />
+            )}
+            {menu === 'admin' && canSee('admin') && !['admin-business', 'admin-institutions'].includes(activeSection) && (
               <AdminSettings
                 page={activeSection ?? 'admin-members'}
                 me={member}

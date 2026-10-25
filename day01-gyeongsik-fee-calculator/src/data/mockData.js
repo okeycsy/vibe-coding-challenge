@@ -58,6 +58,8 @@ export const LOGIN_HISTORY = [
 ];
 
 // alias: AI 이슈 문장에서 기관을 인식할 때 쓰는 별칭 (A~H은행은 시연용 가명 매핑)
+// 관리자 설정 > 기관 관리에서 추가·수정·사용 중지하면 이 배열이 그 자리에서 바뀐다 (utils/institutions.js).
+// type: BANK | SECURITIES | INSURANCE | OTHER (아래에서 이름으로 채움), active: false 면 엑셀 매칭·이슈 인식·산출에서 빠짐
 export const INSTITUTIONS = [
   { id: 'shinhan', name: '신한은행', code: 'B088', aliases: ['신한', 'A은행'] },
   { id: 'kb', name: 'KB국민은행', code: 'B004', aliases: ['국민', 'KB', 'B은행'] },
@@ -119,6 +121,13 @@ export const INSTITUTIONS = [
   { id: 't057', name: '에버라이프생명보험', code: 'T057', aliases: [], test: true },
   { id: 't058', name: '청명생명보험', code: 'T058', aliases: [], test: true },
 ];
+// 서버 InstitutionType.guess 와 같은 규칙
+export const guessInstitutionType = (name) =>
+  /증권$/.test(name) ? 'SECURITIES' : /보험$/.test(name) ? 'INSURANCE' : /(은행|뱅크)$/.test(name) ? 'BANK' : 'OTHER';
+INSTITUTIONS.forEach((i) => {
+  i.type = guessInstitutionType(i.name);
+  i.active = true;
+});
 
 // method: 'unit' = 건당 단가 방식, 'ratio' = 총액을 인정 건수 비율로 분담
 export const BUSINESSES = [
@@ -213,7 +222,7 @@ const WEIGHTS = { shinhan: 1.15, kb: 1.25, woori: 1.0, hana: 0.95, nh: 1.1, ibk:
 // baseVolume은 한 분기(약 91일) 실적이다. 산출 기간이 분기가 아니면 일수에 비례해 줄이거나 늘린다(scale).
 export function getBaseCounts(businessId, from, to, scale = 1) {
   const biz = BUSINESSES.find((b) => b.id === businessId);
-  return INSTITUTIONS.filter((inst) => !inst.test).map((inst) => {
+  return INSTITUTIONS.filter((inst) => !inst.test && inst.active !== false && WEIGHTS[inst.id]).map((inst) => {
     const r = seeded(`${businessId}-${from}-${to}-${inst.id}`);
     const volume = biz.baseVolume * scale * WEIGHTS[inst.id] * (0.85 + r * 0.3);
     const count = Math.max(10, Math.round(volume / 10) * 10);

@@ -79,7 +79,7 @@ public class FeeCalculationService {
     }
 
     public ParsedIssue parseIssue(String text) {
-        return issueParser.parse(text, institutionRepository.findAllByOrderBySortOrder());
+        return issueParser.parse(text, institutionRepository.findByActiveTrueOrderBySortOrder());
     }
 
     // ---------- 산출 ----------
@@ -100,7 +100,8 @@ public class FeeCalculationService {
         }
         Period period = Period.of(req.from(), req.to());
         double scale = period.scale();
-        List<Institution> institutions = institutionRepository.findAllByOrderBySortOrder();
+        // 비활성 기관은 산출·이슈 인식에서 뺀다 (업로드 실적에 있으면 '알 수 없는 기관'으로 거부)
+        List<Institution> institutions = institutionRepository.findByActiveTrueOrderBySortOrder();
         boolean uploaded = req.counts() != null && !req.counts().isEmpty();
 
         FeeCalculation calc = FeeCalculation.builder()
@@ -191,7 +192,8 @@ public class FeeCalculationService {
         if (req.counts() != null && !req.counts().isEmpty()) {
             for (InstitutionCount c : req.counts()) {
                 if (institutions.stream().noneMatch(i -> i.getCode().equals(c.institutionId()))) {
-                    throw new BusinessException(ErrorCode.INVALID_INPUT, "알 수 없는 기관입니다: " + c.institutionId());
+                    throw new BusinessException(ErrorCode.INVALID_INPUT,
+                            "알 수 없거나 사용 중지된 기관입니다: " + c.institutionId() + " (실적 파일을 다시 올려 주세요)");
                 }
                 result.merge(c.institutionId(), c.baseCount(), Long::sum);
             }

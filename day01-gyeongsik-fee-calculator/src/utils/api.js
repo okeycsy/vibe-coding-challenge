@@ -90,6 +90,15 @@ export const api = {
   tasks: () => request('GET', '/api/v1/tasks'),
   createTask: (taskCode, name, fileName) => request('POST', '/api/v1/tasks', { taskCode, name, fileName }),
   deleteTask: (taskCode) => request('DELETE', `/api/v1/tasks/${taskCode}`),
+  // 기관 관리 (시스템관리자만). 목록은 사용 중지 기관·사용 현황(산출 이력·대사·테스트·연결 회원) 포함
+  institutions: () => request('GET', '/api/fee/institutions'),
+  adminInstitutions: () => request('GET', '/api/v1/institutions'),
+  createInstitution: (body) => request('POST', '/api/v1/institutions', body),
+  updateInstitution: (id, body) => request('PUT', `/api/v1/institutions/${id}`, body),
+  setInstitutionActive: (id, active) => request('POST', `/api/v1/institutions/${id}/${active ? 'activate' : 'deactivate'}`),
+  deleteInstitution: (id) => request('DELETE', `/api/v1/institutions/${id}`),
+  // 매칭 시험 → { value, excel: { id, name, code, matchedBy } | null, issue: {...} | null }
+  matchInstitution: (value) => request('GET', `/api/v1/institutions/match?value=${encodeURIComponent(value)}`),
   // 실적 엑셀 업로드 → { fileName, rowCount, totalCount, counts, unmatched }. 잘못된 파일은 400(메시지 포함)
   uploadPerformance: (file) => {
     const form = new FormData();

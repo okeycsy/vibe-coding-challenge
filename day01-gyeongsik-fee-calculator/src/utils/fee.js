@@ -3,21 +3,15 @@ import { asQuarter, daysBetween } from './period';
 import { calculatePrimary, rateLabel } from './skill';
 import { reviewIssues } from './aiRules';
 import { applySpecialRules } from './specialRules';
+import { longestMatch } from './institutions';
+
+export { longestMatch };
 
 export const fmt = (n) => Math.round(n).toLocaleString('ko-KR');
 
 // AI 에이전트 이슈 문장을 해석하는 시연용 파서.
 // 기관 별칭과 "1,500건" 같은 건수를 찾아 차감 규칙으로 바꾼다.
-// 문장에 들어 있는 이름·별칭 중 가장 긴 것을 고른다 ('하나온은행'이 '하나'(하나은행)로 잡히지 않도록).
-export function longestMatch(text) {
-  let best = null;
-  INSTITUTIONS.forEach((inst) => {
-    const alias = [inst.name, ...inst.aliases].find((a) => text.includes(a));
-    if (alias && (!best || alias.length > best.alias.length)) best = { inst, alias };
-  });
-  return best;
-}
-
+// 문장에 들어 있는 이름·별칭 중 가장 긴 것을 고른다 (longestMatch, 사용 중인 기관만).
 export function parseIssue(text) {
   const match = longestMatch(text);
   const inst = match?.inst;
@@ -61,6 +55,10 @@ export function calculateFees({ businessId, from, to, issues, skill, counts }) {
 
   const rows = base.map(({ institutionId, baseCount }) => {
     const inst = INSTITUTIONS.find((i) => i.id === institutionId);
+    // 서버와 같이, 업로드 후 기관 관리에서 지우거나 사용 중지한 기관은 산출하지 않는다
+    if (!inst || inst.active === false) {
+      throw new Error(`알 수 없거나 사용 중지된 기관입니다: ${institutionId} (실적 파일을 다시 올려 주세요)`);
+    }
     const related = reviewed.filter((i) => i.applied && i.parsed.institutionId === institutionId);
     const deduction = Math.min(
       baseCount,
