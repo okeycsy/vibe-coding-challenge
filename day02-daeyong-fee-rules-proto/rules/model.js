@@ -9,13 +9,14 @@ export const DEFAULT_ITEMS = [
   { id: 'release', name: '해제건수' },
 ];
 
+// 새 업무는 실적 항목 없이 시작한다. 항목은 실적 엑셀을 올리면 건수 열에서 자동으로 만들어진다 (John 요청 2026-10-25).
 export function newBusiness(name = '새 업무') {
   return {
     id: uid('biz'),
     name,
     orgs: [], // [{ id, name, active, postOffice }]  active=false면 분담 대상 제외, postOffice=true면 R-7 대상
-    items: DEFAULT_ITEMS.map((i) => ({ ...i })),
-    recognized: DEFAULT_ITEMS.map((i) => i.id),
+    items: [], // [{ id, name }]  실적 항목
+    recognized: [], // 인정할 항목 id
     cond: {
       year: 2026,
       quarter: 1,
@@ -47,6 +48,8 @@ const COUNTS = [
 
 export function sampleBusinesses() {
   const a = newBusiness('예금압류 관련정보 중계업무 (예시)');
+  a.items = DEFAULT_ITEMS.map((i) => ({ ...i }));
+  a.recognized = DEFAULT_ITEMS.map((i) => i.id);
   a.orgs = ORG_NAMES.map((name, i) => ({ id: `org_${i + 1}`, name, active: true, postOffice: name === '우체국' }));
   a.perf = Object.fromEntries(a.orgs.map((o, i) => [o.id, { seizure: COUNTS[i][0], collection: COUNTS[i][1], release: COUNTS[i][2] }]));
   a.perfMeta = { fileName: '예시_실적_2026년1분기.xlsx', appliedAt: '2026-04-10', start: '2026-01-01', end: '2026-03-31', rows: a.orgs.length, sample: true };

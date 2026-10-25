@@ -95,8 +95,9 @@ export async function downloadResult(b, run) {
 export async function downloadTemplate(b) {
   const wb = XLSX.utils.book_new();
   const active = b.orgs.filter((o) => o.active);
-  const rows = [['기관명', ...b.items.map((i) => i.name), '합계'], ...(active.length ? active : [{ name: 'A기관' }, { name: 'B기관' }, { name: '우체국' }]).map((o) => [o.name, ...b.items.map(() => 0), 0])];
-  XLSX.utils.book_append_sheet(wb, sheet(rows, [18, ...b.items.map(() => 12), 12]), '실적');
+  const cols = b.items.length ? b.items.map((i) => i.name) : ['건수 항목 1', '건수 항목 2']; // 항목이 없으면 머리글만 바꿔 쓰는 자리
+  const rows = [['기관명', ...cols, '합계'], ...(active.length ? active : [{ name: 'A기관' }, { name: 'B기관' }, { name: '우체국' }]).map((o) => [o.name, ...cols.map(() => 0), 0])];
+  XLSX.utils.book_append_sheet(wb, sheet(rows, [18, ...cols.map(() => 12), 12]), '실적');
   await saveFile(`실적_양식_${b.name.replace(/[\\/:*?"<>|]/g, '_')}.xlsx`, XLSX.write(wb, { type: 'array', bookType: 'xlsx' }), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 }
 
