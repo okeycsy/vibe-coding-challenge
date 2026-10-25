@@ -69,6 +69,34 @@ test('R-10.2 머리글 찾기와 열 매핑 추정', () => {
   assert.deepEqual(Object.values(m), ['period', 'org', 'item:s', 'item:c', 'item:r', 'new', 'total']);
   const saved = guessMapping(aoa[h], items, { 기타건수: 'ignore' });
   assert.equal(saved[5], 'ignore');
+  // 등록 항목이 없을 때: 숫자 열은 모두 새 항목, 글자 열은 사용 안 함
+  const rows = [['A기관', 10, 'API', 3, '메모'], ['B기관', 20, 'API', 4, '']];
+  const m2 = guessMapping(['기관명', '호출건수', '구분코드', '처리건수', '메모'], [], {}, rows);
+  assert.deepEqual(Object.values(m2), ['org', 'new', 'ignore', 'new', 'ignore']);
+});
+
+test('엑셀 건수 열 → 실적 항목 자동 등록 (적용할 때)', () => {
+  const h = 1;
+  const mapping = guessMapping(aoa[h], items); // 기타건수 = new
+  const p = buildPreview({ aoa, headerIdx: h, mapping, items, recognized: ['s', 'c', 'r'], orgs, period: { start: '2026-01-01', end: '2026-03-31' }, edits: { B기관: { s: '2000' } }, autoAddOrgs: true });
+  assert.deepEqual(p.newItems.map((x) => x.name), ['기타건수']);
+  assert.ok(p.itemCols.some((c) => c.isNew && c.name === '기타건수'));
+  assert.equal(p.rows.find((r) => r.name === 'A기관').recognizedSum, 1010 + 500 + 300 + 5); // 새 항목도 인정 실적에 포함
+  assert.ok(p.issues.some((i) => i.level === 'info' && /'기타건수' 열은 적용할 때 새 실적 항목/.test(i.message)));
+  assert.equal(p.canApply, true);
+  let k = 0;
+  const applied = applyPreview(p, () => 'o_new', () => `it_${++k}`);
+  assert.deepEqual(applied.newItems.map((x) => ({ id: x.id, name: x.name })), [{ id: 'it_1', name: '기타건수' }]);
+  assert.deepEqual(applied.perf.a, { s: 1010, c: 500, r: 300, it_1: 5 });
+  // 등록 항목이 하나도 없는 새 업무: 열 전부가 새 항목
+  const bare = buildPreview({ aoa, headerIdx: h, mapping: { 0: 'period', 1: 'org', 2: 'new', 3: 'new', 4: 'new', 5: 'ignore', 6: 'total' }, items: [], recognized: [], orgs: [], edits: { B기관: { 'new:2': '2000' } }, autoAddOrgs: true });
+  assert.deepEqual(bare.newItems.map((x) => x.name), ['압류', '추심', '해제']);
+  assert.equal(bare.canApply, true);
+  const ap = applyPreview(bare, () => `o${Math.random()}`, () => `i${++k}`);
+  assert.equal(ap.newItems.length, 3);
+  assert.equal(Object.values(ap.perf).length, 4); // A기관(합산)·모르는기관·B기관·C기관
+  // 건수 열이 하나도 없으면 오류
+  assert.ok(buildPreview({ aoa, headerIdx: h, mapping: { 1: 'org' }, items: [], recognized: [], orgs: [] }).issues.some((i) => /건수 열이 하나도 없습니다/.test(i.message)));
 });
 
 test('R-10.4 검증, R-10.5 합계 열, R-10.6 수정, R-10.7 자동 등록', () => {

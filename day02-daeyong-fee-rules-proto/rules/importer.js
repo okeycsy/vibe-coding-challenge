@@ -6,7 +6,7 @@ export const ROLE_LABELS = {
   total: '합계 (검증에만 사용)',
   period: '기간 (기준년월·일자·분기)',
   year: '연도 (기간 열에 연도가 없을 때)',
-  new: '새 실적 항목 (추가 필요)',
+  new: '새 실적 항목 (적용할 때 자동 등록)',
   ignore: '사용 안 함',
 };
 export const roleLabel = (role, items) => (role?.startsWith('item:') ? (items.find((i) => `item:${i.id}` === role)?.name ?? '(삭제된 항목)') : ROLE_LABELS[role] ?? role);
@@ -35,10 +35,12 @@ export function detectHeaderRow(aoa) {
 const squash = (s) => cell(s).replace(/\s+/g, '').toLowerCase();
 const stem = (s) => squash(s).replace(/(건수|건|수|횟수|count)$/i, '');
 
-// 열 매핑 추정 (R-10.2). saved = 저장된 { 머리글: 역할 } (R-10.2 재사용)
-export function guessMapping(headers, items, saved = {}) {
+// 열 매핑 추정 (R-10.2). saved = 저장된 { 머리글: 역할 } (R-10.2 재사용), rows = 머리글 아래 데이터 행(건수 열인지 판단)
+// 등록된 항목과 맞지 않는 열이라도 숫자가 들어 있으면 'new'(적용할 때 새 실적 항목으로 자동 추가), 글자만 있으면 'ignore'
+export function guessMapping(headers, items, saved = {}, rows = []) {
   const mapping = {};
   let orgDone = false;
+  const numericCol = (idx) => rows.some((r) => { const v = r?.[idx]; return typeof v === 'number' || (typeof v === 'string' && /^\s*-?[\d,]+(\.\d+)?\s*$/.test(v)); });
   headers.forEach((h, idx) => {
     const text = cell(h);
     if (text === '') { mapping[idx] = 'ignore'; return; }
@@ -51,10 +53,13 @@ export function guessMapping(headers, items, saved = {}) {
     else if (/^(연도|년도|년|기준연도|기준년도|회계연도|year)$/.test(s)) mapping[idx] = 'year';
     else if (/년월|기준월|기준년|일자|날짜|기간|분기|^월$|year|month|date|period/.test(s)) mapping[idx] = 'period';
     else if (/순번|번호|비고|no\.?$|^no$|구분/.test(s)) mapping[idx] = 'ignore';
-    else mapping[idx] = 'new';
+    else mapping[idx] = rows.length && !numericCol(idx) ? 'ignore' : 'new';
   });
   return mapping;
 }
+
+// 'new' 열의 임시 항목 id (적용할 때 진짜 id로 바뀐다)
+export const NEW_ITEM_PREFIX = 'new:';
 
 // 기간 표기 정리: '2026년도'→'2026년', '제1분기'·'1/4분기'·'1사분기'→'1분기', 'Q1 2026'·'2026 1Q'→'2026Q1', 2자리 연도
 const tidyPeriod = (t) => t.replace(/\s+/g, '').toUpperCase()
@@ -167,13 +172,20 @@ export function buildPreview({ aoa, headerIdx, mapping, items, recognized, orgs,
   let yearDefaulted = 0;
   let minFrom = '';
   let maxTo = '';
-  const itemCols = cols.filter((c) => c.role.startsWith('item:')).map((c) => ({ idx: c.idx, itemId: c.role.slice(5) }));
-  const newCols = cols.filter((c) => c.role === 'new').map((c) => ({ idx: c.idx, header: cell(aoa[headerIdx]?.[c.idx]) }));
+  // 'new' 열은 임시 항목으로 셈에 넣고(기본 인정), 적용할 때 새 실적 항목으로 등록한다 (엑셀의 건수 종류 → 실적 인정 항목 자동 연결)
+  const newItems = cols.filter((c) => c.role === 'new').map((c) => ({ tempId: `${NEW_ITEM_PREFIX}${c.idx}`, name: cell(aoa[headerIdx]?.[c.idx]) || `열 ${c.idx + 1}`, idx: c.idx }));
+  const allItems = [...items, ...newItems.map((n) => ({ id: n.tempId, name: n.name }))];
+  const itemCols = [
+    ...cols.filter((c) => c.role.startsWith('item:')).map((c) => ({ idx: c.idx, itemId: c.role.slice(5), name: items.find((it) => it.id === c.role.slice(5))?.name ?? '(삭제된 항목)', isNew: false })),
+    ...newItems.map((n) => ({ idx: n.idx, itemId: n.tempId, name: n.name, isNew: true })),
+  ];
+  const recognizedAll = [...recognized, ...newItems.map((n) => n.tempId)];
   if (orgCol === undefined) push('error', '기관명 열을 지정하세요.');
+  if (itemCols.length === 0) push('error', '건수 열이 하나도 없습니다. 실적 항목 열을 지정하세요.');
   for (const id of recognized) {
-    if (!itemCols.some((c) => c.itemId === id)) push('error', `인정 실적 항목 '${items.find((i) => i.id === id)?.name ?? id}'에 연결된 열이 없습니다.`);
+    if (!itemCols.some((c) => c.itemId === id)) push('error', `인정 실적 항목 '${items.find((i) => i.id === id)?.name ?? id}'에 연결된 열이 없습니다. 열을 연결하거나 산출 조건에서 항목을 빼세요.`);
   }
-  for (const c of newCols) push('info', `'${c.header}' 열은 등록되지 않은 항목입니다. 새 실적 항목으로 추가하거나 '사용 안 함'으로 두세요.`);
+  for (const n of newItems) push('info', `'${n.name}' 열은 적용할 때 새 실적 항목으로 등록하고 인정 항목에 넣습니다. 쓰지 않을 열이면 '사용 안 함'으로 바꾸세요.`);
 
   const registered = new Map(orgs.map((o) => [normalizeName(o.name, nameMode), o]));
   const groups = new Map(); // 정규화한 기관명 → 미리보기 행
@@ -209,7 +221,7 @@ export function buildPreview({ aoa, headerIdx, mapping, items, recognized, orgs,
     const key = normalizeName(rawName, nameMode);
     let g = groups.get(key);
     if (!g) {
-      g = { key, name: rawName, srcRows: [], counts: Object.fromEntries(items.map((it) => [it.id, 0])), fileTotal: 0, hasTotal: false, errors: [] };
+      g = { key, name: rawName, srcRows: [], counts: Object.fromEntries(allItems.map((it) => [it.id, 0])), fileTotal: 0, hasTotal: false, errors: [] };
       groups.set(key, g);
     } else if (dup === 'error') {
       push('error', `${rowNo}행: '${rawName}'이(가) 여러 행에 있습니다 (D-12: 오류).`, { row: rowNo, org: rawName });
@@ -219,9 +231,8 @@ export function buildPreview({ aoa, headerIdx, mapping, items, recognized, orgs,
       const edited = edits[rawName]?.[c.itemId];
       const p = parseCount(edited !== undefined && g.srcRows.length === 1 ? edited : row[c.idx]);
       if (p.error) {
-        const itemName = items.find((it) => it.id === c.itemId)?.name ?? c.itemId;
         g.errors.push({ itemId: c.itemId, message: p.error });
-        push('error', `${rowNo}행 '${rawName}' ${itemName}: ${p.error}`, { row: rowNo, org: rawName, itemId: c.itemId });
+        push('error', `${rowNo}행 '${rawName}' ${c.name}: ${p.error}`, { row: rowNo, org: rawName, itemId: c.itemId });
       } else g.counts[c.itemId] += p.value;
     }
     if (totalCol !== undefined) {
@@ -250,7 +261,7 @@ export function buildPreview({ aoa, headerIdx, mapping, items, recognized, orgs,
     if (status === 'new') push('info', `'${g.name}'은(는) 등록되지 않은 기관입니다. 적용할 때 새 참가기관으로 등록합니다 (R-10.7).`, { org: g.name });
     if (status === 'unlinked') push('warn', `등록되지 않은 기관 '${g.name}' — 기존 기관에 연결하거나 제외하세요. 연결하지 않으면 적용에서 빠집니다.`, { org: g.name });
     if (status === 'inactive') push('warn', `'${g.name}'은(는) 분담 대상에서 제외된 기관입니다. 실적은 저장되지만 회비 산출에는 쓰이지 않습니다.`, { org: g.name });
-    const recognizedSum = recognized.reduce((s, id) => s + (g.counts[id] ?? 0), 0);
+    const recognizedSum = recognizedAll.reduce((s, id) => s + (g.counts[id] ?? 0), 0);
     rows.push({ key: g.key, name: g.name, status, orgId, counts: g.counts, recognizedSum, srcRows: g.srcRows, errors: g.errors, fileTotal: g.hasTotal ? g.fileTotal : null });
   }
 
@@ -279,13 +290,15 @@ export function buildPreview({ aoa, headerIdx, mapping, items, recognized, orgs,
     recognizedTotal: rows.filter((r) => r.status !== 'excluded' && r.status !== 'unlinked').reduce((s, r) => s + r.recognizedSum, 0),
   };
   const canApply = !issues.some((i) => i.level === 'error') && rows.length > 0;
-  return { rows, issues, stats, canApply, newColumns: newCols, itemCols };
+  return { rows, issues, stats, canApply, newItems, itemCols };
 }
 
-// 적용 (R-10.1 마지막 단계): 실적 데이터와 새로 등록할 기관
-export function applyPreview(preview, makeId = () => `org_${Math.random().toString(36).slice(2, 9)}`) {
+// 적용 (R-10.1 마지막 단계): 실적 데이터, 새로 등록할 기관, 엑셀 열에서 새로 만든 실적 항목
+export function applyPreview(preview, makeId = () => `org_${Math.random().toString(36).slice(2, 9)}`, makeItemId = () => `item_${Math.random().toString(36).slice(2, 9)}`) {
   const perf = {};
   const newOrgs = [];
+  const itemIdMap = {}; // 임시 id → 진짜 id
+  const newItems = preview.newItems.map((n) => { const id = makeItemId(); itemIdMap[n.tempId] = id; return { id, name: n.name, header: n.name, idx: n.idx }; });
   for (const r of preview.rows) {
     if (r.status === 'excluded' || r.status === 'unlinked') continue;
     let id = r.orgId;
@@ -294,9 +307,9 @@ export function applyPreview(preview, makeId = () => `org_${Math.random().toStri
       newOrgs.push({ id, name: r.name, active: true, postOffice: /우체국/.test(r.name.replace(/\s+/g, '')) });
     }
     perf[id] = { ...(perf[id] ?? {}) };
-    for (const [itemId, n] of Object.entries(r.counts)) perf[id][itemId] = (perf[id][itemId] ?? 0) + n;
+    for (const [tempId, n] of Object.entries(r.counts)) { const itemId = itemIdMap[tempId] ?? tempId; perf[id][itemId] = (perf[id][itemId] ?? 0) + n; }
   }
-  return { perf, newOrgs };
+  return { perf, newOrgs, newItems };
 }
 
 // 기관명만 뽑기 (참가기관 화면 "엑셀에서 기관명 불러오기"). 합계 행과 중복은 뺀다.

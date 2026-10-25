@@ -82,7 +82,7 @@ function startUpload(sheets, fileName) {
   const headerIdx = detectHeaderRow(sheets[sheetIdx].aoa);
   ui.upload = {
     fileName, sheets, sheetIdx, headerIdx,
-    mapping: guessMapping(sheets[sheetIdx].aoa[headerIdx] ?? [], b.items, b.mapping),
+    mapping: guessMapping(sheets[sheetIdx].aoa[headerIdx] ?? [], b.items, b.mapping, sheets[sheetIdx].aoa.slice(headerIdx + 1, headerIdx + 51)),
     nameMap: {}, edits: {},
     info: { year: b.cond.year, quarter: b.cond.quarter, start: b.cond.perfPeriod.start, end: b.cond.perfPeriod.end },
   };
@@ -91,7 +91,7 @@ function remap() {
   const b = biz();
   const u = ui.upload;
   u.headerIdx = Math.min(u.headerIdx, Math.max(0, u.sheets[u.sheetIdx].aoa.length - 1));
-  u.mapping = guessMapping(u.sheets[u.sheetIdx].aoa[u.headerIdx] ?? [], b.items, b.mapping);
+  u.mapping = guessMapping(u.sheets[u.sheetIdx].aoa[u.headerIdx] ?? [], b.items, b.mapping, u.sheets[u.sheetIdx].aoa.slice(u.headerIdx + 1, u.headerIdx + 51));
 }
 
 // ── 동작 (data-act / data-on-change) ───────────────────────────────
@@ -183,7 +183,6 @@ const actions = {
   renameItem: (d, el) => { const it = biz().items.find((i) => i.id === d.arg); if (it && el.value.trim()) { it.name = el.value.trim(); commit(); } },
   delItem: (d) => {
     const b = biz();
-    if (b.items.length <= 1) { toast('실적 항목은 하나 이상 있어야 합니다.'); return; }
     b.items = b.items.filter((i) => i.id !== d.arg);
     b.recognized = b.recognized.filter((i) => i !== d.arg);
     for (const p of Object.values(b.perf)) delete p[d.arg];
@@ -201,15 +200,6 @@ const actions = {
   selectSheet: (d, el) => { ui.upload.sheetIdx = Number(el.value); ui.upload.headerIdx = detectHeaderRow(ui.upload.sheets[ui.upload.sheetIdx].aoa); remap(); render(); },
   setHeaderRow: (d, el) => { ui.upload.headerIdx = Math.max(0, Number(el.value) - 1); remap(); render(); },
   setMapping: (d, el) => { ui.upload.mapping[d.arg] = el.value; render(); },
-  addItemFromColumn: (d) => {
-    const b = biz();
-    const header = String(ui.upload.sheets[ui.upload.sheetIdx].aoa[ui.upload.headerIdx]?.[d.arg] ?? '').trim() || '새 항목';
-    const it = { id: uid('item'), name: header };
-    b.items.push(it);
-    b.recognized.push(it.id);
-    ui.upload.mapping[d.arg] = `item:${it.id}`;
-    commit();
-  },
   setNameMap: (d, el) => { ui.upload.nameMap[d.arg] = el.value === '__new__' ? undefined : el.value; if (el.value === '__new__') delete ui.upload.nameMap[d.arg]; render(); },
   editCount: (d, el) => { const u = ui.upload; u.edits[d.arg] = { ...(u.edits[d.arg] ?? {}), [d.item]: el.value }; render(); },
   setUploadInfo: (d, el) => { ui.upload.info[d.arg] = el.type === 'number' ? Number(el.value) : el.value; render(); },
@@ -217,18 +207,22 @@ const actions = {
     const b = biz();
     const p = previewOf(b);
     if (!p.canApply) { toast('오류를 먼저 해결하세요.'); return; }
-    const { perf, newOrgs } = applyPreview(p, () => uid('org'));
+    const { perf, newOrgs, newItems } = applyPreview(p, () => uid('org'), () => uid('item'));
     b.orgs.push(...newOrgs);
     if (newOrgs.some((o) => o.postOffice) && b.orgs.filter((o) => o.postOffice).length > 1) for (const o of newOrgs) o.postOffice = false;
+    // 엑셀의 건수 열을 실적 항목으로 등록하고 인정 항목에 넣는다
+    for (const it of newItems) { b.items.push({ id: it.id, name: it.name }); b.recognized.push(it.id); }
     b.perf = perf;
     const u = ui.upload;
     const headers = u.sheets[u.sheetIdx].aoa[u.headerIdx] ?? [];
-    b.mapping = Object.fromEntries(Object.entries(u.mapping).filter(([i]) => String(headers[i] ?? '').trim()).map(([i, role]) => [String(headers[i]).trim(), role]));
+    const roleOf = (i, role) => (role === 'new' ? `item:${newItems.find((it) => it.idx === Number(i))?.id ?? ''}` : role);
+    b.mapping = Object.fromEntries(Object.entries(u.mapping).filter(([i]) => String(headers[i] ?? '').trim()).map(([i, role]) => [String(headers[i]).trim(), roleOf(i, role)]));
     b.cond.year = u.info.year; b.cond.quarter = u.info.quarter;
     b.cond.perfPeriod = { start: u.info.start, end: u.info.end };
     b.perfMeta = { fileName: u.fileName, sheet: u.sheets[u.sheetIdx].name, start: u.info.start, end: u.info.end, year: u.info.year, quarter: u.info.quarter, appliedAt: new Date().toISOString().slice(0, 10), rows: p.rows.length, newOrgs: newOrgs.length };
     ui.upload = null;
-    toast(`실적 데이터를 적용했습니다${newOrgs.length ? ` (새 기관 ${newOrgs.length}곳 등록)` : ''}.`);
+    const added = [newOrgs.length ? `새 기관 ${newOrgs.length}곳` : '', newItems.length ? `실적 항목 ${newItems.map((it) => it.name).join('·')} 등록` : ''].filter(Boolean).join(', ');
+    toast(`실적 데이터를 적용했습니다${added ? ` (${added})` : ''}.`);
     commit();
   },
   cancelUpload: () => { ui.upload = null; render(); },

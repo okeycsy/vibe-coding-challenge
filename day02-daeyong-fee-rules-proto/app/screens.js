@@ -136,9 +136,10 @@ function cond({ b, run }) {
     ${c.equalMethod === 'A' ? decisionRow(b, 'D-4') : decisionRow(b, 'D-7', `<span class="row">단위 ${select('data-field="decisions.D-7.unit" data-type="int"', [1, 10, 100, 1000, 10000].map((u) => ({ value: u, label: `${n(u)}원` })), dec(b, 'D-7').unit)} ${select('data-field="decisions.D-7.rounding"', Object.entries(ROUNDING_MODES).map(([value, label]) => ({ value, label })), dec(b, 'D-7').rounding)} 금액 <input type="text" class="num sm" value="${n(dec(b, 'D-7').amount)}" data-field="decisions.D-7.amount" data-type="int" ${dec(b, 'D-7').value === 'manual' ? '' : 'disabled'}></span>`)}
     ${run.alloc ? `<p class="formula">균등회비 총액 ${won(run.alloc.equal.pool)} (실제 ${run.alloc.equal.actualPercent}, 설정 ${run.alloc.equal.setPercent}) · 실적회비 총액 ${won(run.alloc.perf.pool)}</p>` : ''}
     <h3>실적 인정 항목 ${rule('R-6.2')}</h3>
+    ${b.items.length ? '' : `<p class="inline-note">아직 실적 항목이 없습니다. <b>3 실적 데이터</b>에서 엑셀을 올리면 파일의 건수 열(예: 압류·추심·해제, API 호출건수 등)이 자동으로 실적 항목이 되고 모두 인정 항목으로 들어옵니다. 필요하면 아래에서 직접 추가할 수도 있습니다.</p>`}
     <div class="choice">${b.items.map((it) => `<label class="${b.recognized.includes(it.id) ? 'on' : ''}"><input type="checkbox" ${b.recognized.includes(it.id) ? 'checked' : ''} data-act="toggleRecognized" data-arg="${it.id}"> <input type="text" value="${esc(it.name)}" data-on-change="renameItem" data-arg="${it.id}" style="flex:1"> <button class="danger" data-act="delItem" data-arg="${it.id}">삭제</button></label>`).join('')}</div>
     <div class="row" style="margin-top:8px"><input id="newItemName" type="text" placeholder="새 실적 항목 (예: API 호출건수)"><button data-act="addItem">항목 추가</button></div>
-    <p class="inline-note">인정 실적 = 체크한 항목 건수의 합. 바꾸면 즉시 다시 계산됩니다 (R-6.3).</p>
+    <p class="inline-note">인정 실적 = 체크한 항목 건수의 합. 바꾸면 즉시 다시 계산됩니다 (R-6.3). 항목 이름은 엑셀 머리글에서 가져오며 여기서 고칠 수 있습니다.</p>
     <h3>실적 기준기간 ${rule('R-10.3')}</h3>
     <div class="grid">
       ${field('시작일', `<input type="date" value="${esc(c.perfPeriod.start)}" data-field="cond.perfPeriod.start">`)}
@@ -160,7 +161,7 @@ function data({ b, run, ui, preview }) {
       <button data-act="downloadTemplate">업로드 양식 내려받기</button>
       <label><input type="checkbox" ${b.cond.autoAddOrgs ? 'checked' : ''} data-field="cond.autoAddOrgs" data-type="bool"> 없는 기관명은 적용할 때 자동 등록 (R-10.7)</label>
     </div>
-    <p class="inline-note">업로드 → 열 매핑 → 검증 → 미리보기·수정 → "실적 데이터 적용" 순서로 진행합니다. 파일은 이 브라우저 안에서만 읽습니다.</p>
+    <p class="inline-note">업로드 → 열 매핑 → 검증 → 미리보기·수정 → "실적 데이터 적용" 순서로 진행합니다. 파일의 건수 열은 적용할 때 실적 항목으로 자동 등록되어 산출 조건의 인정 항목에 들어갑니다. 파일은 이 브라우저 안에서만 읽습니다.</p>
     ${decisionRow(b, 'D-11')}${decisionRow(b, 'D-12')}${decisionRow(b, 'D-15')}
   </div>`;
 
@@ -199,7 +200,7 @@ function data({ b, run, ui, preview }) {
     <h2>② 열 매핑 ${rule('R-10.2')} <small class="muted">같은 양식은 적용할 때 매핑이 저장되어 다음에 자동으로 붙습니다</small></h2>
     <div class="tbl"><table>
       <thead><tr><th>엑셀 열</th><th>예시 값</th><th>역할</th></tr></thead>
-      <tbody>${headers.map((h, i) => `<tr><td><b>${esc(h ?? '(빈 머리글)')}</b></td><td class="muted">${esc(sheet.aoa.slice(u.headerIdx + 1, u.headerIdx + 4).map((r) => r?.[i]).filter((v) => v !== null && v !== undefined && v !== '').slice(0, 3).join(', '))}</td><td class="row">${select(`data-on-change="setMapping" data-arg="${i}"`, roleOptions, u.mapping[i] ?? 'ignore')}${u.mapping[i] === 'new' ? `<button data-act="addItemFromColumn" data-arg="${i}">'${esc(h)}'을(를) 새 실적 항목으로 추가</button>` : ''}</td></tr>`).join('')}</tbody>
+      <tbody>${headers.map((h, i) => `<tr><td><b>${esc(h ?? '(빈 머리글)')}</b></td><td class="muted">${esc(sheet.aoa.slice(u.headerIdx + 1, u.headerIdx + 4).map((r) => r?.[i]).filter((v) => v !== null && v !== undefined && v !== '').slice(0, 3).join(', '))}</td><td class="row">${select(`data-on-change="setMapping" data-arg="${i}"`, roleOptions, u.mapping[i] ?? 'ignore')}${u.mapping[i] === 'new' ? `<span class="inline-note">적용할 때 실적 항목 '${esc(h)}'(으)로 등록</span>` : ''}</td></tr>`).join('')}</tbody>
     </table></div>
   </div>
   <div class="panel">
@@ -210,7 +211,7 @@ function data({ b, run, ui, preview }) {
   <div class="panel">
     <h2>④ 미리보기·수정 ${rule('R-10.6')}</h2>
     <div class="tbl"><table>
-      <thead><tr><th>파일 기관명</th><th>상태 / 연결</th>${preview.itemCols.map((c) => `<th class="n">${esc(b.items.find((it) => it.id === c.itemId)?.name ?? '')}</th>`).join('')}<th class="n">인정 실적</th><th class="n">파일 합계</th><th>행</th></tr></thead>
+      <thead><tr><th>파일 기관명</th><th>상태 / 연결</th>${preview.itemCols.map((c) => `<th class="n">${esc(c.name)}${c.isNew ? ' <small>(새 항목)</small>' : ''}</th>`).join('')}<th class="n">인정 실적</th><th class="n">파일 합계</th><th>행</th></tr></thead>
       <tbody>${preview.rows.map((r) => {
         const linkOptions = [{ value: '__new__', label: b.cond.autoAddOrgs ? '새 기관으로 등록' : '연결 안 함 (적용에서 제외)' }, ...b.orgs.map((o) => ({ value: o.id, label: `기존: ${o.name}` })), { value: '', label: '제외' }];
         const linkSel = r.status === 'new' || r.status === 'unlinked' || r.status === 'excluded' || r.status === 'linked'
@@ -372,7 +373,7 @@ function cross({ b, run, ui }) {
   </div>
   <div class="panel">
     <h2>병행검증 ③ 자동 검증 (명령줄)</h2>
-    <p class="inline-note"><code>npm test</code> 규칙 예시 테스트 21개, <code>npm run crosscheck</code> 예시 업무 2개 + 시드 고정 무작위 업무 500개를 두 엔진에 넣어 전부 비교합니다. 자세한 내용은 README.</p>
+    <p class="inline-note"><code>npm test</code> 규칙 예시 테스트 22개, <code>npm run crosscheck</code> 예시 업무 2개 + 시드 고정 무작위 업무 500개를 두 엔진에 넣어 전부 비교합니다. 자세한 내용은 README.</p>
   </div>`;
 }
 

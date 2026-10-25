@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { runBusiness as runProto } from '../rules/run.js';
 import { runBusiness as runV4 } from '../reference/v4-engine/pipeline.js';
-import { sampleBusinesses, newBusiness } from '../rules/model.js';
+import { sampleBusinesses, newBusiness, DEFAULT_ITEMS } from '../rules/model.js';
 import { toV4Business, compareRuns } from '../rules/compat.js';
 
 const N = Number(process.argv[2] ?? 300);
@@ -20,6 +20,7 @@ const int = (lo, hi) => lo + Math.floor(rand() * (hi - lo + 1));
 
 function randomBusiness(i) {
   const b = newBusiness(`무작위 ${i}`);
+  b.items = DEFAULT_ITEMS.map((it) => ({ ...it }));
   const n = int(2, 15);
   b.orgs = Array.from({ length: n }, (_, k) => ({ id: `o${k}`, name: k === n - 1 && rand() < 0.7 ? '우체국' : `${String.fromCharCode(65 + (k % 26))}기관${k}`, active: rand() > 0.1, postOffice: false }));
   const po = b.orgs.find((o) => o.name === '우체국');
