@@ -25,6 +25,13 @@
 - 공개 배포는 Vercel Git 연결로 한다 (Root Directory `day01-gyeongsik-fee-calculator`, Production Branch `main`). 토큰·GitHub Actions 배포는 쓰지 않는다
 
 ## 세션 로그
+### 2026-10-25 (경식, skill.md 4섹션 표준·AI 계산식 빌더·특이사항 후처리)
+- skill.md 표준 4섹션: 1 비즈니스 규칙 요약(필수) · 2 AI 예외 차감 지침(선택) · 3 정산 수식(필수, formula 2000자 이하) · 4 최종 정산 특이사항(선택, 신설). 3번은 4번 앞에서 끝남. 파서(서버 `SkillEngineService`, 프론트 `skill.js`)가 `specialRules`·`specialRulesRaw`를 응답에 실음. 기본 5개 md·새 업무 템플릿에 4번 추가. CD공동망·타행환 4번에 "1개 기관 10원 단위 절상 / 차이분 실적 큰 순 1원씩 절삭" 규칙
+- 2단계 정산: Step 1 수식 계산(원 단위 배분을 정수 백만분의 1원 방식으로 바꿔 서버·브라우저 동률 처리 일치) → Step 2 `SpecialRulePostProcessor`(프론트 `specialRules.js`)가 4번 적용. 균등분담분·실적분담분 분리, 결과·엑셀 2종에 열 추가, [특이사항 보정 +N원]·[절삭 -1원] 배지. 금액 계산에는 AI를 쓰지 않음(AI는 이슈 차감 판별만)
+- `POST /api/v1/skills/{taskCode}/generate-formula`: 1번 규칙 → 3번 수식(AI, 키 없으면 규칙 기반 5패턴), 업무 권한 403. 프론트 `formulaGenerator.js`가 같은 변환기
+- 화면: 회비기준 관리를 ① 기준 문서 편집(폼·Raw) ② AI 계산식 빌더(자동 생성·변수 칩·시뮬레이터·3단계 검증·확정 반영)로 분리. STEP 1에 4번 표시
+- 대체·제거(직전 AI 규칙 보정 작업과 겹친 부분): `sync-formula` API·`FormulaSync*` → `generate-formula`, LLM 금액 보정(Step C `adjustFees`)·`RuleBasedFeeRules.postProcess` → `SpecialRulePostProcessor`, 응답 `primaryFee`·`aiAdjustReason` → `beforeSpecialFee`·`specialReason`, [AI 규칙 보정] 배지 → [특이사항 보정]/[절삭], `aiRules.js`의 생성기·후처리 → `formulaGenerator.js`·`specialRules.js`, 금거정 NH농협 10원 규칙을 1번 → 4번으로 이동
+- 검증: `mvn test` 37개, 서버·Mock 교차 확인 1,120건 산출·13건 수식 생성 모두 일치, Playwright로 두 모드 화면 결과 동일. 이미 만들어진 서버 `data/skills`는 [초기 기준 복원]해야 4번 섹션이 들어감
 ### 2026-10-25 (경식, AI 규칙 보정 2단계 산출)
 - skill.md 1·2번 섹션이 표시용에 그치던 한계 개선. 산출 순서: Step A 이슈 문장을 `## 2. AI 예외 차감 지침`으로 판별(지침상 제외는 차감 안 함, 근거 기록) → Step B `## 3.` 수식으로 1차 회비(primaryFee) → Step C `AiFeePostProcessor`가 `## 1. 비즈니스 규칙 요약`의 단수 처리·예외 규정으로 최종 회비(fee)와 `aiAdjustReason`
 - LLM: OpenAI Chat Completions 호환 RestClient(`ai.api-key`=`${AI_API_KEY:}`, `ai.model`, `ai.base-url`로 Gemini 호환 주소 가능). 키 없으면 규칙 기반(`RuleBasedFeeRules`), AI 실패·이상 응답은 그 단계만 규칙 기반으로 전환(aiMode AI/RULE/RULE_FALLBACK). AI 보정값은 정수·0 이상·1차 금액 2배 이내만 반영. 기동 시 시연 산출은 AI 호출 안 함

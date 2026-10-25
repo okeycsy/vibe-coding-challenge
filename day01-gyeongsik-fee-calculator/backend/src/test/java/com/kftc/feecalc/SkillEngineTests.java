@@ -82,6 +82,38 @@ class SkillEngineTests {
     }
 
     @Test
+    void 사번_섹션_최종_정산_특이사항은_선택이고_수식은_3번_섹션_안에서만_읽는다() throws Exception {
+        assertThat(engine.getSkill("CD_NET").specialRules()).containsExactly(
+                "참가기관 중 1개 기관(첫 번째 기관 또는 지정 기관)은 산출된 회비 총액을 10원 단위로 절상한다.",
+                "절상으로 인해 발생한 차이분(초과액)은 최종 인정 실적(#finalCount)이 큰 기관 순서대로 1원씩 절삭하여 분기 총액을 맞춘다.");
+        assertThat(engine.getSkill("INTERBANK").specialRules()).hasSize(2);
+        assertThat(engine.getSkill("FIN_INFO").specialRulesRaw()).startsWith("- NH농협은행은 회비를 10원 단위로 절상");
+        // 금거정 1번 요약에는 더 이상 후처리 규칙이 없다 (4번으로 옮김)
+        assertThat(engine.getSkill("FIN_INFO").summaryText()).doesNotContain("절상");
+        assertThat(engine.getSkill("CMS").specialRules()).isEmpty();
+        assertThat(engine.getSkill("CMS").specialRulesRaw()).isEmpty();
+
+        String md = files.read("CMS");
+        // 4번 섹션이 없는 예전 3섹션 문서도 그대로 읽힌다
+        String threeSections = md.substring(0, md.indexOf("## 4."));
+        assertThat(SkillEngineService.parse("CMS", "cms", threeSections).specialRules()).isEmpty();
+        // 4번 섹션 안의 코드 블록은 수식으로 읽지 않는다 (3번 경계는 4번 직전까지)
+        String withFence = threeSections + "## 4. 최종 정산 특이사항\n\n- 10원 미만 절사\n\n```formula\n999\n```\n";
+        SkillEngineService.ParsedSkill p = SkillEngineService.parse("CMS", "cms", withFence);
+        assertThat(p.formula()).isEqualTo("(#finalCount > 0 ? 900000 * #periodScale : 0) + #finalCount * 8");
+        assertThat(p.specialRules().get(0)).isEqualTo("10원 미만 절사");
+
+        mvc.perform(get("/api/v1/skills/CD_NET").header(H, "admin"))
+                .andExpect(jsonPath("$.data.specialRules", hasSize(2)))
+                .andExpect(jsonPath("$.data.specialRulesRaw", containsString("10원 단위로 절상")));
+        // 4번을 고쳐 저장하면 다음 산출부터 반영된다 (선택 섹션이라 비워도 저장된다)
+        save("admin", "CMS", md.replace("## 4. 최종 정산 특이사항\n", "## 4. 최종 정산 특이사항\n\n- 100원 미만 절사\n"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.specialRules[0]", is("100원 미만 절사")));
+        save("admin", "CMS", threeSections).andExpect(status().isOk());
+    }
+
+    @Test
     void 업무마다_다른_수식으로_계산한다() {
         // 구간별 차등 단가: 100만×20 + 200만×15 + 50만×10
         assertThat(engine.calculate("OPEN_BANKING", 3_600_000, 100_000, 3_500_000, 0, 1)).isEqualTo(55_000_000L);
@@ -234,7 +266,7 @@ class SkillEngineTests {
         String skeleton = Files.readString(files.directory().resolve("giro-payment.md"));
         assertThat(skeleton).startsWith("# 지로 회비 산정 기준 (GIRO_PAY)\n\n- 업무명: 지로\n")
                 .contains("- 산정 유형:", "- 표시 단위:", "## 1. 비즈니스 규칙 요약", "## 2. AI 예외 차감 지침",
-                        "## 3. 정산 수식", "```formula\n```");
+                        "## 3. 정산 수식", "```formula\n```\n\n## 4. 최종 정산 특이사항\n");
         assertThat(Files.readString(files.directory().resolve("tasks.json"))).contains("giro-payment.md");
 
         // skill.md 관리 화면에도 보이고, 섹션이 비어 있어도 열린다

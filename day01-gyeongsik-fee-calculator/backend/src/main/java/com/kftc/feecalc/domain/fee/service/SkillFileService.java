@@ -230,7 +230,7 @@ public class SkillFileService {
 
     /**
      * 처음 만든 업무의 skill.md: 기본 템플릿에서 반드시 있어야 하는 뼈대만 넣는다.
-     * # 제목, 업무명·산정 유형·표시 단위 항목, ## 1~3 섹션 제목, 빈 ```formula 블록. 내용은 비어 있어
+     * # 제목, 업무명·산정 유형·표시 단위 항목, ## 1~4 섹션 제목, 빈 ```formula 블록 (2번·4번은 선택 섹션). 내용은 비어 있어
      * 요약과 수식을 채워 저장하기 전까지는 산출에 쓰이지 않는다.
      */
     static String skeletonTemplate(TaskEntry t) {
@@ -247,7 +247,9 @@ public class SkillFileService {
                 + "## 3. 정산 수식\n"
                 + "\n"
                 + "```formula\n"
-                + "```\n";
+                + "```\n"
+                + "\n"
+                + "## 4. 최종 정산 특이사항\n";
     }
 
     private void saveRegistry() {
@@ -326,7 +328,10 @@ public class SkillFileService {
                 !content.equals(readDefault(task(taskCode))), updatedBy.get(taskCode));
     }
 
-    /** 검증(섹션 → 수식 구문 → 시험 계산)을 통과하면 파일을 덮어쓴다. 실패하면 파일은 그대로다 */
+    /**
+     * 검증(섹션: 1번·3번 필수, 2번·4번 선택 → 수식 구문 → 시험 계산 2벌)을 통과하면 임시 파일에 쓴 뒤 ATOMIC_MOVE 로 바꿔 끼운다.
+     * 실패하면 파일은 그대로다
+     */
     public synchronized void save(String taskCode, String content, String employeeId) {
         Path file = path(taskCode);
         if (content == null || content.isBlank()) {

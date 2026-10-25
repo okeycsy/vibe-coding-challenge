@@ -24,22 +24,29 @@ import { downloadReconciliation, downloadRevenueResolution } from '../utils/exce
 import { Card, Select, StatusBadge } from './ui';
 import DateField from './DateField';
 import { api, apiEnabled } from '../utils/api';
-import { TASK_CODES, builtInTasks, localSkillDetail } from '../utils/skill';
+import { TASK_CODES, builtInTasks, lines, localSkillDetail } from '../utils/skill';
 import { MAX_UPLOAD_MB, SAMPLE_FILE, UploadError, checkUploadFile, parseUploadInBrowser } from '../utils/upload';
 
 const NEXT_STATUS = { 대기: '확인중', 확인중: '완료', 완료: '대기' };
+
+// 결과 표 배지 문구: 올린 기관은 [특이사항 보정 +6원], 실적순으로 깎인 기관은 [절삭 -1원]
+const specialBadge = (r) => {
+  const amount = `${r.specialAdjustment > 0 ? '+' : ''}${fmt(r.specialAdjustment)}원`;
+  if (r.specialAdjustment < 0 && r.specialReason?.includes('절삭')) return `절삭 ${amount}`;
+  return `특이사항 보정 ${amount}`;
+};
 const LOADING_STEPS = [
   'Raw Data 검증 중…',
   'AI 예외 차감 지침으로 이슈 판별 중…',
-  '정산 수식(formula)으로 1차 회비 계산 중…',
-  'AI가 비즈니스 규칙 특이사항으로 최종 보정 중…',
+  'Step 1: 3번 정산 수식(formula)으로 1차 정밀 계산 중…',
+  'Step 2: 4번 최종 정산 특이사항으로 후처리 보정 중…',
 ];
 // 산출 결과의 AI 단계 동작 방식 (서버 aiMode)
 const AI_MODE_LABEL = {
-  AI: 'AI 판별·보정',
-  RULE: '규칙 기반 판별·보정 (AI 키 없음)',
-  RULE_FALLBACK: '규칙 기반 판별·보정 (AI 호출 실패)',
-  MOCK: '규칙 기반 판별·보정 (서버 미연결)',
+  AI: 'AI 이슈 판별',
+  RULE: '규칙 기반 이슈 판별 (AI 키 없음)',
+  RULE_FALLBACK: '규칙 기반 이슈 판별 (AI 호출 실패)',
+  MOCK: '규칙 기반 이슈 판별 (서버 미연결)',
 };
 
 // 기간 빠른 선택. 기본값은 오늘 기준 직전 분기(회비는 분기 종료 후 산출)다.
@@ -229,7 +236,7 @@ export default function FeeCalculation({
     const k = key;
     const issues = draft.issues;
     const upload = draft.file;
-    const used = { calcType: skill.calcType, formula: skill.formula, summary: skill.summary };
+    const used = { calcType: skill.calcType, formula: skill.formula, summary: skill.summary, specialRules: skill.specialRules ?? [] };
     setLoadingStep(0);
     later(() => setLoadingStep(1), 500);
     later(() => setLoadingStep(2), 1000);
@@ -250,7 +257,7 @@ export default function FeeCalculation({
             // 서버는 빈 문장을 빼지 않은 같은 순서로 판별 결과를 돌려준다
             issues: issues.map((i, idx) => ({ ...i, applied: res.issues[idx]?.applied, judgement: res.issues[idx]?.judgement })),
             ai: { mode: res.aiMode, model: res.aiModel, note: res.aiNote },
-            used: { ...used, calcType: res.calcType, formula: res.formula },
+            used: { ...used, calcType: res.calcType, formula: res.formula, specialRules: lines(res.specialRules) },
           }))
       : new Promise((resolve) =>
           resolve({ ...calculateFees({ businessId, from, to, issues, skill, counts: upload.counts }), used }),
@@ -272,9 +279,9 @@ export default function FeeCalculation({
             createdAt: new Date().toLocaleString('ko-KR'),
           },
         }));
-        const adjustedCount = rows.filter((r) => r.aiAdjustReason).length;
+        const adjustedCount = rows.filter((r) => r.specialRuleApplied).length;
         notify(
-          `skill.md 수식으로 1차 산출 후 ${adjustedCount ? `${adjustedCount}개 기관을 비즈니스 규칙으로 보정했습니다` : '비즈니스 규칙 보정 대상은 없었습니다'}.`,
+          `Step 1 수식 계산 후 ${adjustedCount ? `Step 2 최종 정산 특이사항으로 ${adjustedCount}개 기관을 보정했습니다` : '최종 정산 특이사항 보정 대상은 없었습니다'}.`,
         );
       })
       .catch((e) => notify(`산출하지 못했습니다: ${e.message}`, 'error'))
@@ -294,6 +301,7 @@ export default function FeeCalculation({
   const downloadForInstitutions = () => {
     downloadReconciliation({
       business: { ...business, summary: run.skill?.summary ?? business.summary },
+      skill: run.skill,
       from,
       to,
       rows: visibleRows,
@@ -306,8 +314,15 @@ export default function FeeCalculation({
   };
 
   const totals = visibleRows.reduce(
-    (t, r) => ({ base: t.base + r.baseCount, ded: t.ded + r.deduction, fin: t.fin + r.finalCount, fee: t.fee + r.fee }),
-    { base: 0, ded: 0, fin: 0, fee: 0 },
+    (t, r) => ({
+      base: t.base + r.baseCount,
+      ded: t.ded + r.deduction,
+      fin: t.fin + r.finalCount,
+      eq: t.eq + (r.equalFee ?? 0),
+      perf: t.perf + (r.perfFee ?? r.fee),
+      fee: t.fee + r.fee,
+    }),
+    { base: 0, ded: 0, fin: 0, eq: 0, perf: 0, fee: 0 },
   );
 
   const loading = loadingStep >= 0;
@@ -448,6 +463,22 @@ export default function FeeCalculation({
                     </li>
                   ))}
                 </ul>
+                {skill?.specialRules?.length > 0 && (
+                  <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-semibold text-white">
+                      <Tag className="w-3 h-3" /> 최종 정산 특이사항 적용 업무
+                    </span>
+                    <p className="mt-1 text-[11px] text-amber-800">1차 수식 계산 후 아래 4번 규칙으로 금액을 보정합니다.</p>
+                    <ul className="mt-1 space-y-1 text-xs text-amber-900">
+                      {skill.specialRules.map((s) => (
+                        <li key={s} className="flex gap-2">
+                          <span className="mt-1.5 w-1 h-1 rounded-full bg-amber-500 shrink-0" />
+                          {s}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {skill && (
                   <p className="mt-3 text-[11px] text-slate-500">
                     정산 수식 ({TASK_CODES[businessId]}.md){' '}
@@ -752,14 +783,16 @@ export default function FeeCalculation({
                       '참가기관명',
                       '기본 건수',
                       'AI 예외 차감 건수',
-                      '최종 인정 건수',
+                      '실적(최종인정건수)',
                       '적용 단가/분담률',
-                      '산출 회비(초안)',
+                      '균등분담분',
+                      '실적분담분',
+                      '산출 회비(총합)',
                       '대사 상태',
                     ].map((h, i) => (
                       <th
                         key={h}
-                        className={`px-4 py-2.5 font-medium whitespace-nowrap ${i === 0 ? 'text-left' : i === 6 ? 'text-center' : 'text-right'}`}
+                        className={`px-4 py-2.5 font-medium whitespace-nowrap ${i === 0 ? 'text-left' : i === 8 ? 'text-center' : 'text-right'}`}
                       >
                         {h}
                       </th>
@@ -798,27 +831,34 @@ export default function FeeCalculation({
                         </td>
                         <td className="px-4 py-2.5 text-right tabular-nums font-medium">{fmt(r.finalCount)}</td>
                         <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">{r.rateLabel}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">{fmt(r.equalFee ?? 0)}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">{fmt(r.perfFee ?? r.fee)}</td>
                         <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-brand-900 whitespace-nowrap">
-                          {r.aiAdjustReason && (
+                          {fmt(r.fee)}원
+                          {r.specialRuleApplied && (
                             <span
-                              className="mr-1.5 inline-flex items-center gap-0.5 rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 cursor-help align-middle"
+                              className={`ml-1.5 inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-medium cursor-help align-middle ${
+                                r.specialAdjustment > 0
+                                  ? 'border-amber-300 bg-amber-50 text-amber-700'
+                                  : 'border-slate-300 bg-slate-50 text-slate-600'
+                              }`}
                               onMouseEnter={(e) => {
                                 const rect = e.currentTarget.getBoundingClientRect();
-                                setTooltip({ kind: 'ai', x: rect.right, y: rect.bottom + 6, row: r });
+                                setTooltip({ kind: 'special', x: rect.right, y: rect.bottom + 6, row: r });
                               }}
                               onMouseLeave={() => setTooltip(null)}
                               onFocus={(e) => {
                                 const rect = e.currentTarget.getBoundingClientRect();
-                                setTooltip({ kind: 'ai', x: rect.right, y: rect.bottom + 6, row: r });
+                                setTooltip({ kind: 'special', x: rect.right, y: rect.bottom + 6, row: r });
                               }}
                               onBlur={() => setTooltip(null)}
                               tabIndex={0}
-                              aria-label={`AI 규칙 보정: 보정 전 ${fmt(r.primaryFee)}원, ${r.aiAdjustReason}`}
+                              aria-label={`특이사항 보정: 보정 전 ${fmt(r.beforeSpecialFee)}원, ${r.specialReason}`}
                             >
-                              <Sparkles className="w-3 h-3" />AI 규칙 보정
+                              <Tag className="w-3 h-3" />
+                              {specialBadge(r)}
                             </span>
                           )}
-                          {fmt(r.fee)}원
                         </td>
                         <td className="px-4 py-2.5 text-center">
                           <StatusBadge
@@ -867,6 +907,8 @@ export default function FeeCalculation({
                       <td className="px-4 py-2.5 text-right text-slate-500 text-xs">
                         {business.method === 'unit' ? `${business.unitPrice}원/건` : '100.00%'}
                       </td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">{fmt(totals.eq)}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">{fmt(totals.perf)}</td>
                       <td className="px-4 py-2.5 text-right tabular-nums text-brand-900">{fmt(totals.fee)}원</td>
                       <td />
                     </tr>
@@ -874,10 +916,10 @@ export default function FeeCalculation({
                 )}
               </table>
             </div>
-            {visibleRows.some((r) => r.aiAdjustReason) && (
-              <p className="mt-2 text-xs text-violet-700 flex items-center gap-1">
-                <Sparkles className="w-3.5 h-3.5" /> [AI 규칙 보정] 배지는 1차 수식 회비를 skill.md 1번 비즈니스 규칙(단수 처리·예외
-                규정)으로 보정한 기관입니다. 배지에 마우스를 올리면 보정 전 금액과 사유가 보입니다.
+            {visibleRows.some((r) => r.specialRuleApplied) && (
+              <p className="mt-2 text-xs text-amber-700 flex items-center gap-1">
+                <Tag className="w-3.5 h-3.5" /> [특이사항 보정]·[절삭] 배지는 Step 1 수식 회비를 skill.md 4번 최종 정산 특이사항(10원 절상, 실적순 1원
+                절삭 등)으로 보정한 기관입니다. 배지에 마우스를 올리면 보정 전 금액과 사유가 보입니다.
               </p>
             )}
             {isOperator && run.issues.some((i) => i.applied === false) && (
@@ -907,18 +949,17 @@ export default function FeeCalculation({
 
       {tooltip && (
         <div
-          className="fixed z-50 max-w-sm -translate-x-full rounded-lg bg-brand-900 px-3 py-2 text-xs text-white shadow-xl"
+          className="fixed z-50 w-max max-w-sm -translate-x-full rounded-lg bg-brand-900 px-3 py-2 text-xs text-white shadow-xl"
           style={{ left: tooltip.x, top: tooltip.y }}
         >
-          {tooltip.kind === 'ai' ? (
+          {tooltip.kind === 'special' ? (
             <>
-              <p className="font-semibold text-violet-300 mb-1">AI 규칙 보정 (skill.md 1번 비즈니스 규칙)</p>
+              <p className="font-semibold text-amber-300 mb-1">최종 정산 특이사항 보정 (skill.md 4번)</p>
               <p className="tabular-nums">
-                보정 전 1차 수식 회비 {fmt(tooltip.row.primaryFee)}원 → 최종 {fmt(tooltip.row.fee)}원 (
-                {tooltip.row.fee - tooltip.row.primaryFee > 0 ? '+' : ''}
-                {fmt(tooltip.row.fee - tooltip.row.primaryFee)}원)
+                보정 전 {fmt(tooltip.row.beforeSpecialFee)}원 → 최종 {fmt(tooltip.row.fee)}원 ({tooltip.row.specialAdjustment > 0 ? '+' : ''}
+                {fmt(tooltip.row.specialAdjustment)}원)
               </p>
-              <p className="mt-1 text-slate-200">{tooltip.row.aiAdjustReason}</p>
+              <p className="mt-1 text-slate-200">{tooltip.row.specialReason}</p>
             </>
           ) : (
             <>

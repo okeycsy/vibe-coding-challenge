@@ -166,20 +166,24 @@ public class FeeExcelService {
             CellStyle header = headerStyle(wb);
 
             Sheet detail = wb.createSheet("대사내역");
-            writeRow(detail, 0, header, "기관코드", "기관명", "기준 실적", "AI 차감", "최종 인정 건수",
-                    "적용 단가/분담률", "1차 수식 회비(원)", "산출 회비(원)", "AI 규칙 보정 사유", "차감 사유");
+            writeRow(detail, 0, header, "기관코드", "기관명", "기준 실적", "AI 차감", "실적(최종인정건수)",
+                    "적용 단가/분담률", "균등분담분(원)", "실적분담분(원)", "산출 회비(총합, 원)", "특이사항 보정 전(원)",
+                    "특이사항 보정(원)", "특이사항 보정 사유", "차감 사유");
             int r = 1;
             for (FeeCalculationItem i : calc.getItems()) {
                 writeRow(detail, r++, null, i.getBankCode(), i.getInstitutionName(), i.getBaseCount(), i.getDeduction(),
-                        i.getFinalCount(), i.getRateLabel(), i.getPrimaryFee(), i.getFee(),
-                        i.getAiAdjustReason() == null ? "" : i.getAiAdjustReason(),
+                        i.getFinalCount(), i.getRateLabel(), i.getEqualFee(), i.getPerfFee(), i.getFee(),
+                        i.getBeforeSpecialFee(), i.getSpecialAdjustment(),
+                        i.getSpecialReason() == null ? "" : i.getSpecialReason(),
                         i.getDeductionReasons() == null ? "" : i.getDeductionReasons().replace("\n", " / "));
             }
             writeRow(detail, r, header, "합계", "", calc.getItems().stream().mapToLong(FeeCalculationItem::getBaseCount).sum(),
                     calc.getItems().stream().mapToLong(FeeCalculationItem::getDeduction).sum(),
-                    calc.getTotalFinalCount(), "", calc.getItems().stream().mapToLong(FeeCalculationItem::getPrimaryFee).sum(),
-                    calc.getTotalFeeAmount(), "", "");
-            autosize(detail, 10);
+                    calc.getTotalFinalCount(), "", calc.getItems().stream().mapToLong(FeeCalculationItem::getEqualFee).sum(),
+                    calc.getItems().stream().mapToLong(FeeCalculationItem::getPerfFee).sum(), calc.getTotalFeeAmount(),
+                    calc.getItems().stream().mapToLong(FeeCalculationItem::getBeforeSpecialFee).sum(),
+                    calc.getItems().stream().mapToLong(FeeCalculationItem::getSpecialAdjustment).sum(), "", "");
+            autosize(detail, 13);
 
             Sheet basis = wb.createSheet("산출기준");
             int b = 0;
@@ -188,7 +192,6 @@ public class FeeExcelService {
             writeRow(basis, b++, null, "산출 기간", period.label());
             if (calc.getAppliedFormula() != null) {
                 writeRow(basis, b++, null, "산출 방식", calc.getAppliedCalcType() + " (" + calc.getSkillCode() + ".md)");
-                writeRow(basis, b++, null, "정산 수식(SpEL)", calc.getAppliedFormula().replaceAll("\\s+", " "));
                 writeRow(basis, b++, null, "회비 합계(원)", calc.getTotalFeeAmount());
                 writeRow(basis, b++, null, "원 단위 처리", "원 미만 버림 후 최대잔여법으로 배정(합계 = 수식 결과 합계의 반올림)");
             } else if (biz.getMethod() == CalcMethod.UNIT) {
@@ -206,7 +209,17 @@ public class FeeExcelService {
             List<String> summary = calc.getSkillCode() != null
                     ? skillEngine.getSkill(calc.getSkillCode()).summary() : biz.getSummary();
             for (String line : summary) {
-                writeRow(basis, b++, null, "분담기준", line);
+                writeRow(basis, b++, null, "1. 비즈니스 규칙 요약", line);
+            }
+            if (calc.getAppliedFormula() != null) {
+                writeRow(basis, b++, null, "3. 정산 수식(적용)", calc.getAppliedFormula().replaceAll("\\s+", " "));
+            }
+            List<String> special = SkillEngineService.lines(calc.getAppliedSpecialRules());
+            if (special.isEmpty()) {
+                writeRow(basis, b++, null, "4. 최종 정산 특이사항", "없음");
+            }
+            for (String line : special) {
+                writeRow(basis, b++, null, "4. 최종 정산 특이사항", line);
             }
             autosize(basis, 2);
 
@@ -235,15 +248,18 @@ public class FeeExcelService {
         try (XSSFWorkbook wb = new XSSFWorkbook()) {
             CellStyle header = headerStyle(wb);
             Sheet sheet = wb.createSheet("수입결의");
-            writeRow(sheet, 0, header, "결의일자", "수입과목", "거래처", "금액", "적요");
+            writeRow(sheet, 0, header, "결의일자", "수입과목", "거래처", "실적(최종인정건수)", "균등분담분", "실적분담분",
+                    "금액(산출 회비 총합)", "적요");
             String today = LocalDate.now().toString();
             int r = 1;
             for (FeeCalculationItem i : calc.getItems()) {
-                writeRow(sheet, r++, null, today, biz.getRevenueAccount(), i.getInstitutionName(), i.getFee(),
-                        biz.getName() + " 회비 " + period.label());
+                writeRow(sheet, r++, null, today, biz.getRevenueAccount(), i.getInstitutionName(), i.getFinalCount(),
+                        i.getEqualFee(), i.getPerfFee(), i.getFee(), biz.getName() + " 회비 " + period.label());
             }
-            writeRow(sheet, r, header, "", "", "합계", calc.getTotalFeeAmount(), "");
-            autosize(sheet, 5);
+            writeRow(sheet, r, header, "", "", "합계", calc.getTotalFinalCount(),
+                    calc.getItems().stream().mapToLong(FeeCalculationItem::getEqualFee).sum(),
+                    calc.getItems().stream().mapToLong(FeeCalculationItem::getPerfFee).sum(), calc.getTotalFeeAmount(), "");
+            autosize(sheet, 8);
             return new ExcelFile(biz.getName() + "_수입결의_" + period.tag() + ".xlsx", toBytes(wb));
         } catch (IOException e) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "엑셀 생성에 실패했습니다.");

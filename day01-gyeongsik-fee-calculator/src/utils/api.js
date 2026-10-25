@@ -81,8 +81,10 @@ export const api = {
   skill: (taskCode) => request('GET', `/api/v1/skills/${taskCode}`),
   saveSkill: (taskCode, content) => request('PUT', `/api/v1/skills/${taskCode}`, { content }),
   resetSkill: (taskCode) => request('POST', `/api/v1/skills/${taskCode}/reset`),
-  // 1번 비즈니스 규칙 → 3번 정산 수식 자동 생성 (저장하지 않고 바뀐 content 를 돌려준다). AI 키가 없으면 서버도 규칙 기반
-  syncFormula: (taskCode, content) => request('POST', '/api/v1/skills/sync-formula', { taskCode, content }),
+  // 1번 비즈니스 규칙 텍스트 → 3번 정산 수식 자동 생성 (저장하지 않는다). AI 키가 없으면 서버도 내장 변환기
+  // → { generatedFormula, detectedPattern, explanation[], validationPassed, sampleResultNormal, sampleResultZero, source, ... }
+  generateFormula: (taskCode, businessRulesText) =>
+    request('POST', `/api/v1/skills/${taskCode}/generate-formula`, { businessRulesText }),
   aiStatus: () => request('GET', '/api/v1/ai/status'),
   // 업무 관리 (추가·삭제는 시스템관리자만). 업무 1개 = md 파일 1개
   tasks: () => request('GET', '/api/v1/tasks'),

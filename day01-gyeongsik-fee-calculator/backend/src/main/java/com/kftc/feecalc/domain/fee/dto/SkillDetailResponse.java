@@ -20,6 +20,10 @@ public record SkillDetailResponse(
         List<String> summary,
         /** ## 2. AI 예외 차감 지침 */
         String aiGuide,
+        /** ## 4. 최종 정산 특이사항 (줄 단위, 없으면 빈 목록) */
+        List<String> specialRules,
+        /** ## 4. 최종 정산 특이사항 원문 */
+        String specialRulesRaw,
         /** 산정 유형 (예: 구간별 차등 단가) */
         String calcType,
         /** 결과 표의 단가/분담률 표시 단위 (원/건 또는 %) */
@@ -38,14 +42,14 @@ public record SkillDetailResponse(
     public static SkillDetailResponse of(String taskName, String fileName, String content, ParsedSkill p,
                                          SkillFileMeta m) {
         return new SkillDetailResponse(p.taskCode(), taskName, p.businessId(), content, p.formula(), p.summary(),
-                p.aiGuide(), p.calcType(), p.rateUnit(), m.lastModified(), m.size(), m.version(), m.modified(),
+                p.aiGuide(), p.specialRules(), p.specialRulesRaw(), p.calcType(), p.rateUnit(), m.lastModified(), m.size(), m.version(), m.modified(),
                 m.updatedBy(), fileName, null);
     }
 
     /** 아직 작성 중인 skill.md: 원문만 주고 섹션은 비운다 */
     public static SkillDetailResponse incomplete(String taskCode, String businessId, String taskName, String fileName,
                                                  String content, String parseError, SkillFileMeta m) {
-        return new SkillDetailResponse(taskCode, taskName, businessId, content, "", List.of(), "", "", "",
+        return new SkillDetailResponse(taskCode, taskName, businessId, content, "", List.of(), "", List.of(), "", "", "",
                 m.lastModified(), m.size(), m.version(), m.modified(), m.updatedBy(), fileName, parseError);
     }
 }

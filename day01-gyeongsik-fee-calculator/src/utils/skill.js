@@ -25,33 +25,115 @@ export const DEFAULT_SKILLS = Object.fromEntries(
 const END = String.raw`(?=^##\s|(?![\s\S]))`;
 const SUMMARY = new RegExp(String.raw`^##\s*1\.\s*비즈니스 규칙 요약[ \t]*\n([\s\S]*?)` + END, 'm');
 const AI_GUIDE = new RegExp(String.raw`^##\s*2\.\s*AI 예외 차감 지침[ \t]*\n([\s\S]*?)` + END, 'm');
+// "## 3." 제목부터 다음 "## " 제목(보통 "## 4. 최종 정산 특이사항") 직전까지. 수식은 이 범위 안에서만 찾는다
+const FORMULA_SECTION = new RegExp(String.raw`^##\s*3\.[^\n]*\n([\s\S]*?)` + END, 'm');
 const FORMULA = /```formula[ \t]*\n([\s\S]*?)```/;
+const SPECIAL = new RegExp(String.raw`^##\s*4\.\s*최종 정산 특이사항[ \t]*\n([\s\S]*?)` + END, 'm');
 const TITLE = /^#\s+(.+)$/m;
 const CALC_TYPE = /^[-*]\s*산정 유형\s*:\s*(.+)$/m;
 const RATE_UNIT = /^[-*]\s*표시 단위\s*:\s*(.+)$/m;
 
-// 서버 SkillEngineService.parse 와 같은 규칙. 섹션이 없으면 Error
+// 마크다운 목록 → 글머리표를 뗀 줄 목록 (빈 줄 제외). 서버 SkillEngineService.lines 와 같다
+export const lines = (text) =>
+  (text ?? '')
+    .trim()
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((l) => l.replace(/^([-*]|\d+\.)\s+/, ''));
+
+// 서버 SkillEngineService.parse 와 같은 규칙. 1번 요약·3번 수식이 없으면 Error, 2번·4번은 선택
 export function parseSkill(taskCode, markdown) {
   const md = markdown.replace(/\r\n/g, '\n');
   const summaryText = md.match(SUMMARY)?.[1]?.trim();
   if (!summaryText) throw new Error("'## 1. 비즈니스 규칙 요약' 섹션을 찾을 수 없습니다.");
-  const formula = md.match(FORMULA)?.[1]?.trim();
+  // "## 3." 섹션이 있으면 그 안의 ```formula 블록만 (4번 특이사항에 코드 블록이 있어도 수식으로 읽지 않게)
+  const section3 = md.match(FORMULA_SECTION)?.[1];
+  const formula = (section3 ?? md).match(FORMULA)?.[1]?.trim();
   if (!formula) throw new Error("'## 3. 정산 수식'의 ```formula 코드 블록을 찾을 수 없습니다.");
+  if (formula.length > MAX_FORMULA_LENGTH) throw new Error(`수식은 ${MAX_FORMULA_LENGTH.toLocaleString('ko-KR')}자 이하로 작성해 주세요.`);
+  const specialRulesRaw = md.match(SPECIAL)?.[1]?.trim() ?? '';
   return {
     taskCode,
     title: md.match(TITLE)?.[1]?.trim() ?? taskCode,
     calcType: md.match(CALC_TYPE)?.[1]?.trim() ?? 'skill.md 수식',
     rateUnit: md.match(RATE_UNIT)?.[1]?.trim() ?? '%',
     summaryText,
-    summary: summaryText
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .map((l) => l.replace(/^([-*]|\d+\.)\s+/, '')),
+    summary: lines(summaryText),
     aiGuide: md.match(AI_GUIDE)?.[1]?.trim() ?? '',
     formula,
+    specialRulesRaw,
+    specialRules: lines(specialRulesRaw),
     markdown: md,
   };
+}
+
+export const MAX_FORMULA_LENGTH = 2000;
+
+// ── [기준 문서 편집] 섹션별 폼: skill.md ↔ 섹션 값 ──
+// 머리말(제목·업무명·산정 유형·표시 단위)과 1·2·4번은 폼으로 고치고, 3번 섹션은 원문 그대로 둔다(수식은 [AI 계산식 빌더]에서).
+const META = (label) => new RegExp(String.raw`^[-*][ \t]*${label}[ \t]*:[ \t]*(.*)$`, 'm');
+const section = (re, md) => md.match(re)?.[1]?.trim() ?? '';
+
+export function splitSkill(markdown) {
+  const md = markdown.replace(/\r\n/g, '\n');
+  const firstSection = md.search(/^##\s/m);
+  const header = firstSection < 0 ? md : md.slice(0, firstSection);
+  return {
+    title: md.match(TITLE)?.[1]?.trim() ?? '',
+    taskName: header.match(META('업무명'))?.[1]?.trim() ?? '',
+    calcType: header.match(META('산정 유형'))?.[1]?.trim() ?? '',
+    rateUnit: header.match(META('표시 단위'))?.[1]?.trim() ?? '',
+    // 제목·세 항목 말고 머리말에 더 적힌 줄은 그대로 둔다
+    headerExtra: header
+      .split('\n')
+      .filter((l) => l.trim() && !/^#\s/.test(l) && !/^[-*][ \t]*(업무명|산정 유형|표시 단위)[ \t]*:/.test(l))
+      .join('\n'),
+    summary: section(SUMMARY, md),
+    aiGuide: section(AI_GUIDE, md),
+    formulaSection: section(FORMULA_SECTION, md),
+    special: section(SPECIAL, md),
+  };
+}
+
+const meta = (label, v) => `- ${label}:${v ? ` ${v}` : ''}`;
+const block = (heading, body) => (body ? `${heading}\n\n${body}\n` : `${heading}\n`);
+
+// 표준 4섹션 마크다운으로 합친다. 업무명을 바꾸면 "# {업무명} 회비 산정 기준 ({코드})" 제목도 따라 바꾼다
+export function composeSkill(parts, taskCode) {
+  const m = parts.title.match(/^(.*) 회비 산정 기준 \(([A-Za-z0-9_]+)\)$/);
+  const title = m || !parts.title ? `${parts.taskName || m?.[1] || taskCode} 회비 산정 기준 (${m?.[2] ?? taskCode})` : parts.title;
+  return [
+    `# ${title}\n`,
+    [meta('업무명', parts.taskName), meta('산정 유형', parts.calcType), meta('표시 단위', parts.rateUnit), parts.headerExtra]
+      .filter(Boolean)
+      .join('\n') + '\n',
+    block('## 1. 비즈니스 규칙 요약', parts.summary.trim()),
+    block('## 2. AI 예외 차감 지침', parts.aiGuide.trim()),
+    block('## 3. 정산 수식', parts.formulaSection.trim() || '```formula\n```'),
+    block('## 4. 최종 정산 특이사항', parts.special.trim()),
+  ].join('\n');
+}
+
+// ```formula 블록 안만 바꾼다. 블록이 없으면 "## 3." 제목 아래(없으면 4번 앞 또는 끝)에 만든다
+const FORMULA_BLOCK = /(```formula[ \t]*\n)([\s\S]*?)(```)/;
+export function replaceFormula(markdown, formula) {
+  const md = markdown.replace(/\r\n/g, '\n');
+  const s3 = md.match(/^##\s*3\.[^\n]*$/m);
+  const from = s3 ? s3.index : 0;
+  const fm = md.slice(from).match(FORMULA_BLOCK);
+  if (fm) {
+    const start = from + fm.index + fm[1].length;
+    return md.slice(0, start) + formula + '\n' + md.slice(start + fm[2].length);
+  }
+  const fence = '```formula\n' + formula + '\n```\n';
+  if (s3) {
+    const end = s3.index + s3[0].length;
+    return md.slice(0, end) + '\n\n' + fence + md.slice(end).replace(/^\n+/, '\n');
+  }
+  const s4 = md.match(/^##\s*4\.[^\n]*$/m);
+  if (s4) return `${md.slice(0, s4.index)}## 3. 정산 수식\n\n${fence}\n${md.slice(s4.index)}`;
+  return `${md.trimEnd()}\n\n## 3. 정산 수식\n\n${fence}`;
 }
 
 // ── SpEL 수식 중 회비 계산에 쓰는 부분만 계산하는 작은 해석기 ──
@@ -78,7 +160,9 @@ function tokenize(src) {
   return tokens;
 }
 
-export function evaluateFormula(formula, vars) {
+// 수식을 읽어 계산 함수로 만든다. 구문이 틀리면 Error (계산은 하지 않는다: [AI 계산식 빌더]의 구문 검사)
+// SpEL 처럼 삼항 연산자는 고른 쪽만, and/or 는 필요한 쪽만 계산한다 (#totalCount == 0 ? 0 : x / #totalCount 가 0 나누기 오류를 내지 않게)
+export function compileFormula(formula) {
   const tokens = tokenize(formula);
   let i = 0;
   const peek = () => tokens[i];
@@ -106,11 +190,13 @@ export function evaluateFormula(formula, vars) {
   const primary = () => {
     const tk = tokens[i++];
     if (!tk) throw new Error('수식이 끝나지 않았습니다.');
-    if (tk.t === 'num') return { v: tk.v, int: tk.int };
-    if (tk.t === 'bool') return { v: tk.v };
+    if (tk.t === 'num') return () => ({ v: tk.v, int: tk.int });
+    if (tk.t === 'bool') return () => ({ v: tk.v });
     if (tk.t === 'var') {
-      if (!(tk.v in vars)) throw new Error(`알 수 없는 변수입니다: #${tk.v}`);
-      return { v: vars[tk.v], int: Number.isInteger(vars[tk.v]) && tk.v !== 'periodScale' };
+      return (vars) => {
+        if (!(tk.v in vars)) throw new Error(`알 수 없는 변수입니다: #${tk.v}`);
+        return { v: vars[tk.v], int: Number.isInteger(vars[tk.v]) && tk.v !== 'periodScale' };
+      };
     }
     if (tk.t === 'op' && tk.v === '(') {
       const v = ternary();
@@ -122,59 +208,45 @@ export function evaluateFormula(formula, vars) {
   const unary = () => {
     if (isOp('-')) {
       i++;
-      const v = num(unary());
-      return { v: -v.v, int: v.int };
+      const f = unary();
+      return (vars) => {
+        const v = num(f(vars));
+        return { v: -v.v, int: v.int };
+      };
     }
     if (isOp('!')) {
       i++;
-      return { v: !unary().v };
+      const f = unary();
+      return (vars) => ({ v: !f(vars).v });
     }
     return primary();
   };
-  const mul = () => {
-    let a = unary();
-    while (isOp('*', '/', '%')) a = arith(tokens[i++].v, a, unary());
+  const binary = (next, ops, combine) => () => {
+    let a = next();
+    while (isOp(...ops)) {
+      const op = tokens[i++].v;
+      const left = a;
+      const right = next();
+      a = (vars) => combine(op, left, right, vars);
+    }
     return a;
   };
-  const add = () => {
-    let a = mul();
-    while (isOp('+', '-')) a = arith(tokens[i++].v, a, mul());
-    return a;
-  };
+  const mul = binary(unary, ['*', '/', '%'], (op, a, b, vars) => arith(op, a(vars), b(vars)));
+  const add = binary(mul, ['+', '-'], (op, a, b, vars) => arith(op, a(vars), b(vars)));
   const rel = () => {
     const a = add();
     if (!isOp('<', '>', '<=', '>=')) return a;
     const op = tokens[i++].v;
     const b = add();
-    return { v: op === '<' ? a.v < b.v : op === '>' ? a.v > b.v : op === '<=' ? a.v <= b.v : a.v >= b.v };
+    return (vars) => {
+      const x = a(vars).v;
+      const y = b(vars).v;
+      return { v: op === '<' ? x < y : op === '>' ? x > y : op === '<=' ? x <= y : x >= y };
+    };
   };
-  const eq = () => {
-    let a = rel();
-    while (isOp('==', '!=')) {
-      const op = tokens[i++].v;
-      const b = rel();
-      a = { v: op === '==' ? a.v === b.v : a.v !== b.v };
-    }
-    return a;
-  };
-  const and = () => {
-    let a = eq();
-    while (isOp('&&')) {
-      i++;
-      const b = eq();
-      a = { v: !!a.v && !!b.v };
-    }
-    return a;
-  };
-  const or = () => {
-    let a = and();
-    while (isOp('||')) {
-      i++;
-      const b = and();
-      a = { v: !!a.v || !!b.v };
-    }
-    return a;
-  };
+  const eq = binary(rel, ['==', '!='], (op, a, b, vars) => ({ v: op === '==' ? a(vars).v === b(vars).v : a(vars).v !== b(vars).v }));
+  const and = binary(eq, ['&&'], (_, a, b, vars) => ({ v: !!a(vars).v && !!b(vars).v }));
+  const or = binary(and, ['||'], (_, a, b, vars) => ({ v: !!a(vars).v || !!b(vars).v }));
   const ternary = () => {
     const c = or();
     if (!isOp('?')) return c;
@@ -182,26 +254,64 @@ export function evaluateFormula(formula, vars) {
     const a = ternary();
     expect(':');
     const b = ternary();
-    return c.v ? a : b;
+    return (vars) => (c(vars).v ? a(vars) : b(vars));
   };
 
-  const result = ternary();
+  if (!tokens.length) throw new Error('수식이 비어 있습니다.');
+  const root = ternary();
   if (i < tokens.length) throw new Error(`수식 끝에 남은 부분이 있습니다: ${tokens[i].v}`);
+  return root;
+}
+
+export function evaluateFormula(formula, vars) {
+  const result = compileFormula(formula)(vars);
   if (typeof result.v !== 'number' || !Number.isFinite(result.v)) throw new Error('수식 결과가 숫자가 아닙니다.');
   if (result.v < 0) throw new Error(`수식 결과가 음수입니다: ${result.v}`);
   return result.v;
 }
 
-// 서버 SkillEngineService.allocate 와 같다: 원 미만 버림 → (결과 합계 반올림 - 버린 합계)를 원 미만이 큰 기관부터 1원씩
+// 원 단위 배분 (서버 SkillEngineService.allocate 와 같은 정수 계산이라 1원까지 같다):
+// 기관별 값을 정수부와 원 미만(백만분의 1원 단위로 반올림)으로 나누고, (원 미만 합계를 반올림한 원)만큼
+// 원 미만이 큰 기관부터(같으면 앞 기관부터) 1원씩 더한다.
 export function allocate(raw) {
-  const fees = raw.map((v) => Math.floor(v + 1e-9));
-  const left = Math.round(raw.reduce((s, v) => s + v, 0)) - fees.reduce((s, v) => s + v, 0);
-  raw
-    .map((v, idx) => ({ idx, rem: v - fees[idx] }))
-    .sort((a, b) => b.rem - a.rem || a.idx - b.idx)
+  const fees = [];
+  const micro = [];
+  raw.forEach((v) => {
+    const floor = Math.floor(v);
+    const frac = Math.round((v - floor) * 1e6);
+    fees.push(floor + (frac === 1e6 ? 1 : 0));
+    micro.push(frac === 1e6 ? 0 : frac);
+  });
+  const left = Math.floor((micro.reduce((s, m) => s + m, 0) + 500_000) / 1e6);
+  micro
+    .map((m, idx) => ({ idx, m }))
+    .sort((a, b) => b.m - a.m || a.idx - b.idx)
     .slice(0, Math.max(0, left))
     .forEach(({ idx }) => fees[idx]++);
   return fees;
+}
+
+// 균등(참가기관 수) + 실적(인정 건수) 혼합형 수식인지 (서버 SkillEngineService.isMixed 와 같다)
+export const isMixed = (formula) => formula.includes('#institutionCount') && formula.includes('#finalCount');
+
+// Step 1: 기관마다 수식을 실행하고 원 단위로 배분한다 (서버 SkillEngineService.calculatePrimary 와 같다).
+// rows: [{ baseCount, deduction, finalCount }] → { fees, equalFees, mixed }
+// 혼합형이면 실적이 0일 때의 값(같은 수식에 #rawCount·#deductedCount·#finalCount = 0)을 균등분담분으로 따로 배분한다.
+export function calculatePrimary(formula, rows, scale) {
+  const totalCount = rows.reduce((s, r) => s + r.finalCount, 0);
+  const vars = (r) => ({
+    rawCount: r.baseCount,
+    deductedCount: r.deduction,
+    finalCount: r.finalCount,
+    totalCount,
+    institutionCount: rows.length,
+    periodScale: scale,
+  });
+  const fees = allocate(rows.map((r) => evaluateFormula(formula, vars(r))));
+  if (!isMixed(formula)) return { fees, equalFees: fees.map(() => 0), mixed: false };
+  const equal = evaluateFormula(formula, vars({ baseCount: 0, deduction: 0, finalCount: 0 }));
+  const equalFees = allocate(rows.map(() => equal)).map((e, i) => Math.min(e, fees[i]));
+  return { fees, equalFees, mixed: true };
 }
 
 // 결과 표의 '적용 단가/분담률' 문구
@@ -230,7 +340,7 @@ export const builtInTasks = (businesses) =>
   }));
 
 // 새로 추가한 업무의 skill.md: 기본 템플릿에서 반드시 있어야 하는 뼈대만
-// (# 제목, 업무명·산정 유형·표시 단위, ## 1~3 섹션 제목, 빈 formula 블록). 서버 SkillFileService.skeletonTemplate 과 같다
+// (# 제목, 업무명·산정 유형·표시 단위, ## 1~4 섹션 제목, 빈 formula 블록). 서버 SkillFileService.skeletonTemplate 과 같다
 export const skeletonTemplate = (task) =>
   [
     `# ${task.name} 회비 산정 기준 (${task.taskCode})`,
@@ -247,6 +357,8 @@ export const skeletonTemplate = (task) =>
     '',
     '```formula',
     '```',
+    '',
+    '## 4. 최종 정산 특이사항',
     '',
   ].join('\n');
 
@@ -335,7 +447,7 @@ export function localSkillDetail(task, overrides) {
     parsed = parseSkill(code, content);
   } catch (e) {
     parseError = e.message;
-    parsed = { taskCode: code, formula: '', summary: [], aiGuide: '', calcType: '', rateUnit: '' };
+    parsed = { taskCode: code, formula: '', summary: [], aiGuide: '', specialRules: [], specialRulesRaw: '', calcType: '', rateUnit: '' };
   }
   return {
     ...parsed,
@@ -351,7 +463,7 @@ export function localSkillDetail(task, overrides) {
   };
 }
 
-// 저장 전 검증(서버 SkillFileService.save 와 같은 순서): 섹션 → 수식 구문·시험 계산. 실패하면 Error
+// 저장 전 3단계 검증(서버 SkillFileService.save 와 같은 순서): 섹션(1·3번 필수) → 수식 구문 → 시험 계산 2벌. 실패하면 Error
 export const FORMULA_SAMPLES = [
   { rawCount: 1_000_000, deductedCount: 100_000, finalCount: 900_000, totalCount: 9_000_000, institutionCount: 8, periodScale: 1 },
   { rawCount: 0, deductedCount: 0, finalCount: 0, totalCount: 0, institutionCount: 8, periodScale: 0.5 },

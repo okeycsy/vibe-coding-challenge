@@ -44,15 +44,27 @@ public class FeeCalculationItem {
     /** 화면 표시용: "20원/건" 또는 "12.34%" */
     private String rateLabel;
 
-    /** 1차 산출 회비(원): skill.md 수식 결과 */
-    private long primaryFee;
+    /** Step 1 결과(원): skill.md "## 3. 정산 수식" + 원 단위 배분. "## 4. 최종 정산 특이사항" 보정 전 금액 */
+    private long beforeSpecialFee;
 
-    /** 최종 산출 회비(원): 1차 회비에 "## 1. 비즈니스 규칙 요약"의 단수 처리·예외 규정을 반영한 값 */
+    /** 최종 산출 회비(원) = 균등분담분 + 실적분담분 = 보정 전 금액 + 특이사항 보정액 */
     private long fee;
 
-    /** AI(또는 규칙 기반) 최종 보정 사유. 보정이 없으면 null */
+    /** 균등분담분(원). 균등+실적 혼합형이 아니면 0 */
+    private long equalFee;
+
+    /** 실적분담분(원) = 최종 회비 - 균등분담분 (특이사항 보정액은 여기에 들어간다) */
+    private long perfFee;
+
+    /** Step 2("## 4. 최종 정산 특이사항")로 금액이 바뀌었는지 */
+    private boolean specialRuleApplied;
+
+    /** 특이사항 보정액(원, 최종 - 보정 전). 예: +6, -1 */
+    private long specialAdjustment;
+
+    /** 특이사항 보정 사유. 예: "특이사항 반영: 10원 단위 절상 (+6원)". 보정이 없으면 null */
     @Column(length = 500)
-    private String aiAdjustReason;
+    private String specialReason;
 
     /** 차감 사유(이슈 원문) */
     @Column(length = 2000)
@@ -77,10 +89,14 @@ public class FeeCalculationItem {
         this.calculation = calculation;
     }
 
-    public void applyFee(long primaryFee, long fee, String aiAdjustReason, String rateLabel) {
-        this.primaryFee = primaryFee;
+    public void applyFee(long beforeSpecialFee, long equalFee, long fee, String specialReason, String rateLabel) {
+        this.beforeSpecialFee = beforeSpecialFee;
         this.fee = fee;
-        this.aiAdjustReason = aiAdjustReason;
+        this.equalFee = equalFee;
+        this.perfFee = fee - equalFee;
+        this.specialRuleApplied = specialReason != null;
+        this.specialAdjustment = fee - beforeSpecialFee;
+        this.specialReason = specialReason;
         this.rateLabel = rateLabel;
     }
 }
