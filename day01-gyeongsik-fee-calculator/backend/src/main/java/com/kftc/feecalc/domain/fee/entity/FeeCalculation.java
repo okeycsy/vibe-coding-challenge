@@ -86,19 +86,17 @@ public class FeeCalculation {
     @Column(length = 1000)
     private String aiNote;
 
-    /** "## 4. 최종 정산 특이사항" 해석 방식: AI / RULE(키 없음) / RULE_FALLBACK(AI 실패) */
+    /** 산출에 실행한 "## 4. 최종 정산 특이사항" 후처리 스크립트 원문 */
+    @Column(length = 4000)
+    private String appliedPostprocess;
+
+    /** 스크립트 출처: SCRIPT(skill.md 의 postprocess 블록) / AUTO_RULE(블록 없이 자연어만 있어 내장 변환기로 변환) / DEFAULT(4번 없음, 기본 배분) */
     @Column(length = 20)
-    private String specialRuleMode;
+    private String postprocessSource;
 
-    @Column(length = 60)
-    private String specialRuleModel;
-
-    @Column(length = 1000)
-    private String specialRuleNote;
-
-    /** 해석된 보정 동작 JSON: {"actions":[...],"unsupported":[...]} */
+    /** 스크립트 실행 결과 JSON: {"checks":[{expression,label,passed,actual}...],"notes":[...]} */
     @Column(length = 8000)
-    private String specialActionsJson;
+    private String postprocessResultJson;
 
     @OneToMany(mappedBy = "calculation", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sortOrder")
@@ -140,11 +138,10 @@ public class FeeCalculation {
         this.aiNote = aiNote;
     }
 
-    public void applySpecialInterpretation(String mode, String model, String note, String actionsJson) {
-        this.specialRuleMode = mode;
-        this.specialRuleModel = model;
-        this.specialRuleNote = note;
-        this.specialActionsJson = actionsJson;
+    public void applyPostprocess(String script, String source, String resultJson) {
+        this.appliedPostprocess = script;
+        this.postprocessSource = source;
+        this.postprocessResultJson = resultJson;
     }
 
     public void addItem(FeeCalculationItem item) {

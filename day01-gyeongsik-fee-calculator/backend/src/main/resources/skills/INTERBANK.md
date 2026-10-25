@@ -30,3 +30,11 @@
 
 - 참가기관 중 1개 기관(첫 번째 기관 또는 지정 기관)은 산출된 회비 총액을 10원 단위로 절상한다.
 - 절상으로 인해 발생한 차이분(초과액)은 최종 인정 실적(#finalCount)이 큰 기관 순서대로 1원씩 절삭하여 분기 총액을 맞춘다.
+
+```postprocess
+allocate(fee)
+roundUp(fee, 10, first)
+spreadDiff(perf, others, countDesc)
+assert sum(fee) == before
+assert all(fee >= 0)
+```

@@ -8,7 +8,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.kftc.feecalc.domain.fee.service.SkillEngineService;
-import com.kftc.feecalc.domain.fee.service.SpecialRulePostProcessor;
+import com.kftc.feecalc.domain.fee.service.SpecialRuleConverter;
 
 /**
  * "## 1. 비즈니스 규칙 요약"의 한글 문장에서 산정 패턴을 찾아 "## 3. 정산 수식"(SpEL)을 만드는 내장 변환기.
@@ -28,11 +28,18 @@ public final class RuleBasedFormulaGenerator {
     private RuleBasedFormulaGenerator() {
     }
 
-    /** formula: 만든 수식, pattern: 감지한 산정 유형, steps: 규칙 → 변수·수식 매핑 설명(순서대로) */
-    public record Generated(String formula, String pattern, List<String> steps) {
+    /**
+     * formula: 만든 수식, pattern: 감지한 산정 유형, steps: 규칙 → 변수·수식 매핑 설명(순서대로),
+     * equalFormula·perfFormula: 균등+실적 혼합형이면 분리 수식(formula:equal / formula:perf 블록용), 아니면 null
+     */
+    public record Generated(String formula, String pattern, List<String> steps, String equalFormula, String perfFormula) {
+
+        public Generated(String formula, String pattern, List<String> steps) {
+            this(formula, pattern, steps, null, null);
+        }
     }
 
-    private static final String AMOUNT = SpecialRulePostProcessor.AMOUNT;
+    private static final String AMOUNT = SpecialRuleConverter.AMOUNT;
     private static final Pattern TOTAL = Pattern.compile("총액\\s*(" + AMOUNT + ")");
     private static final Pattern EQUAL_SHARE = Pattern.compile("(\\d+(?:\\.\\d+)?)\\s*%[^\\n%]*균등");
     private static final Pattern PERF_SHARE = Pattern.compile("(\\d+(?:\\.\\d+)?)\\s*%[^\\n%]*(?:실적|건수)");
@@ -75,7 +82,7 @@ public final class RuleBasedFormulaGenerator {
                 if (u.find()) {
                     String num = u.group(1) != null ? u.group(1) : u.group(3);
                     String unit = u.group(1) != null ? u.group(2) : u.group(4);
-                    upper = SpecialRulePostProcessor.parseAmount(num + (unit == null ? "" : unit));
+                    upper = SpecialRuleConverter.parseAmount(num + (unit == null ? "" : unit));
                 }
                 tiers.add(new long[] {upper, Long.parseLong(price.replace(",", ""))});
             }
@@ -118,7 +125,7 @@ public final class RuleBasedFormulaGenerator {
         if (!b.find() || !u.find()) {
             return Optional.empty();
         }
-        long base = SpecialRulePostProcessor.parseAmount(b.group(1));
+        long base = SpecialRuleConverter.parseAmount(b.group(1));
         long unit = Long.parseLong(u.group(1).replace(",", ""));
         return Optional.of(new Generated(
                 "(#finalCount > 0 ? " + base + " * #periodScale : 0) + #finalCount * " + unit,
@@ -149,7 +156,7 @@ public final class RuleBasedFormulaGenerator {
                 break;
             }
         }
-        long total = SpecialRulePostProcessor.parseAmount(t.group(1));
+        long total = SpecialRuleConverter.parseAmount(t.group(1));
         String eq = ratio(equalPct);
         String perf = ratio(perfPct);
         List<String> steps = new ArrayList<>();
@@ -161,10 +168,13 @@ public final class RuleBasedFormulaGenerator {
         if (equalPct.add(perfPct).compareTo(BigDecimal.valueOf(100)) != 0) {
             steps.add("주의: 균등·실적 비율의 합이 100%가 아니어서 회비 합계가 총액과 달라집니다.");
         }
+        String equalFormula = "#institutionCount == 0 ? 0 : " + total + ".0 * #periodScale * " + eq + " / #institutionCount";
+        String perfFormula = "#totalCount == 0 ? 0 : " + total + ".0 * #periodScale * " + perf + " * #finalCount / #totalCount";
+        steps.add("분리 수식: 균등분담분(formula:equal)과 실적분담분(formula:perf)을 따로 두면 4번 후처리에서 각 합계를 따로 맞출 수 있습니다.");
         return Optional.of(new Generated(
                 total + ".0 * #periodScale * ((#institutionCount == 0 ? 0 : " + eq + " / #institutionCount)"
                         + " + (#totalCount == 0 ? 0 : " + perf + " * #finalCount / #totalCount))",
-                "균등 " + pct(equalPct) + "% + 실적비례 " + pct(perfPct) + "% 혼합분담", steps));
+                "균등 " + pct(equalPct) + "% + 실적비례 " + pct(perfPct) + "% 혼합분담", steps, equalFormula, perfFormula));
     }
 
     private static Optional<Generated> unitPrice(String rules) {
@@ -176,8 +186,8 @@ public final class RuleBasedFormulaGenerator {
         String fee = "#finalCount * " + unit;
         Matcher mn = MIN.matcher(rules);
         Matcher mx = MAX.matcher(rules);
-        Long min = mn.find() ? SpecialRulePostProcessor.parseAmount(mn.group(1)) : null;
-        Long max = mx.find() ? SpecialRulePostProcessor.parseAmount(mx.group(1)) : null;
+        Long min = mn.find() ? SpecialRuleConverter.parseAmount(mn.group(1)) : null;
+        Long max = mx.find() ? SpecialRuleConverter.parseAmount(mx.group(1)) : null;
         String capped = max == null ? fee : "(" + fee + " > " + max + " ? " + max + " : " + fee + ")";
         String formula = min == null ? capped : fee + " < " + min + "\n  ? " + min + "\n  : " + capped;
         List<String> steps = new ArrayList<>();
@@ -198,7 +208,7 @@ public final class RuleBasedFormulaGenerator {
         if (!t.find()) {
             return Optional.empty();
         }
-        long total = SpecialRulePostProcessor.parseAmount(t.group(1));
+        long total = SpecialRuleConverter.parseAmount(t.group(1));
         return Optional.of(new Generated("#totalCount == 0 ? 0 : " + total + ".0 * #periodScale * #finalCount / #totalCount",
                 "총액 대비 단순 실적 비율",
                 List.of(String.format("총액 '%s' → %d.0 (원, 소수점을 붙여 정수 나눗셈 버림 방지)", t.group(1).strip(), total),

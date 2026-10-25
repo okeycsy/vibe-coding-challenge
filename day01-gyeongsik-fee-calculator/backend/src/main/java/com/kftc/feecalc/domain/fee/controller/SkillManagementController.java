@@ -14,8 +14,11 @@ import org.springframework.web.bind.annotation.RestController;
 import com.kftc.feecalc.common.dto.ApiResponse;
 import com.kftc.feecalc.common.exception.BusinessException;
 import com.kftc.feecalc.domain.fee.ai.FormulaGeneratorService;
+import com.kftc.feecalc.domain.fee.ai.PostprocessGeneratorService;
 import com.kftc.feecalc.domain.fee.dto.FormulaGenerateRequest;
 import com.kftc.feecalc.domain.fee.dto.FormulaGenerateResponse;
+import com.kftc.feecalc.domain.fee.dto.PostprocessGenerateRequest;
+import com.kftc.feecalc.domain.fee.dto.PostprocessGenerateResponse;
 import com.kftc.feecalc.domain.fee.dto.SkillDetailResponse;
 import com.kftc.feecalc.domain.fee.dto.SkillSaveRequest;
 import com.kftc.feecalc.domain.fee.dto.SkillSummaryResponse;
@@ -42,6 +45,7 @@ public class SkillManagementController {
     private final SkillAccessControlService accessControl;
     private final SkillEngineService skillEngine;
     private final FormulaGeneratorService formulaGenerator;
+    private final PostprocessGeneratorService postprocessGenerator;
 
     /** 전체 업무와 접근 가능 여부, 파일 상태 (내용 없음) */
     @GetMapping
@@ -97,6 +101,22 @@ public class SkillManagementController {
         return ApiResponse.ok("AI".equals(res.source())
                 ? "AI가 1번 규칙으로 3번 수식을 작성했습니다. 시뮬레이션 후 확정 반영해 주세요."
                 : "내장 변환기로 3번 수식을 작성했습니다. 시뮬레이션 후 확정 반영해 주세요.", res);
+    }
+
+    /**
+     * "## 4. 최종 정산 특이사항" 자연어로 후처리 스크립트를 만든다 (AI, 키가 없으면 내장 변환기). 저장 권한과 같은 권한이 필요하고
+     * (없으면 403), 파일은 저장하지 않는다: [AI 계산식 빌더]에서 시뮬레이션 후 PUT 으로 저장한다(저장 때 시험 실행을 한 번 더 한다).
+     */
+    @PostMapping("/{taskCode}/generate-postprocess")
+    public ApiResponse<PostprocessGenerateResponse> generatePostprocess(
+            @RequestHeader(value = EMPLOYEE_HEADER, required = false) String employeeId,
+            @PathVariable String taskCode,
+            @Valid @RequestBody PostprocessGenerateRequest request) {
+        String code = accessControl.checkPermission(employeeId, taskCode);
+        PostprocessGenerateResponse res = postprocessGenerator.generate(code, request.specialRulesText());
+        return ApiResponse.ok("AI".equals(res.source())
+                ? "AI가 4번 특이사항으로 후처리 스크립트를 작성했습니다. 시뮬레이션 후 확정 반영해 주세요."
+                : "내장 변환기로 후처리 스크립트를 작성했습니다. 시뮬레이션 후 확정 반영해 주세요.", res);
     }
 
     /** 섹션이 덜 채워진 파일(막 추가한 업무 등)도 열어서 고칠 수 있게 원문은 그대로 준다 */

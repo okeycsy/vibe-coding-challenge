@@ -43,8 +43,10 @@ public class FormulaGeneratorService {
             (#totalCount == 0 ? 0 : ...) 처럼 0 나누기를 막아. 결과는 항상 0 이상이어야 해.
             원 미만 처리와 합계 맞춤은 엔진이 하므로 수식에 넣지 마. 특정 기관 10원 절상·실적순 1원 절삭 같은 끝전 처리는 \
             "## 4. 최종 정산 특이사항" 후처리 단계에서 하므로 넣지 마.
-            반드시 다음 JSON 객체로만 답해: {"formula":"수식","pattern":"감지한 산정 유형(예: 균등 30% + 실적비례 70% 혼합분담)",\
-            "explanation":["규칙 항목 → 변수·수식 매핑 설명", "..."]}""";
+            균등 분담과 실적 비례 분담을 합치는 혼합형이면 균등분담분만 계산하는 수식을 equalFormula, 실적분담분만 계산하는 수식을 perfFormula 에 따로 적어 \
+            (formula = equalFormula + perfFormula). 혼합형이 아니면 두 값은 null.
+            반드시 다음 JSON 객체로만 답해: {"formula":"수식","equalFormula":"균등 수식 또는 null","perfFormula":"실적 수식 또는 null",\
+            "pattern":"감지한 산정 유형(예: 균등 30% + 실적비례 70% 혼합분담)","explanation":["규칙 항목 → 변수·수식 매핑 설명", "..."]}""";
 
     private final LlmClient llm;
 
@@ -62,12 +64,21 @@ public class FormulaGeneratorService {
                     throw new LlmClient.LlmException("AI 응답에 수식이 없습니다.");
                 }
                 check(formula);
+                String equal = optional(res, "equalFormula");
+                String perf = optional(res, "perfFormula");
+                if (equal != null && perf != null) {
+                    check(equal);
+                    check(perf);
+                } else {
+                    equal = null;
+                    perf = null;
+                }
                 List<String> steps = new ArrayList<>();
                 res.path("explanation").forEach(s -> steps.add(s.asText()));
                 if (steps.isEmpty() && res.path("explanation").isTextual()) {
                     steps.add(res.path("explanation").asText());
                 }
-                return response(taskCode, formula, res.path("pattern").asText("AI 해석"), steps, "AI", llm.model(), null);
+                return response(taskCode, formula, equal, perf, res.path("pattern").asText("AI 해석"), steps, "AI", llm.model(), null);
             } catch (LlmClient.LlmException e) {
                 note = "AI 수식 생성 실패로 내장 변환기 사용 (" + e.getMessage() + ")";
             } catch (BusinessException e) {
@@ -82,12 +93,18 @@ public class FormulaGeneratorService {
                     + "건당 단가 N원·최저/최고 회비, 총액 N원 실적 비율)이 규칙에 없습니다. 수식을 직접 작성해 주세요.");
         }
         RuleBasedFormulaGenerator.Generated g = rule.get();
-        return response(taskCode, g.formula(), g.pattern(), g.steps(), note == null ? "RULE" : "RULE_FALLBACK", null, note);
+        return response(taskCode, g.formula(), g.equalFormula(), g.perfFormula(), g.pattern(), g.steps(),
+                note == null ? "RULE" : "RULE_FALLBACK", null, note);
     }
 
     /** 저장 검증과 같은 검사를 다시 돌려 결과를 응답에 담는다 */
-    private static FormulaGenerateResponse response(String taskCode, String formula, String pattern, List<String> steps,
-                                                    String source, String model, String note) {
+    private static String optional(JsonNode res, String field) {
+        JsonNode v = res.path(field);
+        return v.isTextual() && !v.asText().isBlank() ? v.asText().strip() : null;
+    }
+
+    private static FormulaGenerateResponse response(String taskCode, String formula, String equalFormula, String perfFormula,
+                                                    String pattern, List<String> steps, String source, String model, String note) {
         boolean passed = true;
         String message = "섹션·구문 검사와 시험 계산 2벌(정상·실적 0)을 통과했습니다.";
         Long normal = null;
@@ -100,7 +117,7 @@ public class FormulaGeneratorService {
             passed = false;
             message = e.getMessage();
         }
-        return new FormulaGenerateResponse(taskCode, formula, pattern, steps, passed, message, normal, zero, source,
+        return new FormulaGenerateResponse(taskCode, formula, equalFormula, perfFormula, pattern, steps, passed, message, normal, zero, source,
                 model, note);
     }
 

@@ -342,7 +342,7 @@ public class SkillFileService {
         }
         String normalized = content.replace("\r\n", "\n");
         SkillEngineService.ParsedSkill parsed = SkillEngineService.parse(taskCode, businessIdOf(taskCode), normalized);
-        SkillEngineService.validateFormula(parsed.formula());
+        SkillEngineService.validateSkill(parsed);
         write(file, normalized);
         updatedBy.put(taskCode, employeeId);
         log.info("skill.md 저장: {} by {}", taskCode, employeeId);

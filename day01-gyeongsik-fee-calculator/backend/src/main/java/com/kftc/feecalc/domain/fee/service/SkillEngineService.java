@@ -25,8 +25,9 @@ import lombok.RequiredArgsConstructor;
  * 업무별 skill.md 기반 회비 산출 엔진. 파일 읽기·쓰기는 {@link SkillFileService}가 맡는다.
  * <p>
  * skill.md 는 네 섹션으로 이뤄진다: "## 1. 비즈니스 규칙 요약"(필수, 1차 계산 규칙의 자연어 설명),
- * "## 2. AI 예외 차감 지침"(선택), "## 3. 정산 수식"(필수, ```formula 코드 블록 안의 SpEL 수식),
- * "## 4. 최종 정산 특이사항"(선택, 1차 계산 뒤 {@link SpecialRulePostProcessor}가 적용하는 끝전·예외 후처리 규칙).
+ * "## 2. AI 예외 차감 지침"(선택), "## 3. 정산 수식"(필수, ```formula 코드 블록 안의 SpEL 수식. 균등분담분·실적분담분을
+ * 따로 쓰려면 ```formula:equal 과 ```formula:perf 블록, 총액 블록은 선택), "## 4. 최종 정산 특이사항"(선택, 자연어 규칙과
+ * 그것을 옮긴 ```postprocess 후처리 스크립트. 1차 계산 뒤 {@link PostprocessEngine}이 실행).
  * 수식에는 아래 변수를 쓴다.
  * <ul>
  *   <li>#rawCount 기본 건수, #deductedCount AI 차감 건수, #finalCount 최종 인정 건수</li>
@@ -43,7 +44,8 @@ public class SkillEngineService {
     static final Pattern AI_GUIDE = Pattern.compile("(?ms)^##\\s*2\\.\\s*AI 예외 차감 지침[ \\t]*\\R(.*?)(?=^##\\s|\\z)");
     /** "## 3." 제목부터 다음 "## " 제목(보통 "## 4. 최종 정산 특이사항") 직전까지. 수식은 이 범위 안에서만 찾는다 */
     static final Pattern FORMULA_SECTION = Pattern.compile("(?ms)^##\\s*3\\.[^\\n]*\\R(.*?)(?=^##\\s|\\z)");
-    static final Pattern FORMULA = Pattern.compile("(?s)```formula[ \\t]*\\R(.*?)```");
+    static final Pattern FORMULA = Pattern.compile("(?s)```formula(?::(equal|perf))?[ \\t]*\\R(.*?)```");
+    static final Pattern POSTPROCESS = Pattern.compile("(?s)[ \\t]*```postprocess[ \\t]*\\R(.*?)```[ \\t]*\\R?");
     static final Pattern SPECIAL = Pattern.compile("(?ms)^##\\s*4\\.\\s*최종 정산 특이사항[ \\t]*\\R(.*?)(?=^##\\s|\\z)");
     static final Pattern TITLE = Pattern.compile("(?m)^#\\s+(.+)$");
     static final Pattern CALC_TYPE = Pattern.compile("(?m)^[-*]\\s*산정 유형\\s*:\\s*(.+)$");
@@ -56,12 +58,26 @@ public class SkillEngineService {
     private final SkillFileService fileService;
 
     /** skill.md 를 섹션별로 나눈 결과 */
+    /**
+     * skill.md 를 섹션별로 나눈 결과. formula 는 회비 총액 수식(분리형이면 "(균등) + (실적)"으로 합친 표시용),
+     * equalFormula·perfFormula 는 분리형일 때만, postprocess 는 4번의 후처리 스크립트(없으면 ""),
+     * specialRulesRaw 는 스크립트 블록을 뺀 4번 자연어 원문
+     */
     public record ParsedSkill(String taskCode, String businessId, String title, String calcType, String rateUnit,
                               String summaryText, List<String> summary, String aiGuide, String formula,
+                              String equalFormula, String perfFormula, String postprocess,
                               String specialRulesRaw, List<String> specialRules) {
 
         public boolean hasSpecialRules() {
             return !specialRules.isEmpty();
+        }
+
+        public boolean isSplit() {
+            return equalFormula != null;
+        }
+
+        public boolean hasPostprocess() {
+            return postprocess != null && !postprocess.isBlank();
         }
     }
 
@@ -91,18 +107,21 @@ public class SkillEngineService {
         }
         // "## 3." 섹션이 있으면 그 안의 ```formula 블록만 (4번 특이사항에 코드 블록이 있어도 수식으로 읽지 않게)
         String section3 = group(FORMULA_SECTION, markdown);
-        String formula = group(FORMULA, section3 != null ? section3 : markdown);
-        if (formula == null || formula.isBlank()) {
-            throw new BusinessException(ErrorCode.INVALID_FORMULA, "'## 3. 정산 수식'의 ```formula 코드 블록을 찾을 수 없습니다.");
-        }
-        formula = formula.strip();
-        if (formula.length() > MAX_FORMULA_LENGTH) {
-            throw new BusinessException(ErrorCode.INVALID_FORMULA, "수식은 " + MAX_FORMULA_LENGTH + "자 이하로 작성해 주세요.");
-        }
+        Formulas f = formulas(section3 != null ? section3 : markdown);
         String aiGuide = group(AI_GUIDE, markdown);
         List<String> summary = lines(summaryText);
-        String special = group(SPECIAL, markdown);
-        special = special == null ? "" : special.strip();
+        String section4 = group(SPECIAL, markdown);
+        String postprocess = "";
+        String special = "";
+        if (section4 != null) {
+            Matcher pm = POSTPROCESS.matcher(section4);
+            if (pm.find()) {
+                postprocess = pm.group(1).strip();
+                special = (section4.substring(0, pm.start()) + section4.substring(pm.end())).strip();
+            } else {
+                special = section4.strip();
+            }
+        }
         String title = group(TITLE, markdown);
         String calcType = group(CALC_TYPE, markdown);
         String rateUnit = group(RATE_UNIT, markdown);
@@ -110,7 +129,47 @@ public class SkillEngineService {
                 title == null ? taskCode : title.strip(),
                 calcType == null ? "skill.md 수식" : calcType.strip(),
                 rateUnit == null ? "%" : rateUnit.strip(),
-                summaryText.strip(), summary, aiGuide == null ? "" : aiGuide.strip(), formula, special, lines(special));
+                summaryText.strip(), summary, aiGuide == null ? "" : aiGuide.strip(), f.total(), f.equal(), f.perf(),
+                postprocess, special, lines(special));
+    }
+
+    /** 3번 섹션의 수식 블록들. total 은 늘 있고(분리형이면 합친 표시용), equal·perf 는 분리형일 때만 */
+    public record Formulas(String total, String equal, String perf) {
+    }
+
+    /** ```formula(총액) · ```formula:equal · ```formula:perf 블록을 읽는다. 총액 또는 (균등 + 실적)이 있어야 한다 */
+    public static Formulas formulas(String section3) {
+        String total = null;
+        String equal = null;
+        String perf = null;
+        Matcher m = FORMULA.matcher(section3);
+        while (m.find()) {
+            String body = m.group(2).strip();
+            if (body.length() > MAX_FORMULA_LENGTH) {
+                throw new BusinessException(ErrorCode.INVALID_FORMULA, "수식은 " + MAX_FORMULA_LENGTH + "자 이하로 작성해 주세요.");
+            }
+            String kind = m.group(1);
+            if (kind == null) {
+                total = total == null ? body : total;
+            } else if (kind.equals("equal")) {
+                equal = equal == null ? body : equal;
+            } else {
+                perf = perf == null ? body : perf;
+            }
+        }
+        if ((equal == null) != (perf == null)) {
+            throw new BusinessException(ErrorCode.INVALID_FORMULA, "```formula:equal(균등분담분)과 ```formula:perf(실적분담분) 블록은 함께 있어야 합니다.");
+        }
+        if (equal != null && (equal.isBlank() || perf.isBlank())) {
+            throw new BusinessException(ErrorCode.INVALID_FORMULA, "```formula:equal 또는 ```formula:perf 블록이 비어 있습니다.");
+        }
+        if (equal == null && (total == null || total.isBlank())) {
+            throw new BusinessException(ErrorCode.INVALID_FORMULA, "'## 3. 정산 수식'의 ```formula 코드 블록을 찾을 수 없습니다.");
+        }
+        if (total == null || total.isBlank()) {
+            total = "(" + equal + ") + (" + perf + ")";
+        }
+        return new Formulas(total, equal, perf);
     }
 
     /** 마크다운 목록 → 글머리표를 뗀 줄 목록 (빈 줄 제외) */
@@ -140,6 +199,19 @@ public class SkillEngineService {
         evaluate(formula, new Counts(0, 0, 0), 0, 8, 0.5);
     }
 
+    /** 저장 전 검증: 수식(총액·균등·실적) 구문 + 시험 계산 2벌, 후처리 스크립트 문법 + 시험 실행 */
+    public static void validateSkill(ParsedSkill skill) {
+        if (skill.isSplit()) {
+            validateFormula(skill.equalFormula());
+            validateFormula(skill.perfFormula());
+        } else {
+            validateFormula(skill.formula());
+        }
+        if (skill.hasPostprocess()) {
+            PostprocessEngine.trial(skill.postprocess());
+        }
+    }
+
     private static String group(Pattern p, String text) {
         Matcher m = p.matcher(text);
         return m.find() ? m.group(1) : null;
@@ -159,40 +231,52 @@ public class SkillEngineService {
     }
 
     /**
-     * 모든 기관의 회비. 기관별 수식 결과의 원 미만을 버린 뒤, (결과 합계를 반올림한 값 - 버린 합계)만큼
-     * 원 미만이 큰 기관부터 1원씩 더한다. 정수 결과(건당 단가 등)는 그대로이고, 총액 분담은 합계 = 총액이 된다.
+     * 모든 기관의 회비(후처리 스크립트 없이 원 단위 배분만). 테스트·단순 조회용
      */
     public List<Long> calculateAll(String code, List<Counts> counts, double periodScale) {
-        return calculatePrimary(getSkill(code).formula(), counts, periodScale).fees();
+        ParsedSkill skill = getSkill(code);
+        List<PostprocessEngine.Line> lines = new ArrayList<>();
+        RawFees raw = computeRaw(skill, counts, periodScale);
+        for (int i = 0; i < counts.size(); i++) {
+            lines.add(new PostprocessEngine.Line(String.valueOf(i), String.valueOf(i), String.valueOf(i), List.of(),
+                    counts.get(i).finalCount(), raw.equalMicro().get(i), raw.perfMicro().get(i)));
+        }
+        return PostprocessEngine.run(DEFAULT_POSTPROCESS, lines).items().stream().map(PostprocessEngine.ItemResult::fee).toList();
     }
 
-    /**
-     * 1차 계산 결과. fees 는 기관별 원 단위 회비({@link #allocate}), equalFees 는 그중 균등분담분.
-     * 균등+실적 혼합형이 아니면 equalFees 는 모두 0 이고 회비 전체가 실적분담분이다.
-     */
-    public record PrimaryFees(List<Long> fees, List<Long> equalFees, boolean mixed) {
-    }
+    /** 후처리 스크립트가 없을 때의 기본 정수화: 회비를 원 단위로 배분하고 균등분담분도 따로 배분 */
+    public static final String DEFAULT_POSTPROCESS = "allocate(fee)";
 
     /**
-     * Step 1: 기관마다 수식을 실행하고 원 단위로 배분한다.
-     * 수식이 #institutionCount 와 #finalCount 를 함께 쓰면 균등+실적 혼합형으로 보고, 실적이 0 일 때의 값(같은 수식에
-     * #rawCount·#deductedCount·#finalCount = 0)을 균등분담분으로 따로 배분한다. 실적분담분 = 회비 - 균등분담분.
-     * 프론트 src/utils/skill.js calculatePrimary 와 같은 규칙이다.
+     * Step 1 원시값(원 미만 포함, 백만분의 1원 단위 정수). equalMicro 는 균등분담분, perfMicro 는 실적분담분.
+     * 분리형(formula:equal/perf)이면 각 수식을 그대로 계산하고, 단일 수식이면 #institutionCount 와 #finalCount 를 함께 쓸 때
+     * 실적이 0 일 때의 값(같은 수식에 #rawCount·#deductedCount·#finalCount = 0)을 균등분담분으로 본다(회비보다 크면 회비까지).
+     * 프론트 src/utils/skill.js computeRaw 와 같은 규칙이다.
      */
-    public static PrimaryFees calculatePrimary(String formula, List<Counts> counts, double periodScale) {
+    public record RawFees(List<Long> equalMicro, List<Long> perfMicro) {
+    }
+
+    public static RawFees computeRaw(ParsedSkill skill, List<Counts> counts, double periodScale) {
         long total = counts.stream().mapToLong(Counts::finalCount).sum();
         int n = counts.size();
-        List<Long> fees = allocate(counts.stream().map(c -> evaluate(formula, c, total, n, periodScale)).toList());
-        if (!isMixed(formula)) {
-            return new PrimaryFees(fees, fees.stream().map(f -> 0L).toList(), false);
+        List<Long> equal = new ArrayList<>();
+        List<Long> perf = new ArrayList<>();
+        if (skill.isSplit()) {
+            for (Counts c : counts) {
+                equal.add(toMicro(evaluate(skill.equalFormula(), c, total, n, periodScale)));
+                perf.add(toMicro(evaluate(skill.perfFormula(), c, total, n, periodScale)));
+            }
+            return new RawFees(equal, perf);
         }
-        BigDecimal equal = evaluate(formula, new Counts(0, 0, 0), total, n, periodScale);
-        List<Long> equalFees = allocate(counts.stream().map(c -> equal).toList());
-        List<Long> clamped = new ArrayList<>();
-        for (int i = 0; i < n; i++) {
-            clamped.add(Math.min(equalFees.get(i), fees.get(i)));
+        boolean mixed = isMixed(skill.formula());
+        long equalMicro = mixed ? toMicro(evaluate(skill.formula(), new Counts(0, 0, 0), total, n, periodScale)) : 0;
+        for (Counts c : counts) {
+            long fee = toMicro(evaluate(skill.formula(), c, total, n, periodScale));
+            long e = Math.min(equalMicro, fee);
+            equal.add(e);
+            perf.add(fee - e);
         }
-        return new PrimaryFees(fees, clamped, true);
+        return new RawFees(equal, perf);
     }
 
     /** 균등(참가기관 수) + 실적(인정 건수) 혼합형 수식인지 */
@@ -201,30 +285,12 @@ public class SkillEngineService {
     }
 
     /**
-     * 원 단위 배분. 프론트 skill.js allocate 와 같은 정수 계산이라 서버·브라우저 결과가 1원까지 같다:
-     * 기관별 값을 정수부와 원 미만(백만분의 1원 단위로 반올림)으로 나누고, (원 미만 합계를 반올림한 원)만큼
-     * 원 미만이 큰 기관부터(같으면 앞 기관부터) 1원씩 더한다.
+     * 원 → 백만분의 1원 정수. 정수부와 원 미만(백만분의 1원 단위로 반올림)을 따로 구해 프론트 skill.js toMicro 와 같은 값이 된다
      */
-    static List<Long> allocate(List<BigDecimal> raw) {
-        int n = raw.size();
-        long[] fees = new long[n];
-        long[] micro = new long[n];
-        long microSum = 0;
-        List<Integer> order = new ArrayList<>();
-        for (int i = 0; i < n; i++) {
-            BigDecimal floor = raw.get(i).setScale(0, RoundingMode.FLOOR);
-            long frac = raw.get(i).subtract(floor).movePointRight(6).setScale(0, RoundingMode.HALF_UP).longValueExact();
-            fees[i] = floor.longValueExact() + (frac == 1_000_000 ? 1 : 0);
-            micro[i] = frac == 1_000_000 ? 0 : frac;
-            microSum += micro[i];
-            order.add(i);
-        }
-        long left = (microSum + 500_000) / 1_000_000;
-        order.sort(Comparator.<Integer>comparingLong(i -> -micro[i]).thenComparing(i -> i));
-        for (int k = 0; k < left && k < n; k++) {
-            fees[order.get(k)]++;
-        }
-        return Arrays.stream(fees).boxed().toList();
+    static long toMicro(BigDecimal v) {
+        BigDecimal floor = v.setScale(0, RoundingMode.FLOOR);
+        long frac = v.subtract(floor).movePointRight(6).setScale(0, RoundingMode.HALF_UP).longValueExact();
+        return floor.longValueExact() * PostprocessEngine.MICRO + frac;
     }
 
     /** 수식 한 번 평가. 결과는 0 이상의 유한한 숫자여야 한다 */

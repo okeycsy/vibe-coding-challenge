@@ -16,7 +16,6 @@ import com.kftc.feecalc.common.exception.ErrorCode;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kftc.feecalc.domain.fee.ai.AiFeePostProcessor;
-import com.kftc.feecalc.domain.fee.ai.SpecialRuleInterpreter;
 import com.kftc.feecalc.domain.fee.dto.BusinessRateUpdateRequest;
 import com.kftc.feecalc.domain.fee.dto.BusinessResponse;
 import com.kftc.feecalc.domain.fee.dto.CalculationRequest;
@@ -42,8 +41,9 @@ import lombok.RequiredArgsConstructor;
  * 1) 기관별 기준 실적(업로드 또는 시연용) → 2) 이슈 문장을 skill.md "## 2. AI 예외 차감 지침"으로 판별해 차감
  * ({@link AiFeePostProcessor}, 키가 없으면 규칙 기반) → 2단계 정산 파이프라인:
  * Step 1: "## 3. 정산 수식"(SpEL)으로 1차 정밀 계산 + 원 단위 배분(균등분담분·실적분담분 분해)
- * → Step 2: "## 4. 최종 정산 특이사항"을 AI 가 보정 동작으로 해석({@link SpecialRuleInterpreter}, 키가 없거나 실패하면 규칙 기반)하고
- * {@link SpecialRulePostProcessor#execute}가 그 동작대로 금액을 계산 (금액 계산은 결정적)
+ * → Step 2: "## 4. 최종 정산 특이사항"의 후처리 스크립트({@link PostprocessScript}, skill.md 의 postprocess 블록)를
+ * {@link PostprocessEngine}이 실행해 반올림·합계 보정·끝전 처리·검증을 한다. 산출 중에는 AI 를 부르지 않는다 (스크립트는 빌더에서
+ * AI 또는 {@link SpecialRuleConverter}로 만들어 확정). 블록이 없고 자연어만 있으면 내장 변환기로 바꿔 실행(AUTO_RULE)
  * 산정 방식(구간 단가, 총액 분담, 기본료 등)은 Java 코드가 아니라 skill.md 에만 있다. {@link SkillEngineService} 참고
  */
 @Service
@@ -60,7 +60,6 @@ public class FeeCalculationService {
     private final ApplicationEventPublisher eventPublisher;
     private final SkillEngineService skillEngine;
     private final AiFeePostProcessor aiPostProcessor;
-    private final SpecialRuleInterpreter specialRuleInterpreter;
     private final ObjectMapper objectMapper;
 
     // ---------- 기준 정보 ----------
@@ -168,7 +167,7 @@ public class FeeCalculationService {
         }
 
         // Step 1) "## 3. 정산 수식" 1차 계산 → Step 2) "## 4. 최종 정산 특이사항" 후처리
-        applySkill(calc, skill, scale, byCode, allowAi);
+        applySkill(calc, skill, scale, byCode);
         calc.applyTotalFee(calc.getTotalFeeAmount());
         calc.applyAiResult(review.outcome().mode().name(),
                 allowAi && aiPostProcessor.aiEnabled() ? aiPostProcessor.model() : null,
@@ -215,36 +214,34 @@ public class FeeCalculationService {
     }
 
     /**
-     * Step 1: 기관별로 skill.md 수식을 실행해 원 단위로 배분하고(균등+실적 혼합형이면 균등분담분을 따로 계산),
-     * Step 2: "## 4. 최종 정산 특이사항"으로 보정한다. 보정액은 실적분담분에 들어간다.
+     * Step 1: 기관별로 skill.md 수식(총액 또는 균등·실적 분리 수식)을 원 미만까지 계산하고,
+     * Step 2: "## 4. 최종 정산 특이사항" 후처리 스크립트로 정수화·보정·검증한다 (스크립트가 없으면 기본 배분 allocate(fee)).
      * 표시 단위가 "원/건"이면 실효 단가(최종 회비 ÷ 인정 건수), 그 밖에는 회비 합계 대비 비율을 rateLabel 로 남긴다.
      */
     private void applySkill(FeeCalculation calc, SkillEngineService.ParsedSkill skill, double scale,
-                            Map<String, Institution> byCode, boolean allowAi) {
+                            Map<String, Institution> byCode) {
         List<FeeCalculationItem> items = calc.getItems();
-        SkillEngineService.PrimaryFees primary = SkillEngineService.calculatePrimary(skill.formula(),
+        SkillEngineService.RawFees raw = SkillEngineService.computeRaw(skill,
                 items.stream().map(i -> new SkillEngineService.Counts(i.getBaseCount(), i.getDeduction(), i.getFinalCount()))
                         .toList(),
                 scale);
-        List<SpecialRulePostProcessor.FeeLine> lines = new ArrayList<>();
+        List<PostprocessEngine.Line> lines = new ArrayList<>();
         for (int idx = 0; idx < items.size(); idx++) {
             FeeCalculationItem item = items.get(idx);
             Institution inst = byCode.get(item.getInstitutionCode());
-            lines.add(new SpecialRulePostProcessor.FeeLine(item.getInstitutionCode(), item.getBankCode(),
-                    item.getInstitutionName(), inst == null ? List.of() : inst.getAliases(), item.getFinalCount(),
-                    primary.fees().get(idx)));
+            lines.add(new PostprocessEngine.Line(item.getInstitutionCode(), item.getBankCode(), item.getInstitutionName(),
+                    inst == null ? List.of() : inst.getAliases(), item.getFinalCount(),
+                    raw.equalMicro().get(idx), raw.perfMicro().get(idx)));
         }
-        // 해석(AI → 보정 동작, 키 없음·실패면 규칙 기반) → 실행(코드가 동작대로 계산)
-        SpecialRuleInterpreter.Interpretation interpretation = specialRuleInterpreter.interpret(skill.specialRulesRaw(), lines, allowAi);
-        List<SpecialRulePostProcessor.Result> results = SpecialRulePostProcessor.execute(interpretation.actions(), lines);
-        calc.applySpecialInterpretation(interpretation.mode().name(), interpretation.model(), trim(interpretation.note()),
-                toJson(new CalculationResponse.SpecialActions(interpretation.actions(), interpretation.unsupported())));
-        long feeSum = results.stream().mapToLong(SpecialRulePostProcessor.Result::finalFee).sum();
+        Script script = scriptOf(skill, lines);
+        PostprocessEngine.Result result = PostprocessEngine.run(script.text(), lines);
+        calc.applyPostprocess(script.text(), script.source(), toJson(CalculationResponse.PostprocessResult.from(result)));
+        long feeSum = result.items().stream().mapToLong(PostprocessEngine.ItemResult::fee).sum();
         boolean perCount = skill.rateUnit().contains("건");
         for (int idx = 0; idx < items.size(); idx++) {
             FeeCalculationItem item = items.get(idx);
-            SpecialRulePostProcessor.Result r = results.get(idx);
-            long fee = r.finalFee();
+            PostprocessEngine.ItemResult r = result.items().get(idx);
+            long fee = r.fee();
             String label;
             if (perCount) {
                 double unit = item.getFinalCount() == 0 ? 0 : (double) fee / item.getFinalCount();
@@ -252,8 +249,33 @@ public class FeeCalculationService {
             } else {
                 label = String.format("%.2f%%", feeSum == 0 ? 0 : (double) fee / feeSum * 100);
             }
-            item.applyFee(primary.fees().get(idx), primary.equalFees().get(idx), fee, r.reason(), label);
+            item.applyFee(r.beforeSpecialFee(), r.equalFee(), fee, r.reason(), label);
         }
+    }
+
+    public record Script(String text, String source) {
+    }
+
+    /**
+     * 실행할 스크립트: skill.md 에 postprocess 블록이 있으면 그것(SCRIPT), 블록 없이 자연어 특이사항만 있으면 내장 변환기로
+     * 바꾼 것(AUTO_RULE, 변환 결과가 문법 오류면 DEFAULT), 4번이 비어 있으면 기본 배분(DEFAULT). 프론트 fee.js scriptOf 와 같은 규칙
+     */
+    public static Script scriptOf(SkillEngineService.ParsedSkill skill, List<PostprocessEngine.Line> lines) {
+        if (skill.hasPostprocess()) {
+            return new Script(skill.postprocess(), "SCRIPT");
+        }
+        if (skill.hasSpecialRules()) {
+            List<SpecialRuleConverter.Institution> insts = lines.stream()
+                    .map(l -> new SpecialRuleConverter.Institution(l.name(), l.aliases())).toList();
+            String converted = SpecialRuleConverter.convert(skill.specialRulesRaw(), insts).script();
+            try {
+                PostprocessScript.parse(converted);
+                return new Script(converted, "AUTO_RULE");
+            } catch (BusinessException e) {
+                return new Script(SkillEngineService.DEFAULT_POSTPROCESS, "DEFAULT");
+            }
+        }
+        return new Script(SkillEngineService.DEFAULT_POSTPROCESS, "DEFAULT");
     }
 
     private String toJson(Object value) {

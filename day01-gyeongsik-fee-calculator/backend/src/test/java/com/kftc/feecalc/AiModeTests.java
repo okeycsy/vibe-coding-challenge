@@ -28,7 +28,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kftc.feecalc.domain.fee.ai.AiFeePostProcessor;
 import com.kftc.feecalc.domain.fee.ai.FormulaGeneratorService;
 import com.kftc.feecalc.domain.fee.ai.LlmClient;
-import com.kftc.feecalc.domain.fee.ai.SpecialRuleInterpreter;
+import com.kftc.feecalc.domain.fee.ai.PostprocessGeneratorService;
 import com.kftc.feecalc.domain.fee.dto.CalculationRequest;
 import com.kftc.feecalc.domain.fee.dto.CalculationResponse;
 import com.kftc.feecalc.domain.fee.service.FeeCalculationService;
@@ -126,57 +126,53 @@ class AiModeTests {
     }
 
     @Test
-    void AI가_4번_특이사항을_보정_동작으로_해석하면_금액은_그_동작대로_코드가_계산한다() throws Exception {
-        given(llm.chatJson(eq(SpecialRuleInterpreter.SYSTEM), anyString())).willReturn(om.readTree("""
-                {"actions":[{"type":"ROUND","unit":100,"rounding":"UP","target":"NAMED","institutions":["카카오뱅크"],
-                             "redistribute":"PERF_DESC","rule":"카카오뱅크는 100원 단위 절상, 차이분은 실적 큰 순 1원씩 절삭"}],
-                 "unsupported":["분기 말 일괄 고지한다."]}"""));
+    void 산출은_AI를_부르지_않고_skill_md의_후처리_스크립트만_실행한다() throws Exception {
         CalculationResponse res = calc("cd", List.of());
-
-        assertThat(res.specialRuleMode()).isEqualTo("AI");
-        assertThat(res.specialRuleModel()).isEqualTo("test-model");
-        assertThat(res.specialActions()).singleElement().satisfies(a -> {
-            assertThat(a.type()).isEqualTo("ROUND");
-            assertThat(a.target()).isEqualTo("NAMED");
-            assertThat(a.description()).isEqualTo("카카오뱅크 100원 단위 절상 → 차이분은 나머지 기관에 실적 큰 순 1원씩 되돌림");
-        });
-        assertThat(res.specialUnsupported()).containsExactly("분기 말 일괄 고지한다.");
-        CalculationResponse.Item kakao = res.items().stream().filter(i -> i.institutionId().equals("kakao")).findFirst().orElseThrow();
-        assertThat(kakao.fee() % 100).isZero();
-        assertThat(kakao.specialReason()).startsWith("특이사항 반영: 100원 단위 절상 (+");
-        // 차이분을 되돌려 합계 유지, 첫 번째 기관(신한)은 지정 대상이 아님
+        assertThat(res.postprocessSource()).isEqualTo("SCRIPT");
+        assertThat(res.postprocess()).startsWith("allocate(fee)\nroundUp(fee, 10, first)");
+        assertThat(res.checks()).extracting(CalculationResponse.Check::passed).containsExactly(true, true);
         assertThat(res.totalFeeAmount()).isEqualTo(res.totalBeforeSpecialFee());
-        assertThat(res.items().get(0).specialReason()).doesNotContain("단위 절상");
-
-        // 같은 문장·기관 목록은 다시 묻지 않아 같은 금액이 나온다
-        CalculationResponse again = calc("cd", List.of());
-        assertThat(again.items()).extracting(CalculationResponse.Item::fee)
-                .containsExactlyElementsOf(res.items().stream().map(CalculationResponse.Item::fee).toList());
-        org.mockito.Mockito.verify(llm, org.mockito.Mockito.times(1)).chatJson(eq(SpecialRuleInterpreter.SYSTEM), anyString());
+        assertThat(res.items().get(0).fee() % 10).isZero();
+        // 이슈가 없으면 AI 는 한 번도 불리지 않는다
+        org.mockito.Mockito.verify(llm, org.mockito.Mockito.never()).chatJson(anyString(), anyString());
     }
 
     @Test
-    void AI_해석이_허용_목록을_벗어나면_규칙_기반_해석으로_같은_구조를_만든다() throws Exception {
-        CalculationResponse rule = calculationService.calculate(new CalculationRequest("cd",
-                LocalDate.of(2026, 7, 1), LocalDate.of(2026, 9, 30), List.of(), null, null, "admin"), false);
-        assertThat(rule.specialRuleMode()).isEqualTo("RULE");
+    void AI가_4번_특이사항으로_만든_스크립트는_시험_실행을_통과해야_쓰고_아니면_내장_변환기로_만든다() throws Exception {
+        String special = "- 카카오뱅크는 100원 단위로 절상하고, 차이분은 실적이 큰 순서대로 1원씩 절삭한다.\n- 분기 말 일괄 고지한다.";
+        given(llm.chatJson(eq(PostprocessGeneratorService.SYSTEM), anyString())).willReturn(om.readTree("""
+                {"script":"allocate(fee)\\nroundUp(fee, 100, \\"카카오뱅크\\")\\nspreadDiff(perf, others, perfDesc)\\nassert sum(fee) == before",
+                 "explanation":["카카오뱅크 100원 절상 → roundUp"],"unsupported":["분기 말 일괄 고지한다."]}"""));
+        mvc.perform(post("/api/v1/skills/CD_NET/generate-postprocess").header("X-Employee-Id", "admin")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(om.writeValueAsString(Map.of("specialRulesText", special))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.source", is("AI")))
+                .andExpect(jsonPath("$.data.model", is("test-model")))
+                .andExpect(jsonPath("$.data.validationPassed", is(true)))
+                .andExpect(jsonPath("$.data.generatedScript", containsString("roundUp(fee, 100, \"카카오뱅크\")")))
+                .andExpect(jsonPath("$.data.unsupported[0]", is("분기 말 일괄 고지한다.")))
+                .andExpect(jsonPath("$.data.sample[6].name", is("카카오뱅크")))
+                .andExpect(jsonPath("$.data.checks[0].passed", is(true)));
 
         for (String bad : List.of(
-                "{\"actions\":[{\"type\":\"ROUND\",\"unit\":10,\"rounding\":\"UP\",\"target\":\"NAMED\",\"institutions\":[\"없는은행\"]}]}",
-                "{\"actions\":[{\"type\":\"SET_FEE\",\"amount\":1}]}",
-                "{\"actions\":[{\"type\":\"ROUND\",\"unit\":\"10원\",\"rounding\":\"UP\"}]}",
-                "{\"actions\":[{\"type\":\"MIN_FEE\",\"amount\":100,\"redistribute\":\"PERF_DESC\"}]}",
+                "{\"script\":\"allocate(fee)\\nexec(fee)\"}",
+                "{\"script\":\"roundUp(fee, 100, \\\"없는은행\\\")\\nfixSum(equal, 25%, over=perfDesc, under=perfAsc)\"}",
                 "{\"result\":\"ok\"}")) {
-            given(llm.chatJson(eq(SpecialRuleInterpreter.SYSTEM), anyString())).willReturn(om.readTree(bad));
-            CalculationResponse res = calc("cd", List.of());
-            assertThat(res.specialRuleMode()).as(bad).isEqualTo("RULE_FALLBACK");
-            assertThat(res.specialRuleNote()).contains("규칙 기반 해석");
-            assertThat(res.specialActions()).singleElement().satisfies(a -> {
-                assertThat(a.target()).isEqualTo("FIRST");
-                assertThat(a.redistribute()).isEqualTo("PERF_DESC");
-            });
-            assertThat(res.items()).extracting(CalculationResponse.Item::fee)
-                    .containsExactlyElementsOf(rule.items().stream().map(CalculationResponse.Item::fee).toList());
+            given(llm.chatJson(eq(PostprocessGeneratorService.SYSTEM), anyString())).willReturn(om.readTree(bad));
+            mvc.perform(post("/api/v1/skills/CD_NET/generate-postprocess").header("X-Employee-Id", "admin")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(om.writeValueAsString(Map.of("specialRulesText", special))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.source", is("RULE_FALLBACK")))
+                    .andExpect(jsonPath("$.data.note", containsString("내장 변환기 사용")))
+                    .andExpect(jsonPath("$.data.generatedScript", containsString("roundUp(fee, 100, \"카카오뱅크\")")))
+                    .andExpect(jsonPath("$.data.generatedScript", containsString("spreadDiff(perf, others, countDesc)")));
         }
+        // 권한 없는 사번은 403
+        mvc.perform(post("/api/v1/skills/CD_NET/generate-postprocess").header("X-Employee-Id", "hong")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(om.writeValueAsString(Map.of("specialRulesText", special))))
+                .andExpect(status().isForbidden());
     }
 }

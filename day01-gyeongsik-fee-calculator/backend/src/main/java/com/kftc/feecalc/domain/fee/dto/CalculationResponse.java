@@ -10,7 +10,7 @@ import com.kftc.feecalc.domain.fee.entity.AiIssue;
 import com.kftc.feecalc.domain.fee.entity.FeeCalculation;
 import com.kftc.feecalc.domain.fee.entity.FeeCalculationItem;
 import com.kftc.feecalc.domain.fee.service.Period;
-import com.kftc.feecalc.domain.fee.service.SpecialAction;
+import com.kftc.feecalc.domain.fee.service.PostprocessEngine;
 
 public record CalculationResponse(
         Long id,
@@ -44,14 +44,14 @@ public record CalculationResponse(
         String aiMode,
         String aiModel,
         String aiNote,
-        /** 4번 특이사항 해석 방식: AI / RULE(키 없음, 규칙 기반) / RULE_FALLBACK(AI 실패로 규칙 기반) */
-        String specialRuleMode,
-        String specialRuleModel,
-        String specialRuleNote,
-        /** 해석된 보정 동작 (금액은 이 동작대로 코드가 계산) */
-        List<Action> specialActions,
-        /** 보정 동작으로 바꾸지 못해 적용하지 않은 문장 */
-        List<String> specialUnsupported,
+        /** 실행한 4번 후처리 스크립트 원문 */
+        String postprocess,
+        /** 스크립트 출처: SCRIPT(skill.md 블록) / AUTO_RULE(자연어만 있어 내장 변환기로 변환) / DEFAULT(4번 없음, 기본 배분) */
+        String postprocessSource,
+        /** 스크립트 assert 검증 결과 */
+        List<Check> checks,
+        /** 실행 중 참고 사항 (예: 대상 기관 없음) */
+        List<String> notes,
         List<Item> items,
         List<Issue> issues) {
 
@@ -69,12 +69,10 @@ public record CalculationResponse(
         }
     }
 
-    public record Action(String type, Long amount, Long unit, String rounding, String target, List<String> institutions,
-                         String redistribute, String rule, String description) {
+    public record Check(String expression, String label, boolean passed, String actual) {
 
-        static Action from(SpecialAction a) {
-            return new Action(a.type().name(), a.amount(), a.unit(), a.rounding() == null ? null : a.rounding().name(),
-                    a.target().name(), a.institutions(), a.redistribute().name(), a.rule(), a.describe());
+        static Check from(PostprocessEngine.Check c) {
+            return new Check(c.expression(), c.label(), c.passed(), c.actual());
         }
     }
 
@@ -103,39 +101,32 @@ public record CalculationResponse(
                 items.stream().mapToLong(Item::equalFee).sum(),
                 items.stream().mapToLong(Item::perfFee).sum(),
                 c.getAiMode(), c.getAiModel(), c.getAiNote(),
-                c.getSpecialRuleMode(), c.getSpecialRuleModel(), c.getSpecialRuleNote(),
-                actions(c.getSpecialActionsJson()), unsupported(c.getSpecialActionsJson()),
+                c.getAppliedPostprocess() == null ? "" : c.getAppliedPostprocess(), c.getPostprocessSource(),
+                result(c.getPostprocessResultJson()).checks(), result(c.getPostprocessResultJson()).notes(),
                 items, c.getIssues().stream().map(Issue::from).toList());
     }
 
     private static final ObjectMapper OM = new ObjectMapper();
 
-    /** 저장된 해석 JSON → 동작 목록 (없거나 깨졌으면 빈 목록) */
-    public static List<Action> actions(String json) {
+    /** 저장된 실행 결과 JSON → 검증·참고 (없거나 깨졌으면 빈 목록) */
+    public static PostprocessResult result(String json) {
         try {
             if (json == null || json.isBlank()) {
-                return List.of();
+                return new PostprocessResult(List.of(), List.of());
             }
-            SpecialActions saved = OM.readValue(json, SpecialActions.class);
-            return saved.actions() == null ? List.of() : saved.actions().stream().map(Action::from).toList();
+            PostprocessResult saved = OM.readValue(json, PostprocessResult.class);
+            return new PostprocessResult(saved.checks() == null ? List.of() : saved.checks(),
+                    saved.notes() == null ? List.of() : saved.notes());
         } catch (Exception e) {
-            return List.of();
+            return new PostprocessResult(List.of(), List.of());
         }
     }
 
-    public static List<String> unsupported(String json) {
-        try {
-            if (json == null || json.isBlank()) {
-                return List.of();
-            }
-            SpecialActions saved = OM.readValue(json, SpecialActions.class);
-            return saved.unsupported() == null ? List.of() : saved.unsupported();
-        } catch (Exception e) {
-            return List.of();
-        }
-    }
+    /** FeeCalculation.postprocessResultJson 형식 */
+    public record PostprocessResult(List<Check> checks, List<String> notes) {
 
-    /** FeeCalculation.specialActionsJson 형식 */
-    public record SpecialActions(List<SpecialAction> actions, List<String> unsupported) {
+        public static PostprocessResult from(PostprocessEngine.Result r) {
+            return new PostprocessResult(r.checks().stream().map(Check::from).toList(), r.notes());
+        }
     }
 }
