@@ -1,6 +1,7 @@
 package com.kftc.feecalc;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -29,6 +30,7 @@ import com.kftc.feecalc.domain.fee.service.FeeCalculationService;
 import com.kftc.feecalc.domain.fee.service.SkillEngineService;
 import com.kftc.feecalc.domain.fee.service.SkillEngineService.Counts;
 import com.kftc.feecalc.domain.fee.service.SkillFileService;
+import com.kftc.feecalc.domain.fee.service.SpecialAction;
 import com.kftc.feecalc.domain.fee.service.SpecialRulePostProcessor;
 import com.kftc.feecalc.domain.fee.service.SpecialRulePostProcessor.FeeLine;
 import com.kftc.feecalc.domain.fee.service.SpecialRulePostProcessor.Result;
@@ -179,6 +181,37 @@ class AiPipelineTests {
                 .isEqualTo("특이사항 반영: 100원 단위 절사 (-1원)");
         assertThat(SpecialRulePostProcessor.apply("", tie)).allSatisfy(r -> assertThat(r.applied()).isFalse());
         assertThat(SpecialRulePostProcessor.parseAmount("1억 2,000만원")).isEqualTo(120_000_000L);
+    }
+
+    @Test
+    void 규칙_기반_해석기는_문장을_보정_동작으로_바꾸고_못_바꾼_문장은_따로_남긴다() {
+        List<FeeLine> lines = List.of(
+                new FeeLine("nh", "B011", "NH농협은행", List.of("농협", "NH"), 100, 512_344),
+                new FeeLine("a", "B001", "가은행", List.of(), 300, 600_000));
+        SpecialRulePostProcessor.Interpretation in = SpecialRulePostProcessor.interpret("""
+                - 최고 회비 1억원
+                - 농협은 10원 단위로 절상한다.
+                - 절상 차이분은 실적이 작은 순서대로 1원씩 절삭한다.
+                - 분기 말 일괄 고지한다.
+                """, lines);
+        assertThat(in.actions()).extracting(SpecialAction::describe).containsExactly(
+                "전체 기관 최고 회비 100,000,000원",
+                "NH농협은행 10원 단위 절상 → 차이분은 나머지 기관에 실적 작은 순 1원씩 되돌림");
+        assertThat(in.unsupported()).containsExactly("분기 말 일괄 고지한다.");
+
+        // 허용 목록: 상하한을 앞으로, 기관 ID·기관코드로도 지정 가능, 범위 밖은 거부
+        List<SpecialAction> valid = SpecialRulePostProcessor.validate(List.of(
+                new SpecialAction(SpecialAction.Type.ROUND, null, 10L, SpecialAction.Rounding.UP, null, List.of("B011"), null, "r"),
+                new SpecialAction(SpecialAction.Type.MIN_FEE, 1_000L, null, null, null, null, null, "m")), lines);
+        assertThat(valid).extracting(SpecialAction::type).containsExactly(SpecialAction.Type.MIN_FEE, SpecialAction.Type.ROUND);
+        assertThat(valid.get(1).target()).isEqualTo(SpecialAction.Target.NAMED);
+        assertThat(SpecialRulePostProcessor.execute(valid, lines).get(0).finalFee()).isEqualTo(512_350L);
+        assertThatThrownBy(() -> SpecialRulePostProcessor.validate(List.of(
+                new SpecialAction(SpecialAction.Type.ROUND, null, 1L, SpecialAction.Rounding.UP, SpecialAction.Target.ALL, null, null, "")), lines))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> SpecialRulePostProcessor.validate(List.of(
+                new SpecialAction(SpecialAction.Type.MAX_FEE, -5L, null, null, SpecialAction.Target.ALL, null, null, "")), lines))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

@@ -11,9 +11,16 @@ function save(sheets, filename) {
   XLSX.writeFile(wb, filename);
 }
 
+const SPECIAL_MODE = {
+  AI: 'AI 해석',
+  RULE: '규칙 기반 해석 (AI 키 없음)',
+  RULE_FALLBACK: '규칙 기반 해석 (AI 해석 실패)',
+  MOCK: '규칙 기반 해석 (서버 미연결)',
+};
+
 // 참가기관에 보내 실적·회비를 대사(확인)받기 위한 파일
-// skill: 산출에 쓴 기준 { summary, formula, specialRules } (산출기준 시트에 1번·3번·4번을 남긴다)
-export function downloadReconciliation({ business, from, to, rows, issues, skill }) {
+// skill: 산출에 쓴 기준 { summary, formula, specialRules } (산출기준 시트에 1번·3번·4번을 남긴다), special: 4번 해석 결과
+export function downloadReconciliation({ business, from, to, rows, issues, skill, special }) {
   const period = periodLabel(from, to);
   save(
     [
@@ -48,6 +55,13 @@ export function downloadReconciliation({ business, from, to, rows, issues, skill
           ...(skill?.specialRules?.length
             ? skill.specialRules.map((v) => ({ 항목: '4. 최종 정산 특이사항', 내용: v }))
             : [{ 항목: '4. 최종 정산 특이사항', 내용: '없음' }]),
+          ...(special?.mode && skill?.specialRules?.length
+            ? [
+                { 항목: '4번 해석 방식', 내용: (SPECIAL_MODE[special.mode] ?? special.mode) + (special.model ? ` · ${special.model}` : '') },
+                ...special.actions.map((a) => ({ 항목: '4번 보정 동작', 내용: a.description })),
+                ...special.unsupported.map((v) => ({ 항목: '4번 미적용 문장', 내용: v })),
+              ]
+            : []),
         ].map((r) => ({ [`${business.name} 회비분담기준`]: r.항목, 내용: r.내용 })),
       },
       {

@@ -13,7 +13,10 @@ import org.springframework.transaction.annotation.Transactional;
 import com.kftc.feecalc.common.event.FeeCalculatedEvent;
 import com.kftc.feecalc.common.exception.BusinessException;
 import com.kftc.feecalc.common.exception.ErrorCode;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kftc.feecalc.domain.fee.ai.AiFeePostProcessor;
+import com.kftc.feecalc.domain.fee.ai.SpecialRuleInterpreter;
 import com.kftc.feecalc.domain.fee.dto.BusinessRateUpdateRequest;
 import com.kftc.feecalc.domain.fee.dto.BusinessResponse;
 import com.kftc.feecalc.domain.fee.dto.CalculationRequest;
@@ -39,7 +42,8 @@ import lombok.RequiredArgsConstructor;
  * 1) 기관별 기준 실적(업로드 또는 시연용) → 2) 이슈 문장을 skill.md "## 2. AI 예외 차감 지침"으로 판별해 차감
  * ({@link AiFeePostProcessor}, 키가 없으면 규칙 기반) → 2단계 정산 파이프라인:
  * Step 1: "## 3. 정산 수식"(SpEL)으로 1차 정밀 계산 + 원 단위 배분(균등분담분·실적분담분 분해)
- * → Step 2: "## 4. 최종 정산 특이사항"으로 끝전·예외 후처리 ({@link SpecialRulePostProcessor}, 규칙 기반이라 프론트 Mock 과 같은 결과)
+ * → Step 2: "## 4. 최종 정산 특이사항"을 AI 가 보정 동작으로 해석({@link SpecialRuleInterpreter}, 키가 없거나 실패하면 규칙 기반)하고
+ * {@link SpecialRulePostProcessor#execute}가 그 동작대로 금액을 계산 (금액 계산은 결정적)
  * 산정 방식(구간 단가, 총액 분담, 기본료 등)은 Java 코드가 아니라 skill.md 에만 있다. {@link SkillEngineService} 참고
  */
 @Service
@@ -56,6 +60,8 @@ public class FeeCalculationService {
     private final ApplicationEventPublisher eventPublisher;
     private final SkillEngineService skillEngine;
     private final AiFeePostProcessor aiPostProcessor;
+    private final SpecialRuleInterpreter specialRuleInterpreter;
+    private final ObjectMapper objectMapper;
 
     // ---------- 기준 정보 ----------
 
@@ -162,7 +168,7 @@ public class FeeCalculationService {
         }
 
         // Step 1) "## 3. 정산 수식" 1차 계산 → Step 2) "## 4. 최종 정산 특이사항" 후처리
-        applySkill(calc.getItems(), skill, scale, byCode);
+        applySkill(calc, skill, scale, byCode, allowAi);
         calc.applyTotalFee(calc.getTotalFeeAmount());
         calc.applyAiResult(review.outcome().mode().name(),
                 allowAi && aiPostProcessor.aiEnabled() ? aiPostProcessor.model() : null,
@@ -213,8 +219,9 @@ public class FeeCalculationService {
      * Step 2: "## 4. 최종 정산 특이사항"으로 보정한다. 보정액은 실적분담분에 들어간다.
      * 표시 단위가 "원/건"이면 실효 단가(최종 회비 ÷ 인정 건수), 그 밖에는 회비 합계 대비 비율을 rateLabel 로 남긴다.
      */
-    private void applySkill(List<FeeCalculationItem> items, SkillEngineService.ParsedSkill skill, double scale,
-                            Map<String, Institution> byCode) {
+    private void applySkill(FeeCalculation calc, SkillEngineService.ParsedSkill skill, double scale,
+                            Map<String, Institution> byCode, boolean allowAi) {
+        List<FeeCalculationItem> items = calc.getItems();
         SkillEngineService.PrimaryFees primary = SkillEngineService.calculatePrimary(skill.formula(),
                 items.stream().map(i -> new SkillEngineService.Counts(i.getBaseCount(), i.getDeduction(), i.getFinalCount()))
                         .toList(),
@@ -227,7 +234,11 @@ public class FeeCalculationService {
                     item.getInstitutionName(), inst == null ? List.of() : inst.getAliases(), item.getFinalCount(),
                     primary.fees().get(idx)));
         }
-        List<SpecialRulePostProcessor.Result> results = SpecialRulePostProcessor.apply(skill.specialRulesRaw(), lines);
+        // 해석(AI → 보정 동작, 키 없음·실패면 규칙 기반) → 실행(코드가 동작대로 계산)
+        SpecialRuleInterpreter.Interpretation interpretation = specialRuleInterpreter.interpret(skill.specialRulesRaw(), lines, allowAi);
+        List<SpecialRulePostProcessor.Result> results = SpecialRulePostProcessor.execute(interpretation.actions(), lines);
+        calc.applySpecialInterpretation(interpretation.mode().name(), interpretation.model(), trim(interpretation.note()),
+                toJson(new CalculationResponse.SpecialActions(interpretation.actions(), interpretation.unsupported())));
         long feeSum = results.stream().mapToLong(SpecialRulePostProcessor.Result::finalFee).sum();
         boolean perCount = skill.rateUnit().contains("건");
         for (int idx = 0; idx < items.size(); idx++) {
@@ -242,6 +253,14 @@ public class FeeCalculationService {
                 label = String.format("%.2f%%", feeSum == 0 ? 0 : (double) fee / feeSum * 100);
             }
             item.applyFee(primary.fees().get(idx), primary.equalFees().get(idx), fee, r.reason(), label);
+        }
+    }
+
+    private String toJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException(e);
         }
     }
 

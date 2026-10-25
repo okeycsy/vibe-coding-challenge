@@ -86,6 +86,20 @@ public class FeeCalculation {
     @Column(length = 1000)
     private String aiNote;
 
+    /** "## 4. 최종 정산 특이사항" 해석 방식: AI / RULE(키 없음) / RULE_FALLBACK(AI 실패) */
+    @Column(length = 20)
+    private String specialRuleMode;
+
+    @Column(length = 60)
+    private String specialRuleModel;
+
+    @Column(length = 1000)
+    private String specialRuleNote;
+
+    /** 해석된 보정 동작 JSON: {"actions":[...],"unsupported":[...]} */
+    @Column(length = 8000)
+    private String specialActionsJson;
+
     @OneToMany(mappedBy = "calculation", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sortOrder")
     private List<FeeCalculationItem> items = new ArrayList<>();
@@ -124,6 +138,13 @@ public class FeeCalculation {
         this.aiMode = aiMode;
         this.aiModel = aiModel;
         this.aiNote = aiNote;
+    }
+
+    public void applySpecialInterpretation(String mode, String model, String note, String actionsJson) {
+        this.specialRuleMode = mode;
+        this.specialRuleModel = model;
+        this.specialRuleNote = note;
+        this.specialActionsJson = actionsJson;
     }
 
     public void addItem(FeeCalculationItem item) {

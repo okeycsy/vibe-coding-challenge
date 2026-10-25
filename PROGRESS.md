@@ -25,6 +25,9 @@
 - 공개 배포는 Vercel Git 연결로 한다 (Root Directory `day01-gyeongsik-fee-calculator`, Production Branch `main`). 토큰·GitHub Actions 배포는 쓰지 않는다
 
 ## 세션 로그
+### 2026-10-25 (경식, 4번 특이사항 AI 해석)
+- John 확인: 4번 처리가 키워드 매칭뿐이라 AI를 쓰도록 변경. 구조 = AI가 문장을 보정 동작 JSON(MIN_FEE/MAX_FEE/ROUND, 단위·절상/절사/반올림, 대상 ALL/FIRST/NAMED, 차이분 실적순 배분)으로 해석 → 허용 목록 검증 → 코드가 동작대로 금액 계산(`SpecialRuleInterpreter` → `SpecialRulePostProcessor.validate/execute`). 키 없음(RULE)·AI 실패/형식 오류(RULE_FALLBACK)·Mock은 기존 키워드 규칙이 같은 구조를 만듦. 같은 문장·기관 목록의 AI 해석은 서버 메모리에 기억
+- 응답·화면·대사용 엑셀에 해석 방식, 보정 동작, 적용하지 못한 문장 표시. 규칙 기반일 때 서버·Mock 1,160건(4번 문장 변형 40건 포함) 일치, `mvn test` 46개. Render에 `AI_API_KEY`(필요 시 `AI_MODEL`·`AI_BASE_URL`)를 넣어야 AI 해석이 켜짐
 ### 2026-10-25 (경식, 관리자 설정 > 기관 관리)
 - 관리자 설정에 [기관 관리] 하위 메뉴 추가: 저장된 모든 기관(사용 중지 포함) 조회, 검색(기관명·코드·내부 ID·별칭)·구분(은행/증권/보험/기타)·상태·실적(시연 포함/업로드 전용) 필터, 요약 수치, 목록 엑셀 내려받기
 - 추가·수정: 별칭 칩 편집, 입력하면서 중복 검증(기관코드·내부 ID 대소문자 무시, 이름·별칭, 사용 중지 기관 포함), 이름 변경 시 이전 이름을 별칭으로 남기기 버튼. 내부 ID는 수정 불가. 새 기관은 업로드 전용(시연 실적 없음)

@@ -28,6 +28,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.kftc.feecalc.common.exception.BusinessException;
 import com.kftc.feecalc.common.exception.ErrorCode;
+import com.kftc.feecalc.domain.fee.dto.CalculationResponse;
 import com.kftc.feecalc.domain.fee.dto.InstitutionCount;
 import com.kftc.feecalc.domain.fee.dto.UploadResult;
 import com.kftc.feecalc.domain.fee.entity.AiIssue;
@@ -45,6 +46,9 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class FeeExcelService {
+
+    private static final java.util.Map<String, String> SPECIAL_MODE = java.util.Map.of(
+            "AI", "AI 해석", "RULE", "규칙 기반 해석 (AI 키 없음)", "RULE_FALLBACK", "규칙 기반 해석 (AI 해석 실패)");
 
     private final InstitutionRepository institutionRepository;
     private final FeeCalculationService calculationService;
@@ -221,6 +225,16 @@ public class FeeExcelService {
             }
             for (String line : special) {
                 writeRow(basis, b++, null, "4. 최종 정산 특이사항", line);
+            }
+            if (calc.getSpecialRuleMode() != null && !special.isEmpty()) {
+                writeRow(basis, b++, null, "4번 해석 방식", SPECIAL_MODE.getOrDefault(calc.getSpecialRuleMode(), calc.getSpecialRuleMode())
+                        + (calc.getSpecialRuleModel() == null ? "" : " · " + calc.getSpecialRuleModel()));
+                for (CalculationResponse.Action a : CalculationResponse.actions(calc.getSpecialActionsJson())) {
+                    writeRow(basis, b++, null, "4번 보정 동작", a.description());
+                }
+                for (String line : CalculationResponse.unsupported(calc.getSpecialActionsJson())) {
+                    writeRow(basis, b++, null, "4번 미적용 문장", line);
+                }
             }
             autosize(basis, 2);
 

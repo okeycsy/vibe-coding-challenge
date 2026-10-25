@@ -39,7 +39,7 @@ const LOADING_STEPS = [
   'Raw Data 검증 중…',
   'AI 예외 차감 지침으로 이슈 판별 중…',
   'Step 1: 3번 정산 수식(formula)으로 1차 정밀 계산 중…',
-  'Step 2: 4번 최종 정산 특이사항으로 후처리 보정 중…',
+  'Step 2: 4번 최종 정산 특이사항을 보정 동작으로 해석해 후처리 중…',
 ];
 // 산출 결과의 AI 단계 동작 방식 (서버 aiMode)
 const AI_MODE_LABEL = {
@@ -47,6 +47,13 @@ const AI_MODE_LABEL = {
   RULE: '규칙 기반 이슈 판별 (AI 키 없음)',
   RULE_FALLBACK: '규칙 기반 이슈 판별 (AI 호출 실패)',
   MOCK: '규칙 기반 이슈 판별 (서버 미연결)',
+};
+// 4번 최종 정산 특이사항을 보정 동작으로 해석한 방식 (서버 specialRuleMode)
+const SPECIAL_MODE_LABEL = {
+  AI: 'AI 해석',
+  RULE: '규칙 기반 해석 (AI 키 없음)',
+  RULE_FALLBACK: '규칙 기반 해석 (AI 해석 실패)',
+  MOCK: '규칙 기반 해석 (서버 미연결)',
 };
 
 // 기간 빠른 선택. 기본값은 오늘 기준 직전 분기(회비는 분기 종료 후 산출)다.
@@ -259,6 +266,13 @@ export default function FeeCalculation({
             // 서버는 빈 문장을 빼지 않은 같은 순서로 판별 결과를 돌려준다
             issues: issues.map((i, idx) => ({ ...i, applied: res.issues[idx]?.applied, judgement: res.issues[idx]?.judgement })),
             ai: { mode: res.aiMode, model: res.aiModel, note: res.aiNote },
+            special: {
+              mode: res.specialRuleMode,
+              model: res.specialRuleModel,
+              note: res.specialRuleNote,
+              actions: res.specialActions ?? [],
+              unsupported: res.specialUnsupported ?? [],
+            },
             used: { ...used, calcType: res.calcType, formula: res.formula, specialRules: lines(res.specialRules) },
           }))
       : new Promise((resolve) =>
@@ -266,7 +280,7 @@ export default function FeeCalculation({
         );
     const minDelay = new Promise((resolve) => later(resolve, 2100));
     Promise.all([compute, minDelay])
-      .then(([{ rows, issues: reviewed, ai, used: applied }]) => {
+      .then(([{ rows, issues: reviewed, ai, special, used: applied }]) => {
         setRuns((r) => ({
           ...r,
           [k]: {
@@ -276,6 +290,7 @@ export default function FeeCalculation({
             rows,
             issues: reviewed,
             ai,
+            special,
             skill: applied,
             source: { fileName: upload.name, institutions: upload.counts.length, unmatched: upload.unmatched },
             createdAt: new Date().toLocaleString('ko-KR'),
@@ -304,6 +319,7 @@ export default function FeeCalculation({
     downloadReconciliation({
       business: { ...business, summary: run.skill?.summary ?? business.summary },
       skill: run.skill,
+      special: isOperator ? run.special : null,
       from,
       to,
       rows: visibleRows,
@@ -784,6 +800,42 @@ export default function FeeCalculation({
               {run.skill && <span>적용 기준 {run.skill.calcType} (skill.md)</span>}
               {isOperator && <span className="text-brand-500">대사 상태 배지를 누르면 상태가 바뀝니다.</span>}
             </div>
+            {isOperator && (run.special?.actions?.length > 0 || run.special?.unsupported?.length > 0) && (
+              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2 text-xs">
+                <p className="flex flex-wrap items-center gap-2 font-semibold text-amber-900">
+                  4번 최종 정산 특이사항 해석 결과
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-normal ${
+                      run.special.mode === 'AI'
+                        ? 'border-violet-200 bg-violet-50 text-violet-700'
+                        : run.special.mode === 'RULE_FALLBACK'
+                          ? 'border-amber-300 bg-amber-100 text-amber-800'
+                          : 'border-slate-200 bg-white text-slate-600'
+                    }`}
+                    title={run.special.note ?? undefined}
+                  >
+                    <Bot className="w-3 h-3" /> {SPECIAL_MODE_LABEL[run.special.mode] ?? run.special.mode}
+                    {run.special.model && ` · ${run.special.model}`}
+                  </span>
+                  <span className="font-normal text-amber-800/80">금액은 아래 보정 동작대로 코드가 계산합니다.</span>
+                </p>
+                {run.special.actions.length > 0 && (
+                  <ol className="mt-1.5 list-decimal space-y-0.5 pl-5 text-slate-700">
+                    {run.special.actions.map((a, i) => (
+                      <li key={i} title={a.rule || undefined}>
+                        {a.description}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+                {run.special.unsupported.length > 0 && (
+                  <p className="mt-1.5 text-rose-700">
+                    적용하지 못한 문장: {run.special.unsupported.join(' / ')}
+                  </p>
+                )}
+                {run.special.note && <p className="mt-1 text-amber-800">{run.special.note}</p>}
+              </div>
+            )}
             <div className="overflow-x-auto rounded-lg border border-slate-200">
               <table className="w-full text-sm">
                 <thead className="bg-brand-800 text-white text-xs">
