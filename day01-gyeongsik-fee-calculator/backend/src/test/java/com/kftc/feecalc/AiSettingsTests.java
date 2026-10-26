@@ -82,4 +82,42 @@ class AiSettingsTests {
             server.stop(0);
         }
     }
+
+    @Test
+    void Claude_키면_Messages_API로_부르고_text_블록에서_JSON을_읽는다() throws Exception {
+        AiProperties claude = new AiProperties("sk-ant-test", "claude-sonnet-5-5", "https://api.anthropic.com/v1/", null);
+        assertThat(claude.anthropic()).isTrue();
+        assertThat(claude.provider()).isEqualTo("Claude");
+        assertThat(claude.baseUrlOrDefault()).isEqualTo("https://api.anthropic.com");
+        assertThat(claude.timeoutOrDefault()).isEqualTo(90);
+        assertThat(new AiProperties("sk-ant-test", null, null, null).modelOrDefault()).isEqualTo("claude-opus-5-5");
+
+        AtomicReference<String> req = new AtomicReference<>();
+        AtomicReference<String> key = new AtomicReference<>();
+        AtomicReference<String> version = new AtomicReference<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/messages", ex -> {
+            req.set(new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            key.set(ex.getRequestHeaders().getFirst("x-api-key"));
+            version.set(ex.getRequestHeaders().getFirst("anthropic-version"));
+            byte[] out = """
+                    {"content":[{"type":"thinking","thinking":""},{"type":"text","text":"결과입니다:\\n{\\\"formula\\\":\\\"#finalCount * 10\\\"}"}],"stop_reason":"end_turn"}"""
+                    .getBytes(StandardCharsets.UTF_8);
+            ex.getResponseHeaders().add("Content-Type", "application/json");
+            ex.sendResponseHeaders(200, out.length);
+            ex.getResponseBody().write(out);
+            ex.close();
+        });
+        server.start();
+        try {
+            String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
+            LlmClient llm = new LlmClient(new AiProperties("sk-ant-test", "claude-sonnet-5-5", url, 5), new ObjectMapper());
+            assertThat(llm.chatJson("sys", "rules").path("formula").asText()).isEqualTo("#finalCount * 10");
+            assertThat(key.get()).isEqualTo("sk-ant-test");
+            assertThat(version.get()).isNotBlank();
+            assertThat(req.get()).contains("\"max_tokens\"").contains("\"system\"").doesNotContain("response_format").doesNotContain("temperature");
+        } finally {
+            server.stop(0);
+        }
+    }
 }
