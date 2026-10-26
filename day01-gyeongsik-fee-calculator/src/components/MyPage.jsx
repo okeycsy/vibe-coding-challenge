@@ -305,7 +305,6 @@ export default function MyPage({
               <Send className="w-3.5 h-3.5" /> 연동 테스트 발송
             </button>
           </div>
-          <p className="mt-1.5 text-[11px] text-slate-400">시연용 화면이라 실제로 발송하지 않습니다.</p>
           <div className="mt-4 space-y-2">
             {NOTIFY_OPTIONS.map((o) => (
               <Switch

@@ -25,6 +25,10 @@
 - 공개 배포는 Vercel Git 연결로 한다 (Root Directory `day01-gyeongsik-fee-calculator`, Production Branch `main`). 토큰·GitHub Actions 배포는 쓰지 않는다
 
 ## 세션 로그
+### 2026-10-26 (경식, 실사용용 화면 문구 정리)
+- John 요청: 실제 사용자가 쓴다고 보고 개발·시연용 설명 제거. 로그인 화면의 시연 계정 목록·비밀번호·[시연용: 잠금 초기화] 버튼(잠금 해제는 관리자 회원 관리에서), 사이드바 하단 Mock/예시 데이터 안내, 마이페이지 "시연용 화면" 문구 삭제
+- 내부 구현 설명 삭제·축약: SpEL·SimpleEvaluationContext·AI 키·Mock 모드·내장 변환기·skill.md 섹션 번호 설명, AI 모델명 표시, 산출 결과의 후처리 스크립트 원문, STEP 1 정산 수식 원문. 화면 머리말·힌트는 한 줄로 축약. 라벨·오류·검증 결과·문법 안내(접힘)는 유지, 기능 동작은 그대로
+- 백엔드 사용자 메시지(수식 생성 실패 안내, 생성 완료 메시지, 엑셀 후처리 출처 라벨)도 같은 표현으로 정리. `vite build`·`mvn test` 통과
 ### 2026-10-25 (경식, 4번 특이사항 → 후처리 스크립트, 3번 분리 수식)
 - John 결정: 특이사항이 많아질 수 있어 문장별 보정 동작(PR #43) 대신 **후처리 스크립트** 방식. 4번 = 자연어 + ```postprocess 블록. 빌더에서 AI(키 없으면 내장 변환기 `SpecialRuleConverter`)가 문장을 스크립트로 바꾸고 문법·시험 실행·시뮬레이션 후 확정, 산출 때는 AI 없이 스크립트만 실행(`PostprocessEngine`, 프론트 `postprocess.js`와 동일, 백만분의 1원 정수 연산). `SpecialRuleInterpreter`/`SpecialAction`/`SpecialRulePostProcessor`/`specialRules.js` 제거
 - 연산: allocate · roundUp/Down/Half(addTo) · fixSum(N%) · spreadDiff · min/max/add/set · assert(sum/mod/all/integer). 스크립트 없으면 자연어를 변환해 실행(AUTO_RULE), 4번 없으면 allocate(fee)(이전 결과와 같음). 기본 CD공동망·타행환·금거정 skill.md에 스크립트 블록 추가

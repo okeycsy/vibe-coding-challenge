@@ -24,8 +24,8 @@ import { downloadReconciliation, downloadRevenueResolution } from '../utils/exce
 import { Card, Select, StatusBadge } from './ui';
 import DateField from './DateField';
 import { api, apiEnabled } from '../utils/api';
-import { TASK_CODES, builtInTasks, lines, localSkillDetail } from '../utils/skill';
-import { SOURCE_LABEL, parseScript } from '../utils/postprocess';
+import { builtInTasks, lines, localSkillDetail } from '../utils/skill';
+import { SOURCE_LABEL } from '../utils/postprocess';
 import { MAX_UPLOAD_MB, SAMPLE_FILE, UploadError, checkUploadFile, parseUploadInBrowser } from '../utils/upload';
 
 const NEXT_STATUS = { 대기: '확인중', 확인중: '완료', 완료: '대기' };
@@ -39,24 +39,15 @@ const specialBadge = (r) => {
 const LOADING_STEPS = [
   'Raw Data 검증 중…',
   'AI 예외 차감 지침으로 이슈 판별 중…',
-  'Step 1: 3번 정산 수식(formula)으로 1차 정밀 계산 중…',
-  'Step 2: 4번 최종 정산 특이사항 후처리 스크립트 실행·검증 중…',
+  '정산 수식으로 회비 계산 중…',
+  '최종 정산 특이사항 반영·검증 중…',
 ];
 // 산출 결과의 AI 단계 동작 방식 (서버 aiMode)
 const AI_MODE_LABEL = {
   AI: 'AI 이슈 판별',
-  RULE: '규칙 기반 이슈 판별 (AI 키 없음)',
-  RULE_FALLBACK: '규칙 기반 이슈 판별 (AI 호출 실패)',
-  MOCK: '규칙 기반 이슈 판별 (서버 미연결)',
-};
-
-// 스크립트 단계 수 (빈 줄·주석 제외, 문법 오류면 줄 수)
-const stepCount = (script) => {
-  try {
-    return parseScript(script).length;
-  } catch {
-    return script.split('\n').filter((l) => l.trim()).length;
-  }
+  RULE: '규칙 기반 이슈 판별',
+  RULE_FALLBACK: '규칙 기반 이슈 판별',
+  MOCK: '규칙 기반 이슈 판별',
 };
 
 // 기간 빠른 선택. 기본값은 오늘 기준 직전 분기(회비는 분기 종료 후 산출)다.
@@ -242,7 +233,7 @@ export default function FeeCalculation({
   // 산출: 서버가 있으면 POST /api/v1/fees/calculate (SkillEngineService), 없으면 브라우저에서 같은 수식으로 계산
   const runCalculation = () => {
     if (!skill) {
-      notify(skillError ?? '회비 기준(skill.md)을 불러오는 중입니다. 잠시 후 다시 시도해 주세요.', 'error');
+      notify(skillError ?? '회비 기준을 불러오는 중입니다. 잠시 후 다시 시도해 주세요.', 'error');
       return;
     }
     const k = key;
@@ -461,17 +452,16 @@ export default function FeeCalculation({
               {isOperator && skill && (
                 <button
                   onClick={() => onOpenSkill(businessId)}
-                  title="회비기준(Skill.md) 관리 화면에서 원문을 보고 고칩니다"
                   className="ml-auto flex items-center gap-1 rounded-lg border border-brand-200 bg-white px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100"
                 >
-                  <FileCode2 className="w-3.5 h-3.5" /> 회비기준(skill.md) 보기/수정
+                  <FileCode2 className="w-3.5 h-3.5" /> 회비기준 보기/수정
                 </button>
               )}
             </div>
             {skillError ? (
               <p role="alert" className="flex gap-2 text-xs text-rose-600">
                 <TriangleAlert className="w-4 h-4 shrink-0" />
-                회비 기준(skill.md)을 불러오지 못했습니다: {skillError}
+                회비 기준을 불러오지 못했습니다: {skillError}
               </p>
             ) : (
               <>
@@ -488,11 +478,6 @@ export default function FeeCalculation({
                     <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-semibold text-white">
                       <Tag className="w-3 h-3" /> 최종 정산 특이사항 적용 업무
                     </span>
-                    <p className="mt-1 text-[11px] text-amber-800">
-                      {skill.postprocess
-                        ? `1차 수식 계산 후 아래 4번 규칙을 확정된 후처리 스크립트(${stepCount(skill.postprocess)}단계)로 실행해 금액을 보정·검증합니다.`
-                        : '1차 수식 계산 후 아래 4번 규칙으로 금액을 보정합니다. 후처리 스크립트가 아직 확정되지 않아 내장 변환기로 바꿔 실행합니다.'}
-                    </p>
                     <ul className="mt-1 space-y-1 text-xs text-amber-900">
                       {skill.specialRules.map((s) => (
                         <li key={s} className="flex gap-2">
@@ -502,14 +487,6 @@ export default function FeeCalculation({
                       ))}
                     </ul>
                   </div>
-                )}
-                {skill && (
-                  <p className="mt-3 text-[11px] text-slate-500">
-                    정산 수식 ({TASK_CODES[businessId]}.md){' '}
-                    <code className="break-all rounded bg-white border border-slate-200 px-1.5 py-0.5 font-mono text-brand-800">
-                      {skill.formula.replace(/\s+/g, ' ')}
-                    </code>
-                  </p>
                 )}
               </>
             )}
@@ -581,8 +558,7 @@ export default function FeeCalculation({
                   {draft.file.institutionVersion !== institutionVersion && (
                     <p role="alert" className="mt-2 flex items-start gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
                       <TriangleAlert className="w-3.5 h-3.5 mt-px shrink-0" />
-                      이 파일을 읽은 뒤 기관 관리에서 기관 정보가 바뀌었습니다. 바뀐 기관명·코드·별칭으로 다시 매칭하려면 파일을 다시
-                      올려 주세요. (사용 중지한 기관이 들어 있으면 산출이 거부됩니다)
+                      파일을 올린 뒤 기관 정보가 바뀌었습니다. 파일을 다시 올려 주세요.
                     </p>
                   )}
                 </div>
@@ -607,7 +583,7 @@ export default function FeeCalculation({
                     <>
                       <LoaderCircle className="w-7 h-7 text-brand-500 animate-spin" />
                       <p className="text-xs text-slate-500">
-                        {apiEnabled ? '서버에서 엑셀을 읽는 중…' : '브라우저에서 엑셀을 읽는 중…'}
+                        엑셀을 읽는 중…
                       </p>
                     </>
                   ) : (
@@ -617,11 +593,8 @@ export default function FeeCalculation({
                         Excel 파일을 끌어다 놓거나 <span className="text-brand-600 font-semibold">클릭</span>하세요
                       </p>
                       <p className="text-[11px] text-slate-400">
-                        .xlsx, .xls · 최대 {MAX_UPLOAD_MB}MB · 첫 시트의 기관명(또는 기관코드)·건수 열을 읽습니다
+                        .xlsx, .xls · 최대 {MAX_UPLOAD_MB}MB
                       </p>
-                      {!apiEnabled && (
-                        <p className="text-[11px] text-slate-400">서버 미연결: 파일을 브라우저에서 직접 읽어 계산합니다</p>
-                      )}
                     </>
                   )}
                 </button>
@@ -795,7 +768,6 @@ export default function FeeCalculation({
                   title={run.ai.note ?? undefined}
                 >
                   <Bot className="w-3 h-3" /> {AI_MODE_LABEL[run.ai.mode] ?? run.ai.mode}
-                  {run.ai.model && ` · ${run.ai.model}`}
                 </span>
               )}
               {run.source && (
@@ -803,13 +775,13 @@ export default function FeeCalculation({
                   실적 출처 {run.source.fileName} ({run.source.institutions}개 기관)
                 </span>
               )}
-              {run.skill && <span>적용 기준 {run.skill.calcType} (skill.md)</span>}
+              {run.skill && <span>적용 기준 {run.skill.calcType}</span>}
               {isOperator && <span className="text-brand-500">대사 상태 배지를 누르면 상태가 바뀝니다.</span>}
             </div>
             {isOperator && run.special?.source && run.special.source !== 'DEFAULT' && (
               <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2 text-xs">
                 <p className="flex flex-wrap items-center gap-2 font-semibold text-amber-900">
-                  4번 최종 정산 특이사항 후처리
+                  최종 정산 특이사항 반영
                   <span
                     className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-normal ${
                       run.special.source === 'SCRIPT' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-300 bg-amber-100 text-amber-800'
@@ -817,11 +789,7 @@ export default function FeeCalculation({
                   >
                     <FileCode2 className="w-3 h-3" /> {SOURCE_LABEL[run.special.source] ?? run.special.source}
                   </span>
-                  <span className="font-normal text-amber-800/80">산출 중에는 AI 를 쓰지 않고 스크립트대로 코드가 계산합니다.</span>
                 </p>
-                <pre className="mt-1.5 max-h-40 overflow-auto rounded border border-amber-100 bg-white px-2 py-1 font-mono text-[11px] leading-5 text-slate-700">
-                  {run.special.postprocess}
-                </pre>
                 {run.special.checks.length > 0 && (
                   <ul className="mt-1.5 space-y-0.5">
                     {run.special.checks.map((c, i) => (
@@ -982,13 +950,12 @@ export default function FeeCalculation({
             </div>
             {visibleRows.some((r) => r.specialRuleApplied) && (
               <p className="mt-2 text-xs text-amber-700 flex items-center gap-1">
-                <Tag className="w-3.5 h-3.5" /> [특이사항 보정]·[절삭] 배지는 Step 1 수식 회비를 skill.md 4번 최종 정산 특이사항(10원 절상, 실적순 1원
-                절삭 등)으로 보정한 기관입니다. 배지에 마우스를 올리면 보정 전 금액과 사유가 보입니다.
+                <Tag className="w-3.5 h-3.5" /> 배지에 마우스를 올리면 보정 전 금액과 사유가 보입니다.
               </p>
             )}
             {isOperator && run.issues.some((i) => i.applied === false) && (
               <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                <p className="text-xs font-semibold text-slate-600 mb-1.5">차감하지 않은 이슈 (AI 예외 차감 지침 판별)</p>
+                <p className="text-xs font-semibold text-slate-600 mb-1.5">차감하지 않은 이슈</p>
                 <ul className="space-y-1 text-xs text-slate-600">
                   {run.issues
                     .filter((i) => i.applied === false)
@@ -1003,8 +970,7 @@ export default function FeeCalculation({
             )}
             {visibleRows.some((r) => r.deduction > 0) && (
               <p className="mt-2 text-xs text-amber-700 flex items-center gap-1">
-                <TriangleAlert className="w-3.5 h-3.5" /> 노란색 행은 AI 이슈로 건수가 차감된 기관입니다. 차감 건수에
-                마우스를 올리면 사유가 보입니다.
+                <TriangleAlert className="w-3.5 h-3.5" /> 노란색 행은 이슈로 건수가 차감된 기관입니다. 차감 건수에 마우스를 올리면 사유가 보입니다.
               </p>
             )}
           </>
@@ -1018,7 +984,7 @@ export default function FeeCalculation({
         >
           {tooltip.kind === 'special' ? (
             <>
-              <p className="font-semibold text-amber-300 mb-1">최종 정산 특이사항 보정 (skill.md 4번)</p>
+              <p className="font-semibold text-amber-300 mb-1">최종 정산 특이사항 보정</p>
               <p className="tabular-nums">
                 보정 전 {fmt(tooltip.row.beforeSpecialFee)}원 → 최종 {fmt(tooltip.row.fee)}원 ({tooltip.row.specialAdjustment > 0 ? '+' : ''}
                 {fmt(tooltip.row.specialAdjustment)}원)

@@ -12,7 +12,7 @@ const BLOCKED = '수식(formula) 블록 구문이 올바르지 않아 저장이 
 
 // [① 기준 문서 편집] 업무 담당자가 자연어 규칙(머리말, 1·2·4번 섹션)을 작성한다. 3번 정산 수식은 읽기만 하고 [② AI 계산식 빌더]에서 고친다.
 // 편집 내용은 마크다운 원문(text) 하나로 들고 있고, 폼 입력은 원문을 섹션별로 나눠 고친 뒤 표준 4섹션 마크다운으로 다시 합친다.
-export default function SkillDocumentEditor({ user, detail, saveContent, onDirty, onReset, onGoBuilder }) {
+export default function SkillDocumentEditor({ detail, saveContent, onDirty, onReset, onGoBuilder }) {
   const [text, setText] = useState(detail.content);
   const [mode, setMode] = useState('form');
   const [saving, setSaving] = useState(false);
@@ -97,7 +97,7 @@ export default function SkillDocumentEditor({ user, detail, saveContent, onDirty
             <button
               onClick={onReset}
               className="text-[11px] text-slate-400 underline-offset-2 hover:text-rose-600 hover:underline"
-              title="서버의 skill.md를 처음 배포된 기준으로 되돌립니다"
+              title="처음 제공된 기준으로 되돌립니다"
             >
               초기 기준 복원
             </button>
@@ -146,8 +146,7 @@ export default function SkillDocumentEditor({ user, detail, saveContent, onDirty
             {!standard && (
               <p className="flex items-start gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
                 <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                원문에 표준 4섹션 밖의 내용이 있습니다. 폼에서 고치면 표준 구조(머리말 · 1 · 2 · 3 · 4번 섹션)로 정리되니, 그 내용을 지키려면
-                마크다운 원문 편집 모드를 쓰세요.
+                원문에 표준 섹션 밖의 내용이 있습니다. 그 내용을 지키려면 원문 편집 모드를 쓰세요.
               </p>
             )}
             <fieldset className="grid gap-3 sm:grid-cols-3">
@@ -184,7 +183,7 @@ export default function SkillDocumentEditor({ user, detail, saveContent, onDirty
             <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-sm font-semibold text-brand-900">
-                  ## 3. 정산 수식 <span className="text-[11px] font-normal text-slate-500">(필수 · 현재 적용 중 · 읽기 전용)</span>
+                  ## 3. 정산 수식 <span className="text-[11px] font-normal text-slate-500">(읽기 전용)</span>
                 </p>
                 <button
                   onClick={() => onGoBuilder('formula')}
@@ -204,7 +203,7 @@ export default function SkillDocumentEditor({ user, detail, saveContent, onDirty
             <Section
               no={4}
               title="최종 정산 특이사항"
-              hint="1차 수식 계산 후의 반올림 · 합계 보정 · 특정 기관 절상 · 차이분 배분 · 최종 검증을 자연어로 적으세요. [AI 계산식 빌더 › 4번 후처리 스크립트]에서 이 문장을 실행용 스크립트로 바꿔 확정합니다."
+              hint="반올림 · 합계 보정 · 특정 기관 절상 등 수식 계산 뒤 처리할 규칙을 적으세요 (선택)."
               value={parts.special}
               onChange={(v) => setPart('special', v)}
               rows={6}
@@ -213,7 +212,7 @@ export default function SkillDocumentEditor({ user, detail, saveContent, onDirty
             <div className="-mt-2 rounded-lg border border-violet-200 bg-violet-50/40 p-3">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-sm font-semibold text-brand-900">
-                  4번 후처리 스크립트 <span className="text-[11px] font-normal text-slate-500">(```postprocess 블록 · 산출 때 이대로 실행 · 읽기 전용)</span>
+                  4번 후처리 스크립트 <span className="text-[11px] font-normal text-slate-500">(읽기 전용)</span>
                 </p>
                 <button
                   onClick={() => onGoBuilder('postprocess')}
@@ -225,12 +224,12 @@ export default function SkillDocumentEditor({ user, detail, saveContent, onDirty
               <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-900 p-2.5 font-mono text-[11px] text-violet-200">
                 {parts.postprocess ||
                   (parts.special.trim()
-                    ? '(아직 확정된 스크립트가 없습니다. 산출 때는 내장 변환기가 위 문장을 바꿔 실행합니다.)'
-                    : '(특이사항 없음 · 산출 때 기본 배분 allocate(fee))')}
+                    ? '(아직 확정된 스크립트가 없습니다.)'
+                    : '(특이사항 없음)')}
               </pre>
               {parts.postprocess && parts.special.trim() !== savedSpecial.trim() && (
                 <p className="mt-1.5 text-[11px] text-amber-700">
-                  4번 문장을 고쳤습니다. 저장한 뒤 빌더에서 스크립트를 다시 생성해 확정해야 산출에 반영됩니다 (스크립트는 그대로 유지됩니다).
+                  4번 문장을 고쳤습니다. 저장한 뒤 빌더에서 스크립트를 다시 확정해야 산출에 반영됩니다.
                 </p>
               )}
             </div>
@@ -242,10 +241,7 @@ export default function SkillDocumentEditor({ user, detail, saveContent, onDirty
             <MarkdownPreview markdown={text} />
           </div>
         )}
-        <p className="text-[11px] text-slate-400 leading-relaxed">
-          저장하면 4개 섹션을 하나의 표준 마크다운으로 합쳐 {user.role === 'sysadmin' ? '' : '승인된 업무의 '}skill.md에 저장하고 3단계 검증(섹션 · 수식 구문 ·
-          시험 계산 2벌 · 후처리 스크립트 시험 실행)을 거칩니다. 1번 · 3번은 필수, 2번 · 4번은 선택입니다.
-        </p>
+        <p className="text-[11px] text-slate-400 leading-relaxed">1번 · 3번은 필수, 2번 · 4번은 선택입니다.</p>
       </div>
     </section>
   );
@@ -368,7 +364,7 @@ export function MarkdownPreview({ markdown }) {
             <div key={idx}>
               {b.lang.startsWith('formula') && (
                 <p className="text-[11px] font-semibold text-emerald-700 mb-1">
-                  {b.lang === 'formula:equal' ? '균등분담 수식 (SpEL)' : b.lang === 'formula:perf' ? '실적분담 수식 (SpEL)' : '정산 수식 (SpEL)'}
+                  {b.lang === 'formula:equal' ? '균등분담 수식' : b.lang === 'formula:perf' ? '실적분담 수식' : '정산 수식'}
                 </p>
               )}
               {b.lang === 'postprocess' && <p className="text-[11px] font-semibold text-violet-700 mb-1">후처리 스크립트</p>}

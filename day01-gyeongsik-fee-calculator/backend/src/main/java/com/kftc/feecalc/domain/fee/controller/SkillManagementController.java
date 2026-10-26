@@ -100,7 +100,7 @@ public class SkillManagementController {
         FormulaGenerateResponse res = formulaGenerator.generate(code, request.businessRulesText());
         return ApiResponse.ok("AI".equals(res.source())
                 ? "AI가 1번 규칙으로 3번 수식을 작성했습니다. 시뮬레이션 후 확정 반영해 주세요."
-                : "내장 변환기로 3번 수식을 작성했습니다. 시뮬레이션 후 확정 반영해 주세요.", res);
+                : "1번 규칙으로 3번 수식을 작성했습니다. 시뮬레이션 후 확정 반영해 주세요.", res);
     }
 
     /**
@@ -116,7 +116,7 @@ public class SkillManagementController {
         PostprocessGenerateResponse res = postprocessGenerator.generate(code, request.specialRulesText());
         return ApiResponse.ok("AI".equals(res.source())
                 ? "AI가 4번 특이사항으로 후처리 스크립트를 작성했습니다. 시뮬레이션 후 확정 반영해 주세요."
-                : "내장 변환기로 후처리 스크립트를 작성했습니다. 시뮬레이션 후 확정 반영해 주세요.", res);
+                : "4번 특이사항으로 후처리 스크립트를 작성했습니다. 시뮬레이션 후 확정 반영해 주세요.", res);
     }
 
     /** 섹션이 덜 채워진 파일(막 추가한 업무 등)도 열어서 고칠 수 있게 원문은 그대로 준다 */

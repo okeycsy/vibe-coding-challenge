@@ -843,8 +843,8 @@ export function scriptOf(skill, institutions) {
 }
 
 export const SOURCE_LABEL = {
-  SCRIPT: 'skill.md 후처리 스크립트',
-  AUTO_RULE: '자연어 특이사항을 내장 변환기로 변환 (스크립트 미확정)',
+  SCRIPT: '확정 스크립트 적용',
+  AUTO_RULE: '자동 변환 적용 (스크립트 미확정)',
   DEFAULT: '특이사항 없음 · 기본 배분',
 };
 

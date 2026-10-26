@@ -10,7 +10,7 @@ const LOCKED_MSG = '해당 업무의 권한을 먼저 신청하여 승인받아�
 // [회비기준(Skill.md) 관리] 하위 메뉴 2개
 export const SKILL_PAGES = [
   { id: 'skills-document', label: '① 기준 문서 편집', icon: FilePen, desc: '자연어 규칙(1·2·4번)과 머리말을 작성·관리합니다.' },
-  { id: 'skills-builder', label: '② AI 계산식 빌더', icon: Sparkles, desc: '1번 규칙으로 3번 정산 수식을, 4번 특이사항으로 후처리 스크립트를 생성·시뮬레이션하고 반영합니다.' },
+  { id: 'skills-builder', label: '② AI 계산식 빌더', icon: Sparkles, desc: '자연어 규칙으로 정산 수식과 후처리 스크립트를 만들고 시험한 뒤 반영합니다.' },
 ];
 
 const nowLabel = () => {
@@ -155,9 +155,7 @@ export default function SkillManagementPage({
         <div className="min-w-0 flex-1">
           <h2 className="text-xl font-bold text-brand-900">회비기준(Skill.md) 관리 · {current.label}</h2>
           <p className="text-sm text-slate-500 mt-0.5">
-            {current.desc} 업무마다 skill.md 파일 1개(1. 비즈니스 규칙 요약 · 2. AI 예외 차감 지침 · 3. 정산 수식 · 4. 최종 정산 특이사항)로
-            관리하며, 저장하면 다음 회비 산출부터 바로 반영됩니다.
-            {user.role === 'sysadmin' ? ' 시스템관리자는 모든 업무를 수정할 수 있습니다.' : ' 승인받은 업무만 열람·수정할 수 있습니다.'}
+            {current.desc} 저장하면 다음 회비 산출부터 반영됩니다.
           </p>
         </div>
         <div className="flex rounded-lg border border-slate-200 bg-white p-0.5 text-sm shadow-sm" role="tablist">

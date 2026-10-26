@@ -7,7 +7,7 @@ import { computeRaw, lines, parseSkill, replacePostprocess, splitSkill } from '.
 import { DEFAULT_POSTPROCESS, generatePostprocessLocally, parseScript, runScript, sampleLines, scriptOf, trialScript } from '../utils/postprocess';
 import { Card, Check } from './SkillFormulaBuilder';
 
-const SOURCE_LABEL = { AI: 'AI(LLM) 생성', RULE: '내장 변환기', RULE_FALLBACK: 'AI 실패 → 내장 변환기' };
+const SOURCE_LABEL = { AI: 'AI 생성', RULE: '규칙 기반 생성', RULE_FALLBACK: '규칙 기반 생성' };
 
 // 편집기에 넣는 연산 예시 (한 줄 = 한 단계)
 const OPS = [
@@ -144,8 +144,8 @@ export default function SkillPostprocessBuilder({ detail, saveContent, onDirty, 
       await saveContent(
         replacePostprocess(detail.content, script),
         script.trim()
-          ? `${detail.taskName} skill.md '## 4. 최종 정산 특이사항'에 후처리 스크립트를 반영했습니다. 다음 산출부터 이 스크립트대로 계산합니다.`
-          : `${detail.taskName} skill.md의 후처리 스크립트를 지웠습니다.`,
+          ? `${detail.taskName} 후처리 스크립트를 반영했습니다.`
+          : `${detail.taskName} 후처리 스크립트를 지웠습니다.`,
       );
     } catch (e) {
       setSaveError(e.message);
@@ -180,13 +180,13 @@ export default function SkillPostprocessBuilder({ detail, saveContent, onDirty, 
           </ul>
         ) : (
           <p className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-sm text-slate-500">
-            4번 특이사항이 없습니다. 스크립트가 없으면 산출 때 기본 배분({DEFAULT_POSTPROCESS})만 합니다.
+            4번 특이사항이 없습니다.
           </p>
         )}
         {autoScript && (
           <p className="mt-2 flex gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
             <TriangleAlert className="w-4 h-4 shrink-0" />
-            아직 확정된 스크립트가 없어 산출 때 내장 변환기로 바꿔 실행합니다. 아래에서 스크립트를 만들어 확인한 뒤 확정 반영해 주세요.
+            아직 확정된 스크립트가 없습니다. 아래에서 스크립트를 만들어 확인한 뒤 확정 반영해 주세요.
           </p>
         )}
         <button
@@ -197,12 +197,6 @@ export default function SkillPostprocessBuilder({ detail, saveContent, onDirty, 
           {generating ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <WandSparkles className="w-4 h-4" />}
           ✨ 4번 특이사항 읽고 후처리 스크립트 자동 생성
         </button>
-        <p className="mt-1.5 text-[11px] text-slate-400">
-          {apiEnabled
-            ? '서버에 AI 키가 있으면 AI(LLM)가 문장을 스크립트로 바꾸고, 없거나 결과가 문법 검사·시험 실행을 통과하지 못하면 내장 변환기가 만듭니다.'
-            : '서버 미연결(Mock) 모드: 서버와 같은 내장 변환기로 만듭니다.'}{' '}
-          AI 는 여기서 한 번만 쓰고, 산출 때는 확정된 스크립트를 코드가 그대로 실행합니다 (같은 입력이면 늘 같은 금액).
-        </p>
         {genError && (
           <p role="alert" className="mt-2 flex gap-1.5 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700">
             <TriangleAlert className="w-4 h-4 shrink-0" /> {genError}
@@ -218,7 +212,6 @@ export default function SkillPostprocessBuilder({ detail, saveContent, onDirty, 
               <span className="text-xs text-sky-600">문장 → 단계 변환</span>
               <span className="rounded-full border border-sky-300 bg-white px-2 py-0.5 text-[10px] text-sky-700">
                 {SOURCE_LABEL[result.source] ?? result.source}
-                {result.model ? ` · ${result.model}` : ''}
               </span>
             </p>
             <ol className="mt-1 list-decimal pl-5 space-y-0.5 text-xs">
@@ -235,7 +228,6 @@ export default function SkillPostprocessBuilder({ detail, saveContent, onDirty, 
               {result.validationPassed ? '✅ ' : '⚠️ '}
               {result.validationMessage}
             </p>
-            {result.note && <p className="mt-1 text-[11px] text-amber-700">{result.note}</p>}
           </div>
         )}
         <div className="flex flex-wrap items-center gap-1.5 mb-2">
@@ -284,9 +276,9 @@ export default function SkillPostprocessBuilder({ detail, saveContent, onDirty, 
           </div>
         </details>
         <div className="mt-2 text-[11px]">
-          <p className="text-slate-400">현재 skill.md에 확정된 스크립트</p>
+          <p className="text-slate-400">현재 확정된 스크립트</p>
           <pre className="whitespace-pre-wrap break-all rounded bg-slate-100 p-2 font-mono text-slate-500">
-            {current || (autoScript ? `(미확정 · 산출 때 내장 변환기 결과로 실행)\n${autoScript.text}` : `(없음 · 기본 배분 ${DEFAULT_POSTPROCESS})`)}
+            {current || (autoScript ? `(미확정)\n${autoScript.text}` : '(없음)')}
           </pre>
         </div>
       </Card>
@@ -382,8 +374,7 @@ export default function SkillPostprocessBuilder({ detail, saveContent, onDirty, 
             <Check label="② 시험 실행 2벌 (시험용 기관 7곳 · 실적 0)" result={checks.trial} />
           </ul>
           <p className="self-end text-[11px] text-slate-400 leading-relaxed">
-            저장할 때 서버도 같은 검사를 다시 합니다. 검증(assert) 실패는 저장을 막지 않고, 산출 결과 화면과 대사용 엑셀에 실패로 표시됩니다.
-            기관명은 산출 대상에 없으면 그 단계를 건너뛰고 참고로 남기니, 지정 기관(예: 우체국)은 기관 관리에 먼저 등록해 주세요.
+            지정 기관(예: 우체국)은 기관 관리에 먼저 등록해 주세요.
           </p>
         </div>
         {saveError && (
@@ -398,7 +389,7 @@ export default function SkillPostprocessBuilder({ detail, saveContent, onDirty, 
             disabled={!checks.all || !changed || saving}
             className="flex items-center gap-1.5 rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 disabled:bg-slate-300"
           >
-            {saving ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <CircleCheck className="w-4 h-4" />}이 스크립트를 skill.md 4번에 확정 반영
+            {saving ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <CircleCheck className="w-4 h-4" />}이 스크립트를 확정 반영
           </button>
         </div>
       </Card>

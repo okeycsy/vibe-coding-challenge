@@ -153,7 +153,7 @@ export function generateFormulaLocally(taskCode, businessRulesText) {
   const g = generateFormula(rules);
   if (!g) {
     throw new Error(
-      '서버 미연결 모드라 내장 변환기로 만드는데, 알아듣는 표현(총액 N원·N% 균등·N% 실적, 기본료 N원 + 건당 N원, N건까지 건당 N원 구간, 건당 단가 N원·최저/최고 회비, 총액 N원 실적 비율)이 규칙에 없습니다. 수식을 직접 작성해 주세요.',
+      '규칙에서 알아듣는 표현(총액 N원·N% 균등·N% 실적, 기본료 N원 + 건당 N원, N건까지 건당 N원 구간, 건당 단가 N원·최저/최고 회비, 총액 N원 실적 비율)을 찾지 못했습니다. 수식을 직접 작성해 주세요.',
     );
   }
   let passed = true;

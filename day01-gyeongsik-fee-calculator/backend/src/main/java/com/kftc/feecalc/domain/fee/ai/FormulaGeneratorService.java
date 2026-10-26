@@ -88,9 +88,9 @@ public class FormulaGeneratorService {
         }
         Optional<RuleBasedFormulaGenerator.Generated> rule = RuleBasedFormulaGenerator.generate(rules);
         if (rule.isEmpty()) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, (note == null ? "AI 키(AI_API_KEY)가 설정되지 않아 " : note + ". ")
-                    + "내장 변환기로 만드는데, 알아듣는 표현(총액 N원·N% 균등·N% 실적, 기본료 N원 + 건당 N원, N건까지 건당 N원 구간, "
-                    + "건당 단가 N원·최저/최고 회비, 총액 N원 실적 비율)이 규칙에 없습니다. 수식을 직접 작성해 주세요.");
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "규칙에서 알아듣는 표현(총액 N원·N% 균등·N% 실적, 기본료 N원 + 건당 N원, N건까지 건당 N원 구간, "
+                    + "건당 단가 N원·최저/최고 회비, 총액 N원 실적 비율)을 찾지 못했습니다. 수식을 직접 작성해 주세요.");
         }
         RuleBasedFormulaGenerator.Generated g = rule.get();
         return response(taskCode, g.formula(), g.equalFormula(), g.perfFormula(), g.pattern(), g.steps(),

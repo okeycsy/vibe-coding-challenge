@@ -14,7 +14,7 @@ const VARIABLES = [
   { name: '#rawCount', desc: '기본 건수' },
   { name: '#deductedCount', desc: 'AI 차감 건수' },
 ];
-const SOURCE_LABEL = { AI: 'AI(LLM) 생성', RULE: '내장 변환기', RULE_FALLBACK: 'AI 실패 → 내장 변환기' };
+const SOURCE_LABEL = { AI: 'AI 생성', RULE: '규칙 기반 생성', RULE_FALLBACK: '규칙 기반 생성' };
 const SIM_FIELDS = [
   { key: 'rawCount', label: '기본건수' },
   { key: 'deductedCount', label: '차감건수' },
@@ -36,7 +36,7 @@ export const Card = ({ no, title, icon: Icon, children, right }) => (
 );
 
 const TABS = [
-  { id: 'formula', label: '3번 정산 수식', desc: '1번 규칙 → SpEL 수식 (단일 또는 균등·실적 분리)' },
+  { id: 'formula', label: '3번 정산 수식', desc: '1번 규칙으로 정산 수식 생성' },
   { id: 'postprocess', label: '4번 후처리 스크립트', desc: '4번 특이사항 → 반올림·합계 보정·끝전 처리·검증 스크립트' },
 ];
 
@@ -150,7 +150,7 @@ function FormulaBuilder({ detail, saveContent, onDirty, onGoDocument }) {
     };
     const section = step(() => {
       parseSkill(detail.taskCode, replaceFormulas(detail.content, want));
-      return split ? '1번 요약 · 3번 formula:equal / formula:perf 블록 확인' : '1번 요약 · 3번 formula 블록 확인';
+      return '1번 요약 · 3번 정산 수식 확인';
     });
     const syntax = step(() => {
       list.forEach(([name, f]) => {
@@ -203,7 +203,7 @@ function FormulaBuilder({ detail, saveContent, onDirty, onGoDocument }) {
     try {
       await saveContent(
         replaceFormulas(detail.content, want),
-        `${detail.taskName} skill.md의 '## 3. 정산 수식'을 새 ${split ? '균등·실적 분리 ' : ''}수식으로 반영했습니다.`,
+        `${detail.taskName} 정산 수식을 반영했습니다.`,
       );
     } catch (e) {
       setSaveError(e.message);
@@ -247,10 +247,7 @@ function FormulaBuilder({ detail, saveContent, onDirty, onGoDocument }) {
           ✨ 1번 비즈니스 규칙 읽고 계산식 자동 생성
         </button>
         <p className="mt-1.5 text-[11px] text-slate-400">
-          {apiEnabled
-            ? '서버에 AI 키가 있으면 AI(LLM)가, 없거나 AI 결과가 검증을 통과하지 못하면 내장 변환기가 수식을 만듭니다.'
-            : '서버 미연결(Mock) 모드: 서버와 같은 내장 변환기로 만듭니다.'}{' '}
-          알아듣는 산정 패턴: 균등(%) + 실적비례(%) 혼합 · 구간별 차등 단가 · 기본료 + 건당 단가 · 단가 + 최저/최고 한도 · 총액 대비 실적 비율
+          지원 패턴: 균등(%) + 실적비례(%) 혼합 · 구간별 차등 단가 · 기본료 + 건당 단가 · 단가 + 최저/최고 한도 · 총액 대비 실적 비율
         </p>
         {genError && (
           <p role="alert" className="mt-2 flex gap-1.5 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700">
@@ -268,7 +265,6 @@ function FormulaBuilder({ detail, saveContent, onDirty, onGoDocument }) {
               <b>{result.detectedPattern}</b>
               <span className="rounded-full border border-sky-300 bg-white px-2 py-0.5 text-[10px] text-sky-700">
                 {SOURCE_LABEL[result.source] ?? result.source}
-                {result.model ? ` · ${result.model}` : ''}
               </span>
             </p>
             <p className="mt-2 text-xs text-sky-600">규칙-수식 매핑 설명</p>
@@ -282,7 +278,6 @@ function FormulaBuilder({ detail, saveContent, onDirty, onGoDocument }) {
               {result.validationMessage} · 정상 예시 <b>{result.sampleResultNormal == null ? '-' : `${fmt(result.sampleResultNormal)}원`}</b> · 실적 0
               예시 <b>{result.sampleResultZero == null ? '-' : `${fmt(result.sampleResultZero)}원`}</b>
             </p>
-            {result.note && <p className="mt-1 text-[11px] text-amber-700">{result.note}</p>}
           </div>
         )}
         <div className="flex flex-wrap items-center gap-1.5 mb-2">
@@ -315,16 +310,16 @@ function FormulaBuilder({ detail, saveContent, onDirty, onGoDocument }) {
           ))}
           <span className="text-[11px] text-slate-400">
             {split
-              ? '균등분담분·실적분담분을 따로 계산해 4번 후처리에서 각 합계(예: 25% · 75%)를 따로 맞출 수 있습니다.'
-              : '균등+실적 혼합 수식이면 실적 0일 때 값을 균등분담분으로 나눠 봅니다.'}
+              ? '균등분담분·실적분담분을 따로 계산합니다.'
+              : '회비 총액을 하나의 수식으로 계산합니다.'}
           </span>
         </div>
         {split ? (
           <div className="space-y-2">
-            <FormulaEditor label="```formula:equal · 균등분담회비 (기관 1곳)" refEl={editors.equal} value={equal} onChange={setEqual} onFocus={() => setFocus('equal')} rows={3} />
-            <FormulaEditor label="```formula:perf · 실적분담회비 (기관 1곳)" refEl={editors.perf} value={perf} onChange={setPerf} onFocus={() => setFocus('perf')} rows={3} />
+            <FormulaEditor label="균등분담회비 (기관 1곳)" refEl={editors.equal} value={equal} onChange={setEqual} onFocus={() => setFocus('equal')} rows={3} />
+            <FormulaEditor label="실적분담회비 (기관 1곳)" refEl={editors.perf} value={perf} onChange={setPerf} onFocus={() => setFocus('perf')} rows={3} />
             <FormulaEditor
-              label="```formula · 통합 회비 (선택, 표시용 · 균등 + 실적과 같아야 함)"
+              label="통합 회비 (선택 · 균등 + 실적과 같아야 함)"
               refEl={editors.total}
               value={formula}
               onChange={setFormula}
@@ -333,19 +328,17 @@ function FormulaBuilder({ detail, saveContent, onDirty, onGoDocument }) {
             />
           </div>
         ) : (
-          <FormulaEditor label="```formula · 회비 총액 (기관 1곳)" refEl={editors.total} value={formula} onChange={setFormula} onFocus={() => setFocus('total')} rows={6} />
+          <FormulaEditor label="회비 총액 (기관 1곳)" refEl={editors.total} value={formula} onChange={setFormula} onFocus={() => setFocus('total')} rows={6} />
         )}
         <div className="mt-2 grid gap-2 md:grid-cols-2 text-[11px]">
           <div>
-            <p className="text-slate-400">현재 skill.md에 적용 중인 수식</p>
+            <p className="text-slate-400">현재 적용 중인 수식</p>
             <pre className="whitespace-pre-wrap break-all rounded bg-slate-100 p-2 font-mono text-slate-500">
               {savedSplit ? `균등: ${detail.equalFormula}\n실적: ${detail.perfFormula}${savedTotal ? `\n통합: ${savedTotal}` : ''}` : current || '(없음)'}
             </pre>
           </div>
           <p className="self-end text-slate-400 leading-relaxed">
-            T(...) 타입 참조 · 메서드 호출 · 생성자는 쓸 수 없고(SimpleEvaluationContext), 숫자 · 변수 · 사칙연산 · 비교 · 삼항 연산자만 됩니다.
-            총액은 <code>300000000.0</code>처럼 소수점을 붙이고, 나눌 때는 <code>(#totalCount == 0 ? 0 : …)</code>로 0 나누기를 막으세요. 끝전 처리는
-            4번 후처리 스크립트에서 합니다.
+            숫자 · 변수 · 사칙연산 · 비교 · 삼항 연산자를 쓸 수 있습니다. 나눌 때는 <code>(#totalCount == 0 ? 0 : …)</code>로 0 나누기를 막으세요.
           </p>
         </div>
       </Card>
@@ -384,21 +377,17 @@ function FormulaBuilder({ detail, saveContent, onDirty, onGoDocument }) {
                 </>
               )}
             </p>
-            <p className="text-[11px] text-slate-400">원 미만은 4번 후처리 스크립트(없으면 기본 배분 allocate)가 정리하고, 끝전 처리·합계 보정도 그 스크립트가 합니다.</p>
           </div>
           <div>
             <p className="text-xs font-semibold text-brand-800 mb-2">저장 전 3단계 검증</p>
             <ul className="space-y-2">
               <Check label="① 섹션 유효성" result={checks.section} />
-              <Check label="② SpEL 구문 검사" result={checks.syntax} />
+              <Check label="② 수식 구문 검사" result={checks.syntax} />
               <Check
                 label="③ 시험 계산 2벌 (정상 · 실적 0)"
                 result={checks.trial.ok ? { ok: true, value: `정상 ${fmt(checks.trial.value[0])}원 · 실적 0 ${fmt(checks.trial.value[1])}원` } : checks.trial}
               />
             </ul>
-            <p className="mt-1.5 text-[11px] text-slate-400">
-              정상 = 기본 100만 · 차감 10만 · 전체 900만 건 · 8개 기관 · 한 분기, 실적 0 = 모든 건수 0 · 8개 기관 · 반 분기
-            </p>
           </div>
         </div>
         {saveError && (
@@ -414,7 +403,7 @@ function FormulaBuilder({ detail, saveContent, onDirty, onGoDocument }) {
             className="flex items-center gap-1.5 rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 disabled:bg-slate-300"
           >
             {saving ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <CircleCheck className="w-4 h-4" />}
-            {split ? '이 분리 수식을 skill.md에 확정 반영' : '이 수식을 skill.md에 확정 반영'}
+            이 수식을 확정 반영
           </button>
         </div>
       </Card>
