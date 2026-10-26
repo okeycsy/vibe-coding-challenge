@@ -46,10 +46,14 @@ Docker 지원 무료 호스팅인 [Render](https://render.com)에 이 폴더의 
 - AI(LLM): Render Environment에 `AI_API_KEY`를 넣으면 회비 산출의 이슈 판별과, AI 계산식 빌더의 3번 수식 생성·4번 후처리 스크립트 생성에 AI를 씁니다. 4번 특이사항은 산출 때 AI를 부르지 않고 확정된 스크립트만 실행합니다. 금액 계산 자체는 AI가 하지 않습니다. **키는 저장소에 절대 커밋하지 않고 환경변수로만** 넣습니다. 비어 있으면 규칙 기반으로 동작합니다(아래 "2단계 정산 파이프라인").
   | 환경변수 | 기본값 | 설명 |
   |------|----|----|
-  | `AI_API_KEY` | (없음) | OpenAI 또는 Gemini API 키 |
-  | `AI_MODEL` | `gpt-4o-mini` | Gemini면 예: `gemini-2.0-flash` |
-  | `AI_BASE_URL` | `https://api.openai.com/v1` | Gemini면 `https://generativelanguage.googleapis.com/v1beta/openai` (OpenAI 호환 주소) |
-  | `AI_TIMEOUT_SECONDS` | `20` | 호출 한 번의 제한 시간. 넘으면 규칙 기반으로 이어서 산출 |
+  | `AI_API_KEY` | (없음) | OpenAI 또는 Gemini API 키. 이름을 `OPENAI_API_KEY`·`GEMINI_API_KEY`·`GOOGLE_API_KEY`로 넣어도 읽음(앞뒤 따옴표는 뗌) |
+  | `AI_MODEL` | 키에 따라 | 비우면 Gemini 키(`AIza...`)는 `gemini-2.5-flash`, 그 밖은 `gpt-4o-mini` |
+  | `AI_BASE_URL` | 키에 따라 | 비우면 Gemini 키는 `https://generativelanguage.googleapis.com/v1beta/openai`, 그 밖은 `https://api.openai.com/v1` |
+  | `AI_TIMEOUT_SECONDS` | `30` | 호출 한 번의 제한 시간. 넘으면 규칙 기반으로 이어서 산출 |
+
+  - 환경변수는 서버가 켜질 때만 읽습니다. Render에서 키를 넣거나 바꾸면 저장 후 재배포(Manual Deploy → Deploy latest commit)해야 반영됩니다. Vercel(프론트)에 넣은 키는 서버가 읽지 못합니다.
+  - 확인: 기동 로그에 `AI 사용: Gemini · gemini-2.5-flash · ...` 또는 `AI 키(AI_API_KEY)가 없어 규칙 기반으로 동작합니다.`가 찍힙니다. `GET /api/v1/ai/status?check=true`(화면: AI 계산식 빌더의 [연결 시험])는 실제로 짧은 요청을 보내 성공 여부와 실패 원인(HTTP 상태·제공자 오류 문구, 키는 가림)을 돌려줍니다.
+  - AI가 실패해 규칙 기반으로 바뀌면 생성 결과에 'AI 실패 → 규칙 기반 생성'과 원인이 표시됩니다.
 
 ## 기술 스택
 Java 17, Spring Boot 3.3 (Web, Data JPA, Validation), H2, Apache POI 5.3(엑셀), spring-security-crypto(BCrypt), Lombok

@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Calculator, CircleCheck, FileText, LoaderCircle, Sparkles, TriangleAlert, WandSparkles } from 'lucide-react';
 import { api, apiEnabled } from '../utils/api';
+import { AiStatusLine, SOURCE_LABEL, SourceNote } from './AiStatus';
 import { fmt } from '../utils/fee';
 import { INSTITUTIONS } from '../data/mockData';
 import { computeRaw, lines, parseSkill, replacePostprocess, splitSkill } from '../utils/skill';
 import { DEFAULT_POSTPROCESS, generatePostprocessLocally, parseScript, runScript, sampleLines, scriptOf, trialScript } from '../utils/postprocess';
 import { Card, Check } from './SkillFormulaBuilder';
 
-const SOURCE_LABEL = { AI: 'AI 생성', RULE: '규칙 기반 생성', RULE_FALLBACK: '규칙 기반 생성' };
 
 // 편집기에 넣는 연산 예시 (한 줄 = 한 단계)
 const OPS = [
@@ -197,6 +197,7 @@ export default function SkillPostprocessBuilder({ detail, saveContent, onDirty, 
           {generating ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <WandSparkles className="w-4 h-4" />}
           ✨ 4번 특이사항 읽고 후처리 스크립트 자동 생성
         </button>
+        <AiStatusLine />
         {genError && (
           <p role="alert" className="mt-2 flex gap-1.5 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700">
             <TriangleAlert className="w-4 h-4 shrink-0" /> {genError}
@@ -214,6 +215,7 @@ export default function SkillPostprocessBuilder({ detail, saveContent, onDirty, 
                 {SOURCE_LABEL[result.source] ?? result.source}
               </span>
             </p>
+            <SourceNote result={result} />
             <ol className="mt-1 list-decimal pl-5 space-y-0.5 text-xs">
               {result.explanation.map((e, i) => (
                 <li key={i}>{e}</li>
