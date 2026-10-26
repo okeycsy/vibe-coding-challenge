@@ -204,9 +204,11 @@ export function Sidebar({ role, active, activeSection, onSelect, adminBadge, sec
 
   return (
     <aside
-      className={`${open ? 'w-72' : 'w-16'} shrink-0 bg-white border-r border-slate-200 flex flex-col transition-[width] duration-200`}
+      className={`${open ? 'w-72' : 'w-16'} shrink-0 min-h-0 bg-white border-r border-slate-200 flex flex-col transition-[width] duration-200`}
     >
-      <nav className="p-3 space-y-1">
+      {/* 메뉴가 화면보다 길면 흰 사이드바 안에서 스크롤한다(밖으로 넘치면 아래쪽이 잘리고 배경색이 달라 보임).
+          접힌 레일은 짧고 호버 플라이아웃이 옆으로 나가야 하므로 스크롤 영역으로 만들지 않는다 */}
+      <nav className={`flex-1 min-h-0 p-3 space-y-1 ${open ? 'overflow-y-auto overscroll-contain' : ''}`}>
         {/* 접힌 상태에서는 제목이 좁은 폭에 한 글자씩 줄바꿈돼 아이콘 위에 큰 빈칸이 생기므로 아예 그리지 않는다 */}
         {open && (
           <p className="px-3 pt-2 pb-1 text-[11px] font-semibold text-slate-400 tracking-wider whitespace-nowrap">
