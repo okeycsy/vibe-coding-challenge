@@ -113,8 +113,7 @@ export default function TaskManagementPage({ tasks, members, overrides, onAddTas
         <p className="text-xs text-slate-400">관리자 설정</p>
         <h2 className="text-xl font-bold text-brand-900">업무 관리</h2>
         <p className="text-sm text-slate-500 mt-0.5">
-          회비 산출 업무를 조회·추가·삭제합니다. 업무마다 회비분담기준 md 파일이 정확히 하나 연결되며, 새 업무의 md 파일은
-          기본 템플릿의 제목·섹션·formula 블록 뼈대만 들어간 채로 만들어집니다.
+          회비 산출 업무를 조회·추가·삭제합니다.
         </p>
       </div>
 
@@ -221,8 +220,7 @@ export default function TaskManagementPage({ tasks, members, overrides, onAddTas
           </table>
         </div>
         <p className="mt-2 text-[11px] text-slate-400">
-          새로 추가한 업무는 [md 편집]에서 비어 있는 요약·AI 차감 지침·정산 수식을 채워 저장하면 회비 산출에 쓸 수 있습니다. 업무별 담당자
-          권한은 [업무 권한 관리]에서 따로 관리합니다.
+          새 업무는 [md 편집]에서 회비 기준을 채워 저장해야 산출에 쓸 수 있습니다.
         </p>
       </Card>
 
@@ -252,7 +250,7 @@ export default function TaskManagementPage({ tasks, members, overrides, onAddTas
             </Field>
             <Field
               label="업무 코드"
-              hint="영문 대문자로 시작, 대문자·숫자·밑줄(_) 2~30자. 권한·산출에서 업무를 구분하는 값이라 만든 뒤에는 바꿀 수 없습니다."
+              hint="영문 대문자로 시작, 대문자·숫자·밑줄(_) 2~30자. 만든 뒤에는 바꿀 수 없습니다."
               error={adding.error?.field === 'taskCode' && adding.error.message}
             >
               <input
@@ -264,7 +262,7 @@ export default function TaskManagementPage({ tasks, members, overrides, onAddTas
             </Field>
             <Field
               label="md 파일명"
-              hint="비우면 업무 코드로 만듭니다. 영문·숫자·밑줄(_)·하이픈(-)만 쓸 수 있고, 이미 다른 업무에 연결된 파일명은 쓸 수 없습니다."
+              hint="비우면 업무 코드로 만듭니다. 영문·숫자·밑줄(_)·하이픈(-)만 쓸 수 있습니다."
               error={adding.error?.field === 'fileName' && adding.error.message}
             >
               <div className="flex items-center gap-2">
@@ -323,7 +321,7 @@ export default function TaskManagementPage({ tasks, members, overrides, onAddTas
                   연결된 <code className="font-mono">{deleting.row.fileName}</code> 파일(회비분담기준·정산 수식)이 함께 삭제됩니다.
                 </li>
                 <li>이 업무 권한을 가진 담당자 {fmt(memberCountOf(deleting.row))}명의 권한이 해제되고, 승인 대기 중인 권한 신청은 반려됩니다.</li>
-                <li>회비 산출 화면과 회비기준(Skill.md) 관리 목록에서 이 업무가 사라집니다.</li>
+                <li>회비 산출 화면과 회비기준 관리 목록에서 이 업무가 사라집니다.</li>
                 {deleting.row.builtIn && <li className="text-rose-600">기본 제공 업무입니다. 삭제하면 초기 기준으로 복원할 수 없습니다.</li>}
               </ul>
               <label className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">

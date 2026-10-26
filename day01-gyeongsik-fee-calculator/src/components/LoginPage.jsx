@@ -5,13 +5,6 @@ import { Eye, EyeOff, Loader2, Lock, LogIn, ShieldAlert, User } from 'lucide-rea
 //   지금은 금융결제원 CI 심벌마크를 기본으로 쓴다.
 const LOGO_SRC = 'kftc-symbol.png';
 
-// 시연용 계정 (기본 비밀번호 kftc1234!!, 회원·계정 정보는 data/mockData.js의 MEMBERS)
-const DEMO_HINTS = [
-  { id: 'hong', label: '사용자 · 금융결제원 일반담당자 (홍길동)' },
-  { id: 'admin', label: '관리자 · 금융결제원 시스템관리자' },
-  { id: 'shinhan', label: '참가기관 · 신한은행 담당자 (김철수)' },
-];
-
 function LogoShowcase() {
   return (
     <div className="logo-stage">
@@ -35,11 +28,10 @@ function LogoShowcase() {
 // 백엔드 연동 시 서버 상태 안내 (무료 호스팅은 한동안 요청이 없으면 잠들었다가 첫 요청에 깨어난다)
 const SERVER_NOTICE = {
   waking: { tone: 'text-amber-600', text: '서버를 깨우는 중입니다. 처음 접속하면 1분 정도 걸릴 수 있습니다.' },
-  up: { tone: 'text-emerald-600', text: '서버 연결됨' },
   down: { tone: 'text-rose-600', text: '서버에 연결하지 못했습니다. 잠시 후 새로고침해 주세요.' },
 };
 
-export default function LoginPage({ onLogin, onResetLock, locks, maxAttempts, serverStatus = 'off' }) {
+export default function LoginPage({ onLogin, locks, maxAttempts, serverStatus = 'off' }) {
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -68,12 +60,6 @@ export default function LoginPage({ onLogin, onResetLock, locks, maxAttempts, se
     if (result.pending) return setError('가입 승인 대기 중인 계정입니다. 관리자 승인 후 로그인할 수 있습니다.');
     if (result.rejected) return setError('가입이 반려된 계정입니다. 관리자에게 문의하세요.');
     setError(result.locked ? '' : 'ID 또는 비밀번호가 올바르지 않습니다.');
-  };
-
-  const resetLock = () => {
-    onResetLock(typedId);
-    setError('');
-    setPassword('');
   };
 
   return (
@@ -178,30 +164,6 @@ export default function LoginPage({ onLogin, onResetLock, locks, maxAttempts, se
                 </p>
               )}
             </form>
-
-            <div className="mt-5 rounded-lg bg-slate-50 px-3 py-2.5 text-[11px] text-slate-400">
-              <p className="mb-1">시연용 계정 (기본 비밀번호 kftc1234!!)</p>
-              <ul className="space-y-0.5">
-                {DEMO_HINTS.map((h) => (
-                  <li key={h.id}>
-                    <button type="button" onClick={() => setId(h.id)} className="hover:text-brand-600">
-                      <span className="font-mono text-slate-500">{h.id}</span> — {h.label}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {locked && (
-              <div className="mt-3 text-center">
-                <button
-                  onClick={resetLock}
-                  className="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100"
-                >
-                  [시연용: 잠금 초기화]
-                </button>
-              </div>
-            )}
           </div>
         </div>
       </section>

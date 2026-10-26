@@ -354,8 +354,7 @@ function MemberManagement({
           </table>
         </div>
         <p className="mt-3 text-[11px] text-slate-400">
-          표시된 회원은 모두 가상의 예시 인물입니다. 비밀번호 {maxAttempts}회 오류로 잠긴 계정은 「잠김」으로
-          표시됩니다.
+          비밀번호 {maxAttempts}회 오류로 잠긴 계정은 「잠김」으로 표시됩니다.
         </p>
       </Card>
 
@@ -708,8 +707,7 @@ function TaskPermissions({ members, taskRequests, onDecideTask, onToggleTask }) 
           </table>
         </div>
         <p className="mt-3 text-[11px] text-slate-400">
-          권한을 부여하거나 해제하면 해당 회원의 「회비 산출 및 대사」 업무 선택에 바로 반영됩니다. 참가기관 회원은 산출
-          권한이 없어 목록에 나오지 않습니다.
+          참가기관 회원은 산출 권한이 없어 목록에 나오지 않습니다.
         </p>
       </Card>
 

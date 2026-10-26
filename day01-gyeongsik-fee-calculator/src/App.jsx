@@ -356,7 +356,6 @@ export default function App() {
         maxAttempts={MAX_ATTEMPTS}
         locks={loginLocks}
         onLogin={login}
-        onResetLock={unlock}
         serverStatus={serverStatus}
       />
     );

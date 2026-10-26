@@ -264,8 +264,7 @@ export default function InstitutionManagementPage({ user, runs, members, version
         <p className="text-xs text-slate-400">관리자 설정</p>
         <h2 className="text-xl font-bold text-brand-900">기관 관리</h2>
         <p className="text-sm text-slate-500 mt-0.5">
-          회비 산출에 쓰는 참가기관을 조회·추가·수정합니다. 여기서 바꾼 기관명·기관코드·별칭은 실적 엑셀의 기관 매칭과 AI 이슈 문장 인식에
-          다음 업로드부터 바로 쓰입니다. 지난 산출 이력은 산출 당시 기관명·코드로 보존됩니다.
+          회비 산출에 쓰는 참가기관을 조회·추가·수정합니다.
         </p>
       </div>
 
@@ -273,7 +272,7 @@ export default function InstitutionManagementPage({ user, runs, members, version
         <Stat label="전체 기관" value={stats.total} />
         <Stat label="사용 중" value={stats.active} tone="text-emerald-700" />
         <Stat label="사용 중지" value={stats.inactive} tone={stats.inactive ? 'text-rose-600' : 'text-slate-400'} />
-        <Stat label="업로드 전용 (시연 실적 없음)" value={stats.uploadOnly} tone="text-slate-700" />
+        <Stat label="업로드 전용" value={stats.uploadOnly} tone="text-slate-700" />
         <Stat label="등록된 별칭" value={stats.aliases} tone="text-slate-700" />
       </div>
 
@@ -318,7 +317,7 @@ export default function InstitutionManagementPage({ user, runs, members, version
           </select>
           <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} className={selectCls} aria-label="실적">
             <option value="all">실적 전체</option>
-            <option value="demo">시연 실적 포함</option>
+            <option value="demo">기본 실적 포함</option>
             <option value="upload">업로드 전용</option>
           </select>
           {filtered && (
@@ -369,7 +368,7 @@ export default function InstitutionManagementPage({ user, runs, members, version
                   <td className="px-3 py-2 whitespace-nowrap">
                     <span className={`font-semibold ${r.active ? 'text-brand-900' : 'text-slate-400 line-through'}`}>{r.name}</span>
                     {r.uploadOnly && (
-                      <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500" title="시연용 예시 실적에는 나오지 않고 업로드한 실적 파일에 있을 때만 산출 대상">
+                      <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500" title="업로드한 실적 파일에 있을 때만 산출 대상">
                         업로드 전용
                       </span>
                     )}
@@ -449,8 +448,7 @@ export default function InstitutionManagementPage({ user, runs, members, version
           </table>
         </div>
         <ul className="mt-2 space-y-0.5 text-[11px] text-slate-400 list-disc pl-4">
-          <li>엑셀 매칭 순서: 기관코드·내부 ID(대소문자 무시)·기관명이 정확히 같은 기관 → 없으면 칸 안에 가장 길게 들어 있는 기관명·별칭.</li>
-          <li>사용 중지한 기관은 엑셀 매칭·AI 이슈 인식·회비 산출에서 빠지고, 지난 산출 이력·대사 내역은 그대로 남습니다. [사용]으로 되돌릴 수 있습니다.</li>
+          <li>사용 중지한 기관은 회비 산출에서 빠지며, [사용]으로 되돌릴 수 있습니다.</li>
           <li>삭제는 산출 이력·대사·테스트 결과·연결 회원이 하나도 없는 기관만 할 수 있습니다.</li>
         </ul>
       </Card>
@@ -487,7 +485,7 @@ export default function InstitutionManagementPage({ user, runs, members, version
               </Field>
               <Field
                 label="내부 ID"
-                hint={editing.mode === 'add' ? '비우면 기관코드 소문자. 만든 뒤에는 바꿀 수 없습니다 (산출 이력·회원 소속이 가리키는 값)' : '바꿀 수 없음 (산출 이력·회원 소속이 가리키는 값)'}
+                hint={editing.mode === 'add' ? '비우면 기관코드 소문자. 만든 뒤에는 바꿀 수 없습니다.' : '바꿀 수 없습니다.'}
                 error={fieldError('id')}
               >
                 <input
@@ -511,7 +509,7 @@ export default function InstitutionManagementPage({ user, runs, members, version
 
             <Field
               label={`별칭 (${form.aliases.length}/10)`}
-              hint="AI 이슈 문장·엑셀 기관 칸에서 이 기관으로 인식할 다른 이름 (예: 약칭, 가명). Enter 또는 쉼표로 추가"
+              hint="이 기관으로 인식할 다른 이름 (예: 약칭). Enter 또는 쉼표로 추가"
               error={fieldError('aliases')}
             >
               <div className="rounded-lg border border-slate-300 px-2 py-1.5 focus-within:ring-2 focus-within:ring-brand-300">
@@ -566,12 +564,11 @@ export default function InstitutionManagementPage({ user, runs, members, version
             <div className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-[11px] text-slate-600 space-y-0.5">
               {editing.mode === 'add' ? (
                 <>
-                  <p>· 추가하면 다음 실적 엑셀 업로드부터 기관코드·이름·별칭으로 매칭되어 산출 대상이 됩니다.</p>
-                  <p>· 새 기관은 시연용 예시 실적이 없어, 업로드한 실적 파일에 있을 때만 산출에 나옵니다.</p>
+                  <p>· 다음 실적 엑셀 업로드부터 산출 대상이 됩니다.</p>
                 </>
               ) : (
                 <>
-                  <p>· 저장하면 다음 업로드·산출부터 바뀐 이름·코드·별칭으로 매칭합니다. 이미 읽어 둔 업로드는 다시 올려 주세요.</p>
+                  <p>· 다음 업로드부터 반영됩니다. 이미 올린 파일은 다시 올려 주세요.</p>
                   <p>· 지난 산출 이력 {fmt(editing.row.calculationCount)}건·대사 {fmt(editing.row.reconcileCount)}건은 산출 당시 이름·코드 그대로 남습니다.</p>
                   {editing.row.memberCount > 0 && <p>· 이름을 바꾸면 연결된 참가기관 회원 {fmt(editing.row.memberCount)}명의 소속 표시도 바뀝니다.</p>}
                 </>
@@ -606,8 +603,7 @@ export default function InstitutionManagementPage({ user, runs, members, version
               {deactivating.name} ({deactivating.code}) 기관을 사용 중지하시겠습니까?
             </p>
             <ul className="list-disc pl-5 text-xs text-slate-600 space-y-1">
-              <li>실적 엑셀 업로드에서 이 기관 행은 '기관을 찾지 못한 행'으로 빠지고, AI 이슈 문장에서도 인식하지 않습니다.</li>
-              <li>시연용 예시 실적 산출에서도 빠집니다. 이미 읽어 둔 업로드에 이 기관이 있으면 파일을 다시 올려야 산출할 수 있습니다.</li>
+              <li>실적 업로드·이슈 입력·회비 산출에서 이 기관이 빠집니다.</li>
               <li>지난 산출 이력 {fmt(deactivating.calculationCount)}건·대사 {fmt(deactivating.reconcileCount)}건은 그대로 남습니다.</li>
               {deactivating.memberCount > 0 && (
                 <li>연결된 참가기관 회원 {fmt(deactivating.memberCount)}명의 계정은 그대로이며, 필요하면 회원 관리에서 따로 정리해 주세요.</li>
@@ -654,7 +650,7 @@ export default function InstitutionManagementPage({ user, runs, members, version
                   {deleting.row.name} ({deleting.row.code}) 기관을 삭제하시겠습니까? 되돌릴 수 없습니다.
                 </p>
                 <p className="text-xs text-slate-600">
-                  산출 이력·대사·테스트 결과·연결 회원이 없는 기관입니다. 삭제하면 기관코드·이름·별칭을 다른 기관에 다시 쓸 수 있습니다.
+                  삭제하면 기관코드·이름·별칭을 다른 기관에 다시 쓸 수 있습니다.
                 </p>
                 <label className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
                   <input
@@ -742,10 +738,9 @@ function MatchTester({ version }) {
             placeholder="엑셀 기관 칸 값이나 이슈 문장 (예: B088, 하나온은행 장애 100건)"
             className={inputCls}
           />
-          <p className="mt-1 text-[11px] text-slate-400">기관을 추가·수정한 뒤 바로 여기서 매칭 결과를 확인할 수 있습니다.</p>
         </div>
         <Result icon={FileSpreadsheet} title="실적 엑셀 기관 칸으로 읽으면" m={result?.excel} />
-        <Result icon={MessageSquareText} title="AI 이슈 문장으로 읽으면" m={result?.issue} />
+        <Result icon={MessageSquareText} title="이슈 문장으로 읽으면" m={result?.issue} />
       </div>
       {error && <p className="mt-2 text-xs text-rose-600">{error}</p>}
     </Card>
