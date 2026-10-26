@@ -88,7 +88,8 @@ export const api = {
   // → { generatedScript, explanation[], unsupported[], validationPassed, validationMessage, sample[], checks[], notes[], source, model, note }
   generatePostprocess: (taskCode, specialRulesText) =>
     request('POST', `/api/v1/skills/${taskCode}/generate-postprocess`, { specialRulesText }),
-  aiStatus: () => request('GET', '/api/v1/ai/status'),
+  // AI 연결 상태. check=true 면 서버가 실제로 짧은 요청을 보내 키·모델이 맞는지 시험한다
+  aiStatus: (check = false) => request('GET', `/api/v1/ai/status${check ? '?check=true' : ''}`),
   // 업무 관리 (추가·삭제는 시스템관리자만). 업무 1개 = md 파일 1개
   tasks: () => request('GET', '/api/v1/tasks'),
   createTask: (taskCode, name, fileName) => request('POST', '/api/v1/tasks', { taskCode, name, fileName }),

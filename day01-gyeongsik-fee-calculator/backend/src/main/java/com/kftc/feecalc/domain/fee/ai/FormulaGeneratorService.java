@@ -88,8 +88,8 @@ public class FormulaGeneratorService {
         }
         Optional<RuleBasedFormulaGenerator.Generated> rule = RuleBasedFormulaGenerator.generate(rules);
         if (rule.isEmpty()) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT,
-                    "규칙에서 알아듣는 표현(총액 N원·N% 균등·N% 실적, 기본료 N원 + 건당 N원, N건까지 건당 N원 구간, "
+            throw new BusinessException(ErrorCode.INVALID_INPUT, (note == null ? "" : note + ". 내장 변환기도 ")
+                    + "규칙에서 알아듣는 표현(총액 N원·N% 균등·N% 실적, 기본료 N원 + 건당 N원, N건까지 건당 N원 구간, "
                     + "건당 단가 N원·최저/최고 회비, 총액 N원 실적 비율)을 찾지 못했습니다. 수식을 직접 작성해 주세요.");
         }
         RuleBasedFormulaGenerator.Generated g = rule.get();

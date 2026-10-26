@@ -25,6 +25,10 @@
 - 공개 배포는 Vercel Git 연결로 한다 (Root Directory `day01-gyeongsik-fee-calculator`, Production Branch `main`). 토큰·GitHub Actions 배포는 쓰지 않는다
 
 ## 세션 로그
+### 2026-10-26 (경식, AI 계산식 빌더가 AI를 실제로 호출하도록 점검)
+- John 제보: AI 키를 넣었는데 수식 생성이 내장 변환기로 빠짐. 당시 안내 문구("AI 키(AI_API_KEY)가 설정되지 않아…")는 서버가 기동 때 키를 못 읽었을 때만 나오는 문구라 원인은 배포 환경(Render에 키 없음·이름 다름·재배포 안 함, 또는 Vercel에만 넣음)으로 판단. 또 #45 이후 AI 실패 사유(note)가 화면에 안 보이고 'RULE_FALLBACK'도 '규칙 기반 생성'으로만 표시돼 원인을 알 수 없었음
+- 키 읽기: `AI_API_KEY` 없으면 `OPENAI_API_KEY`→`GEMINI_API_KEY`→`GOOGLE_API_KEY`, 따옴표·"Bearer " 제거. `AI_BASE_URL`·`AI_MODEL` 비우면 Gemini 키(AIza…)는 Gemini OpenAI 호환 주소·gemini-2.5-flash로 자동(이전엔 Gemini 키여도 OpenAI 주소로 보내 401). 제한 시간 기본 30초, gpt-5·o 계열은 temperature 생략
+- 실패 원인 표시: HTTP 상태별 안내 + 제공자 오류 문구(키 가림), 연결 실패·시간 초과 구분. 기동 로그에 AI 사용 여부. `GET /api/v1/ai/status?check=true` 연결 시험(30초 캐시). 빌더 3번·4번 생성 버튼 아래 AI 연결 상태·[연결 시험], 결과에 'AI 실패 → 규칙 기반 생성'과 원인. `vite build`·`mvn test` 통과
 ### 2026-10-26 (경식, 사이드바 잘림·화면 레이아웃 점검)
 - 원인: 사이드바(aside)에 스크롤 영역이 없어 메뉴가 화면 높이보다 길면 흰 배경 밖으로 넘쳐, 아래쪽('내 정보 관리' 하위 메뉴)이 잘리고 본문 회색 배경 위에 그려졌음 → 펼친 메뉴는 사이드바 안에서 세로 스크롤(접힌 레일은 호버 플라이아웃이 잘리지 않게 그대로)
 - 전체 점검(관리자 계정, 1440·1280·1024 폭, 모든 하위 메뉴·산출 결과): 좁은 화면에서 표 칸의 한글이 한 글자씩 끊기고(예: '성/공' 배지, 사유 문장) 날짜가 '2026-/10-08'처럼 나뉘던 문제 → 전역 `word-break: keep-all`(단어 단위 줄바꿈), 표 머리글·숫자/날짜(tabular-nums)·배지·버튼은 줄바꿈 안 함(폭이 모자라면 표 영역 가로 스크롤). 본문 가로 넘침은 없음. `vite build` 통과

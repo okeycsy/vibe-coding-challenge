@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Calculator, CircleCheck, CircleX, FileText, LoaderCircle, Sparkles, TriangleAlert, WandSparkles } from 'lucide-react';
 import { api, apiEnabled } from '../utils/api';
+import { AiStatusLine, SOURCE_LABEL, SourceNote } from './AiStatus';
 import { fmt } from '../utils/fee';
 import { generateFormulaLocally } from '../utils/formulaGenerator';
 import { FORMULA_SAMPLES, MAX_FORMULA_LENGTH, compileFormula, evaluateFormula, lines, parseSkill, replaceFormulas, splitSkill } from '../utils/skill';
@@ -14,7 +15,6 @@ const VARIABLES = [
   { name: '#rawCount', desc: '기본 건수' },
   { name: '#deductedCount', desc: 'AI 차감 건수' },
 ];
-const SOURCE_LABEL = { AI: 'AI 생성', RULE: '규칙 기반 생성', RULE_FALLBACK: '규칙 기반 생성' };
 const SIM_FIELDS = [
   { key: 'rawCount', label: '기본건수' },
   { key: 'deductedCount', label: '차감건수' },
@@ -246,6 +246,7 @@ function FormulaBuilder({ detail, saveContent, onDirty, onGoDocument }) {
           {generating ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <WandSparkles className="w-4 h-4" />}
           ✨ 1번 비즈니스 규칙 읽고 계산식 자동 생성
         </button>
+        <AiStatusLine />
         <p className="mt-1.5 text-[11px] text-slate-400">
           지원 패턴: 균등(%) + 실적비례(%) 혼합 · 구간별 차등 단가 · 기본료 + 건당 단가 · 단가 + 최저/최고 한도 · 총액 대비 실적 비율
         </p>
@@ -267,6 +268,7 @@ function FormulaBuilder({ detail, saveContent, onDirty, onGoDocument }) {
                 {SOURCE_LABEL[result.source] ?? result.source}
               </span>
             </p>
+            <SourceNote result={result} />
             <p className="mt-2 text-xs text-sky-600">규칙-수식 매핑 설명</p>
             <ol className="mt-1 list-decimal pl-5 space-y-0.5 text-xs">
               {result.explanation.map((e, i) => (
