@@ -51,11 +51,13 @@ ai:
   # 이름을 달리 넣은 경우도 받는다: AI_API_KEY → OPENAI_API_KEY → GEMINI_API_KEY → GOOGLE_API_KEY 순서로 처음 값이 있는 것.
   # 키가 비어 있으면 AI 를 부르지 않고 규칙 기반(Rule-based) 보정·수식 생성으로 동작해 시연이 끊기지 않는다.
   api-key: ${AI_API_KEY:${OPENAI_API_KEY:${GEMINI_API_KEY:${GOOGLE_API_KEY:}}}}
-  # 비워 두면 키 모양으로 정한다: Gemini 키(AIza...)면 Gemini OpenAI 호환 주소·gemini-2.5-flash, 아니면 OpenAI·gpt-4o-mini
+  # 비워 두면 키 모양으로 정한다: Claude 키(sk-ant-...)면 Anthropic Messages API·claude-opus-5-5,
+  # Gemini 키(AIza...)면 Gemini OpenAI 호환 주소·gemini-2.5-flash, 아니면 OpenAI·gpt-4o-mini
   model: ${AI_MODEL:}
   # Gemini 예: https://generativelanguage.googleapis.com/v1beta/openai
   base-url: ${AI_BASE_URL:}
-  timeout-seconds: ${AI_TIMEOUT_SECONDS:30}
+  # 비우면 Claude 90초, 그 밖 30초
+  timeout-seconds: ${AI_TIMEOUT_SECONDS:}
 
 logging:
   level:

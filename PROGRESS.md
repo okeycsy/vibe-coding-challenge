@@ -25,6 +25,9 @@
 - 공개 배포는 Vercel Git 연결로 한다 (Root Directory `day01-gyeongsik-fee-calculator`, Production Branch `main`). 토큰·GitHub Actions 배포는 쓰지 않는다
 
 ## 세션 로그
+### 2026-10-26 (경식, Claude 키로 AI 호출)
+- John의 [연결 시험] 결과: `HTTP 400 … AI_MODEL(claude-sonnet-5-5) — response_format.type: Input should be 'json_schema'`. Claude 키를 Anthropic의 OpenAI 호환 주소로 보내 `response_format json_object`가 거절된 것
+- Claude 키(sk-ant-)이거나 주소가 anthropic.com이면 Anthropic Messages API(`/v1/messages`, x-api-key, anthropic-version 2026-10-21)를 직접 호출. temperature·response_format 빼고 max_tokens 16000·effort low, thinking 블록은 건너뛰고 text 블록에서 JSON 읽음(앞뒤 설명 문장 허용), refusal·max_tokens 잘림은 원인 표시. `AI_BASE_URL`에 `.../v1`을 넣어도 됨. 모델 비우면 claude-opus-5-5, 제한 시간 기본 90초. `mvn test` 51개 통과
 ### 2026-10-26 (경식, AI 계산식 빌더가 AI를 실제로 호출하도록 점검)
 - John 제보: AI 키를 넣었는데 수식 생성이 내장 변환기로 빠짐. 당시 안내 문구("AI 키(AI_API_KEY)가 설정되지 않아…")는 서버가 기동 때 키를 못 읽었을 때만 나오는 문구라 원인은 배포 환경(Render에 키 없음·이름 다름·재배포 안 함, 또는 Vercel에만 넣음)으로 판단. 또 #45 이후 AI 실패 사유(note)가 화면에 안 보이고 'RULE_FALLBACK'도 '규칙 기반 생성'으로만 표시돼 원인을 알 수 없었음
 - 키 읽기: `AI_API_KEY` 없으면 `OPENAI_API_KEY`→`GEMINI_API_KEY`→`GOOGLE_API_KEY`, 따옴표·"Bearer " 제거. `AI_BASE_URL`·`AI_MODEL` 비우면 Gemini 키(AIza…)는 Gemini OpenAI 호환 주소·gemini-2.5-flash로 자동(이전엔 Gemini 키여도 OpenAI 주소로 보내 401). 제한 시간 기본 30초, gpt-5·o 계열은 temperature 생략
