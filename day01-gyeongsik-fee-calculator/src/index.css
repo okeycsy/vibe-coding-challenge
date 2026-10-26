@@ -5,6 +5,18 @@
 @layer base {
   body {
     @apply text-slate-800 antialiased;
+    /* 한글이 좁은 칸에서 한 글자씩 끊기지 않도록 단어(띄어쓰기) 단위로 줄바꿈하고, 긴 영문·코드만 필요할 때 끊는다 */
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
+
+  /* 표: 머리글·숫자·날짜(tabular-nums)·배지·버튼은 줄바꿈하지 않는다. 폭이 모자라면 표를 감싼 overflow-x-auto 영역이 가로 스크롤된다 */
+  th,
+  td.tabular-nums,
+  td button,
+  td [class*='rounded-full'],
+  td [class*='rounded-md'] {
+    white-space: nowrap;
   }
 }
 
