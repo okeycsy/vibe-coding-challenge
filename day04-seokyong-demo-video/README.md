@@ -72,6 +72,9 @@ docs/
 
 ```bash
 # 0) 글꼴: Pretendard 설치 (fc-list | grep Pretendard 로 확인). 없으면 자막이 기본 글꼴로 나온다
+mkdir -p ~/.local/share/fonts/pretendard /tmp/pretendard && cd /tmp/pretendard \
+  && curl -sL -o pretendard.zip https://github.com/orioncactus/pretendard/releases/download/v1.3.9/Pretendard-1.3.9.zip \
+  && unzip -q -o pretendard.zip && find . -name 'Pretendard-*.otf' -exec cp {} ~/.local/share/fonts/pretendard/ \; && fc-cache -f && cd -
 # 1) 앱 띄우기 (저장소 루트에서)
 cd day01-gyeongsik-fee-calculator/backend && mvn -q -DskipTests package && PORT=8080 java -jar target/fee-calc-backend-0.0.1-SNAPSHOT.jar &
 cd day01-gyeongsik-fee-calculator && npm install && VITE_API_BASE_URL=http://localhost:8080 npm run dev -- --host 127.0.0.1 --port 5173 &
@@ -85,6 +88,8 @@ python3 tools/assemble.py            # video/시연영상_v2_자막.mp4 · 무�
 python3 tools/storyboard.py          # docs/storyboard.md
 # 검토용: python3 tools/assemble.py --modules 30-upload,40-ai-issue  → tools/out/modules/preview_*.mp4
 ```
+
+의존성: Node 18+ 와 `playwright`(Chromium 포함), `ffmpeg`(libass 포함), `python3` + `openpyxl`·`Pillow`, `fontconfig`(fc-match). 이 작업 환경(클라우드 세션)에는 모두 미리 설치돼 있고 글꼴만 0)으로 넣으면 된다. 다른 PC라면 `npm i playwright && npx playwright install chromium`, `pip3 install openpyxl pillow` 로 맞춘다.
 
 `record.js` 는 `APP_URL`(기본 http://127.0.0.1:5173/)과 `DEMO_FILES_DIR`(기본 `demo-files/`)을 읽는다. 녹화 중에는 앱 소스를 바꾸지 말 것(Vite HMR 로 화면 상태가 초기화된다).
 
