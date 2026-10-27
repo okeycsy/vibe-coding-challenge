@@ -210,7 +210,8 @@ export default function FeeCalculation({
   }, [user.role, allowedTasks, businesses]);
 
   // 업무 관리에서 지운 업무는 목록에서 빠진다 (옮겨 가기 전 한 번 그릴 때는 원래 업무 정보를 쓴다)
-  const business = businesses.find((b) => b.id === businessId) ?? BUSINESSES.find((b) => b.id === businessId);
+  const business = businesses.find((b) => b.id === businessId) ??
+    BUSINESSES.find((b) => b.id === businessId) ?? { id: businessId, name: businessId, method: null, summary: [] };
   const skill = skills[businessId];
 
   // Step 1에서 업무를 고르면 해당 skill.md를 불러온다. 회비기준 관리에서 저장하면(skillVersion) 다시 읽는다.
@@ -224,7 +225,7 @@ export default function FeeCalculation({
     }
     if (!apiEnabled) {
       try {
-        setSkills((m) => ({ ...m, [businessId]: localSkillDetail(builtInTasks([business])[0], skillOverrides) }));
+        setSkills((m) => ({ ...m, [businessId]: localSkillDetail(business.task ?? builtInTasks([business])[0], skillOverrides) }));
       } catch (e) {
         setSkillError(e.message);
       }
@@ -388,6 +389,7 @@ export default function FeeCalculation({
           ...r,
           [k]: {
             businessId,
+            businessName: business.name,
             from,
             to,
             rows,
@@ -556,7 +558,7 @@ export default function FeeCalculation({
             <div className="flex flex-wrap items-center gap-2 mb-2">
               <Info className="w-4 h-4 text-brand-500" />
               <p className="text-sm font-semibold text-brand-800">{business.name} 회비분담기준 요약</p>
-              {skill && (
+              {skill?.calcType && (
                 <span className="rounded bg-white border border-brand-200 px-2 py-0.5 text-[11px] text-brand-600">
                   {skill.calcType}
                 </span>
@@ -1072,7 +1074,7 @@ export default function FeeCalculation({
                       </td>
                       <td className="px-4 py-2.5 text-right tabular-nums">{fmt(totals.fin)}</td>
                       <td className="px-4 py-2.5 text-right text-slate-500 text-xs">
-                        {business.method === 'unit' ? `${business.unitPrice}원/건` : '100.00%'}
+                        {business.method === 'unit' ? `${business.unitPrice}원/건` : business.method === 'ratio' ? '100.00%' : '-'}
                       </td>
                       <td className="px-4 py-2.5 text-right tabular-nums">{fmt(totals.eq)}</td>
                       <td className="px-4 py-2.5 text-right tabular-nums">{fmt(totals.perf)}</td>

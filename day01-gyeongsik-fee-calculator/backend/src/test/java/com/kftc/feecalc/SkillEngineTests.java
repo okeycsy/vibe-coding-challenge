@@ -307,6 +307,32 @@ class SkillEngineTests {
     }
 
     @Test
+    void 추가한_업무도_권한을_주고_업로드한_실적으로_산출할_수_있다() throws Exception {
+        createTask("admin", Map.of("taskCode", "GIRO", "name", "지로")).andExpect(status().isCreated());
+        save("admin", "GIRO", files.read("CMS").replace("# CMS 회비 산정 기준 (CMS)", "# 지로 회비 산정 기준 (GIRO)"))
+                .andExpect(status().isOk());
+
+        // 관리자의 산출 가능 업무에 들어가고, 일반담당자에게 권한을 줄 수 있다
+        mvc.perform(get("/api/users/admin/tasks")).andExpect(jsonPath("$.data", hasSize(6)));
+        mvc.perform(post("/api/users/hong/tasks/giro")).andExpect(status().isOk());
+        mvc.perform(get("/api/users/hong")).andExpect(jsonPath("$.data.tasks", org.hamcrest.Matchers.hasItem("giro")));
+
+        String counts = om.writeValueAsString(Map.of("businessId", "giro", "from", "2026-07-01", "to", "2026-09-30",
+                "counts", List.of(Map.of("institutionId", "shinhan", "baseCount", 1000),
+                        Map.of("institutionId", "kb", "baseCount", 2000)),
+                "uploadFileName", "giro.xlsx", "requestedBy", "hong"));
+        mvc.perform(post("/api/v1/fees/calculate").contentType(MediaType.APPLICATION_JSON).content(counts))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.businessName", is("지로")))
+                .andExpect(jsonPath("$.data.items", hasSize(2)));
+        // 시연용 실적이 없어 업로드 없이는 산출하지 않는다
+        mvc.perform(post("/api/v1/fees/calculate").header(H, "admin").contentType(MediaType.APPLICATION_JSON)
+                        .content(om.writeValueAsString(Map.of("businessId", "giro", "from", "2026-07-01", "to", "2026-09-30"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("실적 파일")));
+    }
+
+    @Test
     void 업무_추가는_관리자만_하고_코드_이름_파일은_겹칠_수_없다() throws Exception {
         createTask("hong", Map.of("taskCode", "GIRO", "name", "지로")).andExpect(status().isForbidden());
         createTask("admin", Map.of("taskCode", "GIRO", "name", "지로")).andExpect(status().isCreated())

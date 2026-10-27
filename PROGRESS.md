@@ -25,6 +25,10 @@
 - 공개 배포는 Vercel Git 연결로 한다 (Root Directory `day01-gyeongsik-fee-calculator`, Production Branch `main`). 토큰·GitHub Actions 배포는 쓰지 않는다
 
 ## 세션 로그
+### 2026-10-27 (경식, 업무 관리에서 추가한 업무를 회비 산출에 표시)
+- John 제보: 업무 관리에서 업무를 추가해도 회비 산출 화면 업무 목록에 안 나옴. 원인: 산출 화면 목록이 기본 5개 업무(mockData BUSINESSES)로 고정돼 있었고(업무 권한 관리 표·마이페이지 권한 신청도 같음), 서버도 business 테이블(기본 5개)에 없는 업무는 권한 부여·신청·산출을 BUSINESS_NOT_FOUND로 거부
+- 프론트: `taskBusinesses(tasks, BUSINESSES)`로 업무 관리 목록 전체를 산출·권한·마이페이지·대사 현황에 사용(추가 즉시 반영, 삭제 시 빠짐). 새 업무는 업로드 실적 + skill.md로만 산출(수식 미작성이면 기존 경고)
+- 서버: `BusinessCatalogService` — 관리자 산출 가능 업무·권한 검사를 tasks.json 기준으로, 새 업무는 첫 산출 때 business 행 생성(시연 실적 없음, 업로드 없으면 400 '실적 파일을 올려야'). `mvn test` 58개·`vite build` 통과. Render 재배포 필요
 ### 2026-10-27 (경식, 오픈뱅킹 API 테스트 기관 46곳 등록)
 - John 요청: 오픈뱅킹 API 처리건수 테스트 파일(가상 기관 50곳)로 시험할 수 있게 미등록 기관을 모두 등록. 서버 DataInitializer와 프론트 mockData INSTITUTIONS에 46곳 추가(기관코드 O001~O046, 내부 ID o001~, 우체국·저축은행·페이·핀테크·자산관리·금융·송금). T001~처럼 시연 실적엔 안 나오고 업로드할 때만 산출 대상(H2 메모리라 시드에 넣어 재기동에도 유지)
 - 검증: 테스트 파일 50곳 모두 매칭(서버·브라우저 같은 결과, 미매칭 0), CD공동망 샘플 결과 그대로, `mvn test` 56개. Render 재배포 필요. 테스트 파일 자체는 커밋하지 않음

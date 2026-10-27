@@ -441,6 +441,21 @@ export const builtInTasks = (businesses) =>
     createdBy: null,
   }));
 
+// 회비 산출·권한 화면의 업무 목록 = 업무 관리 목록(tasks). 기본 업무는 BUSINESSES 정보(시연 실적·단가)를 쓰고,
+// 업무 관리에서 추가한 업무는 업무명만 있어(method 없음) 업로드한 실적과 skill.md 로만 산출한다
+export const taskBusinesses = (tasks, businesses) =>
+  tasks.map((t) => ({
+    ...(businesses.find((b) => b.id === t.businessId) ?? {
+      id: t.businessId,
+      name: t.name,
+      method: null,
+      revenueAccount: `회비수입-${t.name}`,
+      summary: [],
+    }),
+    name: t.name,
+    task: t,
+  }));
+
 // 새로 추가한 업무의 skill.md: 기본 템플릿에서 반드시 있어야 하는 뼈대만
 // (# 제목, 업무명·산정 유형·표시 단위, ## 1~4 섹션 제목, 빈 formula 블록). 서버 SkillFileService.skeletonTemplate 과 같다
 export const skeletonTemplate = (task) =>

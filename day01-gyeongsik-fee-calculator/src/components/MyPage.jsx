@@ -3,7 +3,6 @@ import { BadgeCheck, BellRing, Eye, EyeOff, History, IdCard, KeyRound, ListCheck
 import { BUSINESSES, LOGIN_HISTORY } from '../data/mockData';
 import { Card } from './ui';
 
-const bizName = (id) => BUSINESSES.find((b) => b.id === id)?.name ?? id;
 
 const REQUEST_TONE = {
   '승인 대기중': 'bg-amber-50 text-amber-700 border-amber-200',
@@ -72,10 +71,12 @@ export default function MyPage({
   onRequestTask,
   onChangePassword,
   loginAt,
+  businesses = BUSINESSES,
 }) {
+  const bizName = (id) => businesses.find((b) => b.id === id)?.name ?? id;
   const [extension, setExtension] = useState(prefs.extension);
   const [webhook, setWebhook] = useState(prefs.webhook);
-  const requestable = BUSINESSES.filter(
+  const requestable = businesses.filter(
     (b) => !approvedTasks.includes(b.id) && !taskRequests.some((r) => r.taskId === b.id && r.status === '승인 대기중'),
   );
   const [taskId, setTaskId] = useState('');
@@ -189,7 +190,7 @@ export default function MyPage({
         <Card id="mypage-tasks" title="담당 업무 및 산출 권한 관리" icon={ListChecks}>
           <p className="text-xs font-medium text-slate-500 mb-2">내 담당 업무 현황</p>
           <div className="flex flex-wrap gap-2">
-            {(isOperator ? approvedTasks : BUSINESSES.map((b) => b.id)).map((id) => (
+            {(isOperator ? approvedTasks : businesses.map((b) => b.id)).map((id) => (
               <span
                 key={id}
                 className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-800"
