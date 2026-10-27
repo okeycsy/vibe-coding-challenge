@@ -25,6 +25,9 @@
 - 공개 배포는 Vercel Git 연결로 한다 (Root Directory `day01-gyeongsik-fee-calculator`, Production Branch `main`). 토큰·GitHub Actions 배포는 쓰지 않는다
 
 ## 세션 로그
+### 2026-10-27 (경식, 오픈뱅킹 API 테스트 기관 46곳 등록)
+- John 요청: 오픈뱅킹 API 처리건수 테스트 파일(가상 기관 50곳)로 시험할 수 있게 미등록 기관을 모두 등록. 서버 DataInitializer와 프론트 mockData INSTITUTIONS에 46곳 추가(기관코드 O001~O046, 내부 ID o001~, 우체국·저축은행·페이·핀테크·자산관리·금융·송금). T001~처럼 시연 실적엔 안 나오고 업로드할 때만 산출 대상(H2 메모리라 시드에 넣어 재기동에도 유지)
+- 검증: 테스트 파일 50곳 모두 매칭(서버·브라우저 같은 결과, 미매칭 0), CD공동망 샘플 결과 그대로, `mvn test` 56개. Render 재배포 필요. 테스트 파일 자체는 커밋하지 않음
 ### 2026-10-27 (경식, 빈 수식 초안 저장 허용)
 - John 제보: 새 업무 기준 문서에서 3번 ```formula 블록이 비어 있으면 저장 시 'formula 코드 블록을 찾을 수 없습니다'로 막히고, 저장이 안 돼 빌더로도 못 가는 교착
 - 3번 수식이 없거나 비어 있으면(분리형 ```formula:equal/perf 중 하나라도 비어도) 수식 미작성 초안으로 저장 허용(서버 SkillEngineService.formulas·validateSkill, Mock skill.js 동일). 분리 블록이 한쪽만 있는 구조 오류는 그대로 거부

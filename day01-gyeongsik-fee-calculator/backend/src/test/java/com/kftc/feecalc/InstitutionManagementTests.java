@@ -81,7 +81,7 @@ class InstitutionManagementTests {
 
         mvc.perform(get("/api/v1/institutions").header("X-Employee-Id", "admin"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data", hasSize(58)))
+                .andExpect(jsonPath("$.data", hasSize(104)))
                 .andExpect(jsonPath("$.data[0].id", is("shinhan")))
                 .andExpect(jsonPath("$.data[0].typeLabel", is("은행")))
                 .andExpect(jsonPath("$.data[0].memberCount", is(1)))
@@ -214,7 +214,7 @@ class InstitutionManagementTests {
         mvc.perform(delete("/api/v1/institutions/t001").header("X-Employee-Id", "admin"))
                 .andExpect(status().isOk());
         mvc.perform(get("/api/v1/institutions").header("X-Employee-Id", "admin"))
-                .andExpect(jsonPath("$.data", hasSize(57)));
+                .andExpect(jsonPath("$.data", hasSize(103)));
         mvc.perform(delete("/api/v1/institutions/t001").header("X-Employee-Id", "admin"))
                 .andExpect(status().isNotFound());
     }
