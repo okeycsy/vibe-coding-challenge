@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>keynote cards</title>
+<style>
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #000; }
+  body { font-family: 'Pretendard', 'Noto Sans KR', sans-serif; color: #fff; -webkit-font-smoothing: antialiased; }
+  .card { position: absolute; inset: 0; display: none; }
+  .card.show { display: block; }
+  .bg { position: absolute; inset: 0; background: radial-gradient(1400px 700px at 30% 20%, #0f1b3d 0%, #070c1d 45%, #000 100%); }
+  .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .left { position: absolute; left: 160px; top: 0; bottom: 0; display: flex; flex-direction: column; justify-content: center; }
+  .line { font-size: 96px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.18; opacity: 0; transform: translateY(26px); animation: up 900ms cubic-bezier(.2,.8,.2,1) forwards; }
+  .line.dim { color: #93a3cc; }
+  @keyframes up { to { opacity: 1; transform: none; } }
+  @keyframes fade { to { opacity: 1; } }
+  @keyframes pop { 0% { opacity: 0; transform: scale(.86); } 60% { opacity: 1; transform: scale(1.03); } 100% { opacity: 1; transform: scale(1); } }
+  @keyframes glow { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+  .logo { width: 260px; height: 260px; position: relative; opacity: 0; animation: pop 1100ms cubic-bezier(.2,.8,.2,1) forwards; }
+  .logo img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 0 28px rgba(23,140,220,.65)); position: relative; }
+  .logo::before { content: ''; position: absolute; inset: -30%; border-radius: 50%; background: radial-gradient(circle, rgba(23,140,220,.55), rgba(14,69,170,.25) 45%, transparent 70%); filter: blur(22px); animation: glow 4s ease-in-out infinite; }
+  .title { font-size: 112px; font-weight: 900; letter-spacing: -0.035em; margin-top: 54px; opacity: 0; animation: up 900ms cubic-bezier(.2,.8,.2,1) forwards; }
+  .slogan { font-size: 46px; font-weight: 500; color: #9fb0d6; margin-top: 26px; opacity: 0; animation: up 900ms cubic-bezier(.2,.8,.2,1) forwards; letter-spacing: -0.01em; }
+  .accent { width: 120px; height: 6px; background: linear-gradient(90deg, #178cdc, #6ea8ff); border-radius: 3px; margin-top: 40px; opacity: 0; animation: fade 700ms forwards; }
+  .stats { display: grid; grid-template-columns: repeat(3, 440px); gap: 70px 80px; }
+  .stat { opacity: 0; transform: translateY(20px); animation: up 800ms cubic-bezier(.2,.8,.2,1) forwards; }
+  .stat b { display: block; font-size: 128px; font-weight: 900; letter-spacing: -0.04em; line-height: 1; font-variant-numeric: tabular-nums; }
+  .stat span { display: block; font-size: 30px; color: #9fb0d6; margin-top: 16px; font-weight: 500; }
+  .stat-foot { font-size: 40px; color: #c7d2ea; font-weight: 600; margin-top: 90px; opacity: 0; animation: up 800ms cubic-bezier(.2,.8,.2,1) forwards; letter-spacing: -0.01em; }
+  .url { font-size: 30px; color: #6f84b8; margin-top: 28px; font-weight: 500; opacity: 0; animation: fade 800ms forwards; letter-spacing: 0.01em; }
+  .eyebrow { font-size: 28px; color: #5fa0ff; font-weight: 700; letter-spacing: 0.18em; margin-bottom: 36px; opacity: 0; animation: fade 700ms forwards; }
+</style>
+</head>
+<body>
+
+<!-- c0 문제: 세 줄이 차례로 -->
+<section class="card" id="c0">
+  <div class="bg"></div>
+  <div class="left">
+    <div class="line" style="animation-delay: .5s">분기마다.</div>
+    <div class="line" style="animation-delay: 3.4s">수십 개 기관.</div>
+    <div class="line dim" style="animation-delay: 6.6s">엑셀, 그리고 사람의 손.</div>
+  </div>
+</section>
+
+<!-- c1 리빌: 로고 → 제품명 → 슬로건 -->
+<section class="card" id="c1">
+  <div class="bg"></div>
+  <div class="center">
+    <div class="logo" style="animation-delay:.3s"><img src="LOGO_SRC" alt=""></div>
+    <div class="title" style="animation-delay:1.6s">회비자동산출시스템</div>
+    <div class="slogan" style="animation-delay:3.2s">규칙을 쓰면, 회비가 계산됩니다.</div>
+    <div class="accent" style="animation-delay:4.2s"></div>
+  </div>
+</section>
+
+<!-- c8 증거: 수치 6개 -->
+<section class="card" id="c8">
+  <div class="bg"></div>
+  <div class="center">
+    <div class="eyebrow" style="animation-delay:.2s">VIBE CODING · 2026.10.14 – 10.27</div>
+    <div class="stats">
+      <div class="stat" style="animation-delay:.6s"><b>14일</b><span>개발 기간</span></div>
+      <div class="stat" style="animation-delay:1.3s"><b>38</b><span>병합된 PR</span></div>
+      <div class="stat" style="animation-delay:2.0s"><b>58</b><span>자동 테스트</span></div>
+      <div class="stat" style="animation-delay:2.7s"><b>1,320</b><span>서버·브라우저 결과 일치</span></div>
+      <div class="stat" style="animation-delay:3.4s"><b>104</b><span>등록 기관</span></div>
+      <div class="stat" style="animation-delay:4.1s"><b>3</b><span>역할 · RBAC</span></div>
+    </div>
+    <div class="stat-foot" style="animation-delay:5.4s">이 모든 것을 바이브코딩으로 만들었습니다.</div>
+  </div>
+</section>
+
+<!-- c9 클로징 -->
+<section class="card" id="c9">
+  <div class="bg"></div>
+  <div class="center">
+    <div class="title" style="font-size:104px; margin-top:0; animation-delay:.4s">규칙을 쓰면,<br>회비가 계산됩니다.</div>
+    <div class="slogan" style="animation-delay:2.4s">회비자동산출시스템</div>
+    <div class="url" style="animation-delay:3.4s">vibe-coding-challenge-nine.vercel.app</div>
+    <div class="accent" style="animation-delay:3.0s"></div>
+  </div>
+</section>
+
+<script>
+  function show() {
+    const id = (location.hash || '#c0').slice(1);
+    document.querySelectorAll('.card').forEach((c) => c.classList.toggle('show', c.id === id));
+  }
+  window.addEventListener('hashchange', show);
+  show();
+</script>
+</body>
+</html>

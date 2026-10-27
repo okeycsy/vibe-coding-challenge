@@ -8,6 +8,7 @@
 - [경식] `day01-gyeongsik-fee-calculator/` 회비자동산출시스템 프론트엔드 1차 구현 완료 (Mock Data), `backend/`에 Spring Boot API 추가, 로그인·회원 승인·업무 권한 화면은 `VITE_API_BASE_URL` 설정 시 API와 연동 (백엔드 공개 주소 https://vibe-coding-challenge-bdm1.onrender.com, Render 무료 Web Service. Vercel `VITE_API_BASE_URL` 설정 완료)
 - [대용] `day01-daeyong-fee-calculator/` 금융정보업무 회비 산출 v4 완료(통합 요구사항): 업무별 설정, 분기 배분 방식 A/B, 균등회비 방식 A/B, 실적 인정 항목, 우체국 10원 처리, 엑셀 열 매핑·검증·미리보기, 기관별 산출 근거·검증, 단일 HTML 프로그램 + claude.ai 웹 페이지. 확인 필요 기본값 목록은 `docs/DESIGN.md` 7장. 공통 규칙 초안 `docs/COMMON_RULES_DRAFT.md`(R-1~R-15, D-1~D-15)
 - [대용] `day02-daeyong-fee-rules-proto/` 공통 규칙 초안만 보고 다시 쓴 두 번째 구현 + 병행검증(화면 7탭, v4 결과 엑셀 비교, `npm run crosscheck` 무작위 500건 일치). 단일 HTML `release/fee-rules-proto.html`
+- [대용] `day03-daeyong-final-pitch/` 최종 심사용 발표 시나리오(2분 30초 키노트 문법, 심사 기준별 핵심 포인트, 내레이션)와 시연 영상 v1(1080p, 카드 4장 + 실제 화면 7비트, 자막/무자막) — `docs/scenario.md`, `video/`. 영상은 로컬에서 띄운 main 코드를 Playwright로 녹화(AI 키 없어 "규칙 기반" 배지), 피드백 후 2차본 예정
 - [우성] `day01-woosung-fee-ai/` 회비자동산출 AI툴 1차 구현 완료 (분담기준 AI 학습·버전 관리, xlsx/csv/hwp/hwpx 실적 업로드, 기관별 산출·Excel 다운로드)
 
 - [경식] 회비자동산출시스템 공개 주소: https://vibe-coding-challenge-nine.vercel.app/ (Vercel, `main` push·병합 시 자동 재배포)
@@ -25,6 +26,11 @@
 - 공개 배포는 Vercel Git 연결로 한다 (Root Directory `day01-gyeongsik-fee-calculator`, Production Branch `main`). 토큰·GitHub Actions 배포는 쓰지 않는다
 
 ## 세션 로그
+### 2026-10-27 (대용, 최종 발표 시나리오 + 시연 영상)
+- John 요청: 배포 URL의 기능을 분석해 심사 기준에 맞춘 핵심 기능·차별점 발표 시나리오(애플/테크 키노트 문법, 2분 30초)를 쓰고 시연 영상 제작. 테스트 실적 4종(오픈뱅킹·CD공동망·타행환·기업회계) 첨부
+- 작업 환경이 vercel.app·onrender.com을 막아 같은 main 코드를 로컬(Vite + Spring Boot jar)로 띄워 3개 역할 전 메뉴 확인, 4종 파일 업로드·산출 E2E (오픈뱅킹 원본 그대로 읽힘, 나머지 3종은 날짜가 없어 제목 행/머리글에 년월을 넣은 가공본 사용 — 가공본은 커밋 안 함)
+- 산출물 `day03-daeyong-final-pitch/`: `docs/scenario.md`·`scenario.html`(심사 기준 5개 가정 × 기능 매트릭스, 10비트 타임라인, 내레이션 670자, 리스크, 확인 사항 5개), `video/시연영상_v1_자막.mp4`·`무자막.mp4`(2분 35초), `tools/`(카드 HTML, Playwright 녹화, ffmpeg 조립 스크립트)
+- 확인 대기: 실제 심사 배점표, 발표 형식(자막만/음성 포함), 기업회계 파일 처리 방식, AI 배지(배포 주소 허용 또는 AI 키 필요), 증거 카드 수치(14일·PR 38·테스트 58·1,320건 일치·기관 104·역할 3)
 ### 2026-10-27 (경식, 업무 관리에서 추가한 업무를 회비 산출에 표시)
 - John 제보: 업무 관리에서 업무를 추가해도 회비 산출 화면 업무 목록에 안 나옴. 원인: 산출 화면 목록이 기본 5개 업무(mockData BUSINESSES)로 고정돼 있었고(업무 권한 관리 표·마이페이지 권한 신청도 같음), 서버도 business 테이블(기본 5개)에 없는 업무는 권한 부여·신청·산출을 BUSINESS_NOT_FOUND로 거부
 - 프론트: `taskBusinesses(tasks, BUSINESSES)`로 업무 관리 목록 전체를 산출·권한·마이페이지·대사 현황에 사용(추가 즉시 반영, 삭제 시 빠짐). 새 업무는 업로드 실적 + skill.md로만 산출(수식 미작성이면 기존 경고)
