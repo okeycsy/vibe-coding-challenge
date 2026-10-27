@@ -100,6 +100,7 @@ public class FeeCalculationService {
         // businessId 에는 업무 ID(openbanking)나 skill.md 업무 코드(OPEN_BANKING) 모두 쓸 수 있다
         Business business = getBusiness(skillEngine.businessIdOf(req.businessId()));
         SkillEngineService.ParsedSkill skill = skillEngine.getSkill(business.getCode());
+        SkillEngineService.requireFormula(skill);
         if (req.requestedBy() != null && !req.requestedBy().isBlank()) {
             userService.checkCalculatePermission(req.requestedBy(), business.getCode());
         }

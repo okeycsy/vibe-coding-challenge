@@ -25,6 +25,11 @@
 - 공개 배포는 Vercel Git 연결로 한다 (Root Directory `day01-gyeongsik-fee-calculator`, Production Branch `main`). 토큰·GitHub Actions 배포는 쓰지 않는다
 
 ## 세션 로그
+### 2026-10-27 (경식, 빈 수식 초안 저장 허용)
+- John 제보: 새 업무 기준 문서에서 3번 ```formula 블록이 비어 있으면 저장 시 'formula 코드 블록을 찾을 수 없습니다'로 막히고, 저장이 안 돼 빌더로도 못 가는 교착
+- 3번 수식이 없거나 비어 있으면(분리형 ```formula:equal/perf 중 하나라도 비어도) 수식 미작성 초안으로 저장 허용(서버 SkillEngineService.formulas·validateSkill, Mock skill.js 동일). 분리 블록이 한쪽만 있는 구조 오류는 그대로 거부
+- 산출은 막음: 서버 requireFormula(산출·computeRaw) 400 "'## 3. 정산 수식'이 아직 비어 있습니다…", 회비 산출 화면 경고·버튼 안내, 상세 parseError에 같은 문구, 업무 관리 '작성 필요' 표시
+- 기준 문서 편집 > 섹션별 폼 3번 칸에 [1번 규칙으로 수식 생성] 버튼: 저장 전 1번 내용으로 서버 generate-formula(AI→내장 변환기) 또는 Mock 변환기로 만들어 문서에 넣고, [저장 및 반영하기]로 저장. `mvn test` 52개·`vite build` 통과. 서버 반영엔 Render 재배포 필요
 ### 2026-10-26 (경식, Claude 키로 AI 호출)
 - John의 [연결 시험] 결과: `HTTP 400 … AI_MODEL(claude-sonnet-5-5) — response_format.type: Input should be 'json_schema'`. Claude 키를 Anthropic의 OpenAI 호환 주소로 보내 `response_format json_object`가 거절된 것
 - Claude 키(sk-ant-)이거나 주소가 anthropic.com이면 Anthropic Messages API(`/v1/messages`, x-api-key, anthropic-version 2026-10-21)를 직접 호출. temperature·response_format 빼고 max_tokens 16000·effort low, thinking 블록은 건너뛰고 text 블록에서 JSON 읽음(앞뒤 설명 문장 허용), refusal·max_tokens 잘림은 원인 표시. `AI_BASE_URL`에 `.../v1`을 넣어도 됨. 모델 비우면 claude-opus-5-5, 제한 시간 기본 90초. `mvn test` 51개 통과

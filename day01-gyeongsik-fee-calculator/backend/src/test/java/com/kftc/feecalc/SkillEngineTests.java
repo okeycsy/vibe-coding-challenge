@@ -231,6 +231,30 @@ class SkillEngineTests {
     }
 
     @Test
+    void 빈_수식은_초안으로_저장되지만_산출은_수식_미작성으로_막는다() throws Exception {
+        String original = files.read("FIN_INFO");
+        String empty = original.replaceAll("(?s)```formula.*?```", "```formula\n```");
+        save("admin", "FIN_INFO", empty).andExpect(status().isOk());
+        assertThat(files.read("FIN_INFO")).isEqualTo(empty);
+        mvc.perform(get("/api/v1/skills/FIN_INFO").header(H, "admin"))
+                .andExpect(jsonPath("$.data.formula", is("")))
+                .andExpect(jsonPath("$.data.summary", hasSize(engine.getSkill("FIN_INFO").summary().size())))
+                .andExpect(jsonPath("$.data.parseError", containsString("정산 수식'이 아직 비어 있습니다")));
+        mvc.perform(get("/api/v1/tasks").header(H, "admin"))
+                .andExpect(jsonPath("$.data[?(@.taskCode == 'FIN_INFO')].ready", org.hamcrest.Matchers.contains(false)));
+        assertThatThrownBy(() -> calculationService.calculate(new CalculationRequest("fininfo",
+                LocalDate.of(2026, 7, 1), LocalDate.of(2026, 9, 30), List.of(), null, null, null)))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("아직 비어 있습니다");
+
+        // 분리 블록(균등·실적)이 비어 있어도 같은 초안 처리, 한쪽 블록만 있으면 구조 오류
+        save("admin", "FIN_INFO", original.replaceAll("(?s)```formula.*?```", "```formula:equal\n```\n\n```formula:perf\n```"))
+                .andExpect(status().isOk());
+        assertThat(engine.getSkill("FIN_INFO").hasFormula()).isFalse();
+        save("admin", "FIN_INFO", original.replaceAll("(?s)```formula.*?```", "```formula:equal\n```"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void 경로_조작이나_없는_업무코드는_거부한다() throws Exception {
         for (String code : List.of("..%2F..%2Fetc%2Fpasswd", "OPEN_BANKING.md", "FOO")) {
             mvc.perform(get("/api/v1/skills/" + code).header(H, "admin"))

@@ -45,7 +45,8 @@ export const lines = (text) =>
     .filter(Boolean)
     .map((l) => l.replace(/^([-*]|\d+\.)\s+/, ''));
 
-// 서버 SkillEngineService.parse 와 같은 규칙. 1번 요약·3번 수식이 없으면 Error, 2번·4번은 선택
+// 서버 SkillEngineService.parse 와 같은 규칙. 1번 요약이 없으면 Error, 2번·4번은 선택.
+// 3번 수식이 비어 있으면(초안) formula 를 ''로 두고 통과시킨다 — 저장해 두고 빌더에서 채울 수 있게. 산출은 computeRaw 가 막는다
 export function parseSkill(taskCode, markdown) {
   const md = markdown.replace(/\r\n/g, '\n');
   const summaryText = md.match(SUMMARY)?.[1]?.trim();
@@ -86,9 +87,14 @@ export function parseSkill(taskCode, markdown) {
 
 export const MAX_FORMULA_LENGTH = 2000;
 export const isSplit = (skill) => skill.equalFormula != null;
+// 3번 수식을 아직 안 쓴 초안이면 false (서버 ParsedSkill.hasFormula 와 같다)
+export const hasFormula = (skill) => !!skill.formula?.trim();
+export const FORMULA_MISSING =
+  "'## 3. 정산 수식'이 아직 비어 있습니다. [AI 계산식 빌더]나 기준 문서 편집의 수식 생성으로 수식을 만들어 저장한 뒤 산출해 주세요.";
 
-// 3번 섹션의 수식 블록들 (서버 SkillEngineService.formulas 와 같다). total 은 늘 있고(분리형이면 "(균등) + (실적)" 표시용),
-// equal·perf 는 ```formula:equal / ```formula:perf 분리형일 때만. 총액 또는 (균등 + 실적)이 있어야 한다
+// 3번 섹션의 수식 블록들 (서버 SkillEngineService.formulas 와 같다). total 은 수식이 있으면 늘 있고(분리형이면 "(균등) + (실적)" 표시용),
+// equal·perf 는 ```formula:equal / ```formula:perf 분리형일 때만. 블록이 없거나 비어 있으면(분리형은 균등·실적 중 하나라도)
+// 수식 미작성 초안으로 { total: '', equal: null, perf: null }. 분리 블록이 한쪽만 있는 구조 오류만 Error
 export function formulas(section3) {
   let total = null;
   let equal = null;
@@ -101,8 +107,7 @@ export function formulas(section3) {
     else perf ??= body;
   }
   if ((equal == null) !== (perf == null)) throw new Error('```formula:equal(균등분담분)과 ```formula:perf(실적분담분) 블록은 함께 있어야 합니다.');
-  if (equal != null && (!equal || !perf)) throw new Error('```formula:equal 또는 ```formula:perf 블록이 비어 있습니다.');
-  if (equal == null && !total) throw new Error("'## 3. 정산 수식'의 ```formula 코드 블록을 찾을 수 없습니다.");
+  if (equal != null ? !equal || !perf : !total) return { total: '', equal: null, perf: null };
   if (!total) total = `(${equal}) + (${perf})`;
   return { total, equal, perf };
 }
@@ -382,6 +387,7 @@ export const isMixed = (formula) => formula.includes('#institutionCount') && for
 // 단일 수식이면 혼합형일 때 실적이 0일 때의 값(같은 수식에 #rawCount·#deductedCount·#finalCount = 0)을 균등분담분으로 본다(회비보다 크면 회비까지).
 // 원 단위 정수화·배분은 4번 후처리 스크립트(postprocess.js)가 한다
 export function computeRaw(skill, rows, scale) {
+  if (!hasFormula(skill)) throw new Error(FORMULA_MISSING);
   const totalCount = rows.reduce((s, r) => s + r.finalCount, 0);
   const vars = (r) => ({
     rawCount: r.baseCount,
@@ -462,8 +468,8 @@ const defaultContent = (task) => (task.builtIn ? DEFAULT_SKILLS[task.taskCode] :
 const contentOf = (task, overrides) => overrides[task.taskCode]?.content ?? defaultContent(task);
 const isReady = (task, content) => {
   try {
-    parseSkill(task.taskCode, content);
-    return true;
+    // 수식 미작성 초안도 저장은 되지만 산출 기준으로는 아직 작성 필요
+    return hasFormula(parseSkill(task.taskCode, content));
   } catch {
     return false;
   }
@@ -541,6 +547,7 @@ export function localSkillDetail(task, overrides) {
   let parseError = null;
   try {
     parsed = parseSkill(code, content);
+    if (!hasFormula(parsed)) parseError = FORMULA_MISSING;
   } catch (e) {
     parseError = e.message;
     parsed = { taskCode: code, formula: '', equalFormula: null, perfFormula: null, postprocess: '', summary: [], aiGuide: '', specialRules: [], specialRulesRaw: '', calcType: '', rateUnit: '' };
@@ -559,7 +566,7 @@ export function localSkillDetail(task, overrides) {
   };
 }
 
-// 저장 전 검증(서버 SkillFileService.save → SkillEngineService.validateSkill 과 같은 순서): 섹션(1·3번 필수) → 수식 구문 →
+// 저장 전 검증(서버 SkillFileService.save → SkillEngineService.validateSkill 과 같은 순서): 섹션(1번 필수) → 수식 구문 →
 // 시험 계산 2벌(총액 수식 또는 균등·실적 분리 수식) → 4번 후처리 스크립트 문법 + 시험 실행 2벌. 실패하면 Error
 export const FORMULA_SAMPLES = [
   { rawCount: 1_000_000, deductedCount: 100_000, finalCount: 900_000, totalCount: 9_000_000, institutionCount: 8, periodScale: 1 },
@@ -578,10 +585,11 @@ export function validateFormula(formula) {
 
 export function validateSkill(taskCode, content) {
   const parsed = parseSkill(taskCode, content);
+  // 수식 미작성 초안은 저장을 허용하고 산출 때 막는다
   if (isSplit(parsed)) {
     validateFormula(parsed.equalFormula);
     validateFormula(parsed.perfFormula);
-  } else {
+  } else if (hasFormula(parsed)) {
     validateFormula(parsed.formula);
   }
   if (parsed.postprocess) trialScript(parsed.postprocess);

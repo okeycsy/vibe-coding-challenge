@@ -61,8 +61,8 @@ public class TaskManagementService {
     private TaskResponse response(TaskEntry t, List<Member> members) {
         boolean ready;
         try {
-            SkillEngineService.parse(t.taskCode(), t.businessId(), fileService.read(t.taskCode()));
-            ready = true;
+            // 수식 미작성 초안도 저장은 되지만 산출 기준으로는 아직 작성 필요
+            ready = SkillEngineService.parse(t.taskCode(), t.businessId(), fileService.read(t.taskCode())).hasFormula();
         } catch (BusinessException e) {
             ready = false;
         }
