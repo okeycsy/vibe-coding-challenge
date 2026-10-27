@@ -25,6 +25,11 @@
 - 공개 배포는 Vercel Git 연결로 한다 (Root Directory `day01-gyeongsik-fee-calculator`, Production Branch `main`). 토큰·GitHub Actions 배포는 쓰지 않는다
 
 ## 세션 로그
+### 2026-10-27 (경식, 빈 수식 초안 저장 허용)
+- John 제보: 새 업무 기준 문서에서 3번 ```formula 블록이 비어 있으면 저장 시 'formula 코드 블록을 찾을 수 없습니다'로 막히고, 저장이 안 돼 빌더로도 못 가는 교착
+- 3번 수식이 없거나 비어 있으면(분리형 ```formula:equal/perf 중 하나라도 비어도) 수식 미작성 초안으로 저장 허용(서버 SkillEngineService.formulas·validateSkill, Mock skill.js 동일). 분리 블록이 한쪽만 있는 구조 오류는 그대로 거부
+- 산출은 막음: 서버 requireFormula(산출·computeRaw) 400 "'## 3. 정산 수식'이 아직 비어 있습니다…", 회비 산출 화면 경고·버튼 안내, 상세 parseError에 같은 문구, 업무 관리 '작성 필요' 표시
+- 기준 문서 편집 > 섹션별 폼 3번 칸에 [1번 규칙으로 수식 생성] 버튼: 저장 전 1번 내용으로 서버 generate-formula(AI→내장 변환기) 또는 Mock 변환기로 만들어 문서에 넣고, [저장 및 반영하기]로 저장. `mvn test` 57개·`vite build` 통과. 서버 반영엔 Render 재배포 필요
 ### 2026-10-27 (경식, 자유 형식 실적 엑셀 AI 판독)
 - John 요청: 업무마다 엑셀 형식이 달라(예: 기준월 | 기관명 | API 종류별 건수 5열) 고정 머리글('기관'+'건수') 대신 AI가 판별. 꼭 필요한 것은 기관(기관명 또는 기관코드)과 날짜(최소 년월), 나머지 수치 열(건수·금액 등)은 자유
 - 서버 `upload/` 패키지: `UploadLayoutService`(AI 키 있으면 시트 앞 25행 미리보기로 머리글 행·기관 열·날짜 위치·수치 열 판별 → 실제 시트로 검증, 같은 미리보기는 메모리에 기억, 키 없음 RULE·실패/검증 탈락 RULE_FALLBACK + 원인), `RuleLayoutDetector`, `UploadReader`, `UploadDate`, `SheetData`. 날짜 위치 3가지: 날짜 열(COLUMN) / 날짜 머리글 가로형 표(HEADER) / 표 위 제목 '2026년 3분기'(TITLE). 날짜 형식 2026-07·2026.7·2026년 7월·202607·날짜 서식·2026-07-15·2026년 3분기·2026 Q3, 빈 날짜 칸은 위 행 날짜(병합 셀)

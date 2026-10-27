@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.kftc.feecalc.domain.fee.service.SkillEngineService;
 import com.kftc.feecalc.domain.fee.service.SkillEngineService.ParsedSkill;
 import com.kftc.feecalc.domain.fee.service.SkillFileService.SkillFileMeta;
 
@@ -41,14 +42,14 @@ public record SkillDetailResponse(
         String updatedBy,
         /** 연결된 md 파일명 */
         String fileName,
-        /** 섹션·수식이 없어 아직 산출에 쓸 수 없으면 그 이유 (예: 막 추가한 업무), 쓸 수 있으면 null */
+        /** 섹션·수식이 없어 아직 산출에 쓸 수 없으면 그 이유 (예: 막 추가한 업무, 수식 미작성 초안), 쓸 수 있으면 null */
         String parseError) {
 
     public static SkillDetailResponse of(String taskName, String fileName, String content, ParsedSkill p,
                                          SkillFileMeta m) {
         return new SkillDetailResponse(p.taskCode(), taskName, p.businessId(), content, p.formula(), p.equalFormula(), p.perfFormula(), p.summary(),
                 p.aiGuide(), p.specialRules(), p.specialRulesRaw(), p.postprocess(), p.calcType(), p.rateUnit(), m.lastModified(), m.size(), m.version(), m.modified(),
-                m.updatedBy(), fileName, null);
+                m.updatedBy(), fileName, p.hasFormula() ? null : SkillEngineService.FORMULA_MISSING);
     }
 
     /** 아직 작성 중인 skill.md: 원문만 주고 섹션은 비운다 */

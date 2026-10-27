@@ -79,6 +79,22 @@ public class SkillEngineService {
         public boolean hasPostprocess() {
             return postprocess != null && !postprocess.isBlank();
         }
+
+        /** 3번 수식을 아직 안 쓴 초안(빈 ```formula 블록 등)이면 false. 저장은 되지만 산출은 막는다 */
+        public boolean hasFormula() {
+            return formula != null && !formula.isBlank();
+        }
+    }
+
+    /** 3번 수식이 비어 있는 기준으로 산출하려 할 때 안내 */
+    public static final String FORMULA_MISSING =
+            "'## 3. 정산 수식'이 아직 비어 있습니다. [AI 계산식 빌더]나 기준 문서 편집의 수식 생성으로 수식을 만들어 저장한 뒤 산출해 주세요.";
+
+    /** 산출 전에 부른다. 수식 미작성 초안이면 400 */
+    public static void requireFormula(ParsedSkill skill) {
+        if (!skill.hasFormula()) {
+            throw new BusinessException(ErrorCode.INVALID_FORMULA, FORMULA_MISSING);
+        }
     }
 
     /** 기관별 수식 입력값 */
@@ -99,7 +115,10 @@ public class SkillEngineService {
 
     // ---------- 파싱·검증 ----------
 
-    /** 정규식으로 요약·AI 지침·수식·최종 정산 특이사항을 꺼낸다. 요약(1번)과 수식(3번)이 없으면 400, 2번·4번은 선택 */
+    /**
+     * 정규식으로 요약·AI 지침·수식·최종 정산 특이사항을 꺼낸다. 요약(1번)이 없으면 400, 2번·4번은 선택.
+     * 3번 수식이 비어 있으면(초안) formula 를 ""로 두고 통과시킨다 — 저장해 두고 빌더에서 채울 수 있게. 산출은 {@link #requireFormula}로 막는다
+     */
     public static ParsedSkill parse(String taskCode, String businessId, String markdown) {
         String summaryText = group(SUMMARY, markdown);
         if (summaryText == null || summaryText.isBlank()) {
@@ -133,11 +152,14 @@ public class SkillEngineService {
                 postprocess, special, lines(special));
     }
 
-    /** 3번 섹션의 수식 블록들. total 은 늘 있고(분리형이면 합친 표시용), equal·perf 는 분리형일 때만 */
+    /** 3번 섹션의 수식 블록들. total 은 수식이 있으면 늘 있고(분리형이면 합친 표시용, 미작성 초안이면 ""), equal·perf 는 분리형일 때만 */
     public record Formulas(String total, String equal, String perf) {
     }
 
-    /** ```formula(총액) · ```formula:equal · ```formula:perf 블록을 읽는다. 총액 또는 (균등 + 실적)이 있어야 한다 */
+    /**
+     * ```formula(총액) · ```formula:equal · ```formula:perf 블록을 읽는다. 블록이 없거나 비어 있으면(분리형은 균등·실적 중 하나라도)
+     * 수식 미작성 초안으로 보고 ("", null, null)을 준다. 분리 블록이 한쪽만 있는 것처럼 구조가 틀린 경우만 400
+     */
     public static Formulas formulas(String section3) {
         String total = null;
         String equal = null;
@@ -160,11 +182,8 @@ public class SkillEngineService {
         if ((equal == null) != (perf == null)) {
             throw new BusinessException(ErrorCode.INVALID_FORMULA, "```formula:equal(균등분담분)과 ```formula:perf(실적분담분) 블록은 함께 있어야 합니다.");
         }
-        if (equal != null && (equal.isBlank() || perf.isBlank())) {
-            throw new BusinessException(ErrorCode.INVALID_FORMULA, "```formula:equal 또는 ```formula:perf 블록이 비어 있습니다.");
-        }
-        if (equal == null && (total == null || total.isBlank())) {
-            throw new BusinessException(ErrorCode.INVALID_FORMULA, "'## 3. 정산 수식'의 ```formula 코드 블록을 찾을 수 없습니다.");
+        if (equal != null ? equal.isBlank() || perf.isBlank() : total == null || total.isBlank()) {
+            return new Formulas("", null, null);
         }
         if (total == null || total.isBlank()) {
             total = "(" + equal + ") + (" + perf + ")";
@@ -199,12 +218,13 @@ public class SkillEngineService {
         evaluate(formula, new Counts(0, 0, 0), 0, 8, 0.5);
     }
 
-    /** 저장 전 검증: 수식(총액·균등·실적) 구문 + 시험 계산 2벌, 후처리 스크립트 문법 + 시험 실행 */
+    /** 저장 전 검증: 수식(총액·균등·실적) 구문 + 시험 계산 2벌(미작성 초안이면 건너뜀), 후처리 스크립트 문법 + 시험 실행 */
     public static void validateSkill(ParsedSkill skill) {
+        // 수식 미작성 초안은 저장을 허용하고 산출 때 막는다
         if (skill.isSplit()) {
             validateFormula(skill.equalFormula());
             validateFormula(skill.perfFormula());
-        } else {
+        } else if (skill.hasFormula()) {
             validateFormula(skill.formula());
         }
         if (skill.hasPostprocess()) {
@@ -225,7 +245,9 @@ public class SkillEngineService {
      */
     public long calculate(String code, long rawCount, long deductedCount, long finalCount, long totalCount,
                           int institutionCount) {
-        BigDecimal fee = evaluate(getSkill(code).formula(), new Counts(rawCount, deductedCount, finalCount),
+        ParsedSkill skill = getSkill(code);
+        requireFormula(skill);
+        BigDecimal fee = evaluate(skill.formula(), new Counts(rawCount, deductedCount, finalCount),
                 totalCount, institutionCount, 1.0);
         return fee.setScale(0, RoundingMode.HALF_UP).longValueExact();
     }
@@ -257,6 +279,7 @@ public class SkillEngineService {
     }
 
     public static RawFees computeRaw(ParsedSkill skill, List<Counts> counts, double periodScale) {
+        requireFormula(skill);
         long total = counts.stream().mapToLong(Counts::finalCount).sum();
         int n = counts.size();
         List<Long> equal = new ArrayList<>();

@@ -24,7 +24,7 @@ import { downloadReconciliation, downloadRevenueResolution } from '../utils/exce
 import { Card, Select, StatusBadge } from './ui';
 import DateField from './DateField';
 import { api, apiEnabled } from '../utils/api';
-import { builtInTasks, lines, localSkillDetail } from '../utils/skill';
+import { FORMULA_MISSING, builtInTasks, hasFormula, lines, localSkillDetail } from '../utils/skill';
 import { SOURCE_LABEL } from '../utils/postprocess';
 import { MAX_UPLOAD_MB, SAMPLE_FILE, UploadError, applyColumns, checkUploadFile, parseUploadInBrowser } from '../utils/upload';
 
@@ -342,6 +342,10 @@ export default function FeeCalculation({
       notify(skillError ?? '회비 기준을 불러오는 중입니다. 잠시 후 다시 시도해 주세요.', 'error');
       return;
     }
+    if (!hasFormula(skill)) {
+      notify(FORMULA_MISSING, 'error');
+      return;
+    }
     const k = key;
     const issues = draft.issues;
     const upload = draft.file;
@@ -576,6 +580,12 @@ export default function FeeCalculation({
               </p>
             ) : (
               <>
+                {skill && !hasFormula(skill) && (
+                  <p role="alert" className="mb-2 flex gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    <TriangleAlert className="w-4 h-4 shrink-0" />
+                    수식 미작성: {FORMULA_MISSING}
+                  </p>
+                )}
                 <ul className="space-y-1.5 text-sm text-slate-700">
                   {(skill?.summary ?? business.summary).map((s) => (
                     <li key={s} className="flex gap-2">
