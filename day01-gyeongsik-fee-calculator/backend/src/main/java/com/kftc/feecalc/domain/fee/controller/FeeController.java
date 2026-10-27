@@ -1,6 +1,7 @@
 package com.kftc.feecalc.domain.fee.controller;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.List;
 
 import org.springframework.http.ContentDisposition;
@@ -73,12 +74,16 @@ public class FeeController {
 
     // ---------- 엑셀 업로드 ----------
 
+    /** from·to 를 주면 그 기간 밖 날짜의 행은 빼고 excluded 로 알려 준다 */
     @PostMapping(value = "/uploads", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ApiResponse<UploadResult> upload(@RequestParam("file") MultipartFile file) {
-        UploadResult result = excelService.parseUpload(file);
-        String msg = result.unmatched().isEmpty()
-                ? "실적 " + result.rowCount() + "행을 읽었습니다."
-                : "실적 " + result.rowCount() + "행을 읽었습니다. 기관을 찾지 못한 행 " + result.unmatched().size() + "개는 제외했습니다.";
+    public ApiResponse<UploadResult> upload(@RequestParam("file") MultipartFile file,
+                                            @RequestParam(value = "from", required = false) LocalDate from,
+                                            @RequestParam(value = "to", required = false) LocalDate to) {
+        UploadResult result = excelService.parseUpload(file, from, to);
+        int excludedRows = result.excluded().stream().mapToInt(UploadResult.Excluded::rows).sum() + result.unreadableRows();
+        String msg = "실적 " + result.rowCount() + "행을 읽었습니다."
+                + (excludedRows > 0 ? " 기간 밖·날짜 불명 " + excludedRows + "행은 제외했습니다." : "")
+                + (result.unmatched().isEmpty() ? "" : " 기관을 찾지 못한 " + result.unmatched().size() + "곳은 제외했습니다.");
         return ApiResponse.ok(msg, result);
     }
 

@@ -117,7 +117,7 @@ src/main/java/com/kftc/feecalc/
 | GET | `/businesses`, `/businesses/{code}` | 업무별 회비 기준(방식·단가·총액·분담기준 요약) |
 | PUT | `/businesses/{code}/rate` | 단가(건당 방식)·총액(분담 방식) 변경 |
 | GET | `/institutions` | 참가기관과 별칭 (사용 중지 기관 포함): `{ id, name, code, aliases, type, active, uploadOnly }` |
-| POST | `/uploads` | 실적 엑셀 업로드(multipart `file`). '기관명/기관코드'와 '건수' 열을 찾아 기관별 합산 |
+| POST | `/uploads` | 실적 엑셀 업로드(multipart `file`, 선택 `from`·`to`). 형식 고정 없음: AI 키가 있으면 시트 앞부분 미리보기로 AI가 머리글 행·기관 열·날짜 위치(COLUMN 날짜 열 / HEADER 날짜 머리글 가로형 / TITLE 표 위 제목)·수치 열(kind COUNT·AMOUNT·NUMBER, use)을 판별하고 시트로 검증, 키가 없거나 실패·검증 탈락하면 규칙 기반(`RuleLayoutDetector`, analysis.mode RULE/RULE_FALLBACK + note). 날짜는 최소 년월(2026-07, 2026년 7월, 202607, 날짜 서식, 2026년 3분기 등), 빈 날짜 칸은 위 행 날짜. `from`~`to`와 겹치지 않는 날짜 행은 `excluded`(날짜별 행 수·합계), 날짜 불명 행은 `unreadableRows`. 기관별 열 합계 `values`, use 열 합 `counts`. 원본은 저장하지 않음 |
 | GET | `/uploads/template` | 업로드 양식 엑셀 |
 | POST | `/issues/parse` | AI 이슈 문장 미리보기 해석 `{ text }` → 기관·건수·일자·사유 |
 | POST | `/calculations` | 산출 `{ businessId, from, to, issues[], counts?, uploadFileName?, requestedBy? }` |

@@ -103,10 +103,15 @@ export const api = {
   deleteInstitution: (id) => request('DELETE', `/api/v1/institutions/${id}`),
   // 매칭 시험 → { value, excel: { id, name, code, matchedBy } | null, issue: {...} | null }
   matchInstitution: (value) => request('GET', `/api/v1/institutions/match?value=${encodeURIComponent(value)}`),
-  // 실적 엑셀 업로드 → { fileName, rowCount, totalCount, counts, unmatched }. 잘못된 파일은 400(메시지 포함)
-  uploadPerformance: (file) => {
+  // 실적 엑셀 업로드 → UploadResult { fileName, rowCount, totalCount, counts, unmatched, layout, columns, values, excluded, … }.
+  // 서버가 AI(키가 없거나 실패하면 규칙 기반)로 표 구조를 판별하고, from~to 밖 날짜의 행은 빼서 excluded 로 알려 준다. 잘못된 파일은 400
+  uploadPerformance: (file, period) => {
     const form = new FormData();
     form.append('file', file);
+    if (period?.from && period?.to) {
+      form.append('from', period.from);
+      form.append('to', period.to);
+    }
     return request('POST', '/api/fee/uploads', form);
   },
   // skill.md 수식으로 산출 → 화면 결과 행 형태로 (counts 를 주면 업로드 실적으로 산출)
