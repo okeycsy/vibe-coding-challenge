@@ -26,7 +26,7 @@ import DateField from './DateField';
 import { api, apiEnabled } from '../utils/api';
 import { FORMULA_MISSING, builtInTasks, hasFormula, lines, localSkillDetail } from '../utils/skill';
 import { SOURCE_LABEL } from '../utils/postprocess';
-import { MAX_UPLOAD_MB, SAMPLE_FILE, UploadError, checkUploadFile, parseUploadInBrowser } from '../utils/upload';
+import { MAX_UPLOAD_MB, SAMPLE_FILE, UploadError, applyColumns, checkUploadFile, parseUploadInBrowser } from '../utils/upload';
 
 const NEXT_STATUS = { 대기: '확인중', 확인중: '완료', 완료: '대기' };
 
@@ -51,6 +51,105 @@ const AI_MODE_LABEL = {
 };
 
 // 기간 빠른 선택. 기본값은 오늘 기준 직전 분기(회비는 분기 종료 후 산출)다.
+// ── 업로드 엑셀 판별 결과 ──
+const UPLOAD_MODE = {
+  AI: { label: 'AI 판별', cls: 'border-violet-200 bg-violet-50 text-violet-700' },
+  RULE: { label: '규칙 기반 판별', cls: 'border-slate-200 bg-slate-50 text-slate-600' },
+  RULE_FALLBACK: { label: 'AI 실패 → 규칙 기반 판별', cls: 'border-amber-200 bg-amber-50 text-amber-700' },
+};
+const DATE_UNIT = { DAY: '일 단위', MONTH: '월 단위', QUARTER: '분기 단위', MIXED: '단위 혼합' };
+const DATE_SOURCE = { COLUMN: '날짜 열', HEADER: '날짜 머리글', TITLE: '표 제목' };
+const KIND_LABEL = { COUNT: '건수', AMOUNT: '금액', NUMBER: '수치' };
+
+// 고른 열이 모두 건수 열이면 '건', 금액 등이 섞이면 단위를 붙이지 않는다
+const unitOf = (file) => (file.columns?.filter((c) => c.use).every((c) => c.kind === 'COUNT') ?? true ? '건' : '');
+
+function UploadAnalysis({ file }) {
+  if (!file.layout) return null;
+  const mode = UPLOAD_MODE[file.analysis?.mode] ?? UPLOAD_MODE.RULE;
+  const { layout } = file;
+  return (
+    <div className="mt-3 rounded-md border border-emerald-100 bg-white/70 px-2.5 py-2 text-[11px] text-slate-600">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-medium ${mode.cls}`}>
+          <Bot className="w-3 h-3" /> {mode.label}
+        </span>
+        <span>
+          시트 <b>{layout.sheetName}</b> · {layout.headerRow}행 머리글 · 기관 <b>{layout.institutionHeader}</b> · {DATE_SOURCE[layout.dateSource]}{' '}
+          <b>{layout.dateHeader}</b>
+          {layout.dateUnit && ` (${DATE_UNIT[layout.dateUnit]})`}
+        </span>
+      </div>
+      {file.analysis?.reason && <p className="mt-1 text-slate-500">{file.analysis.reason}</p>}
+      {file.analysis?.note && <p className="mt-1 text-amber-700">{file.analysis.note}</p>}
+    </div>
+  );
+}
+
+function UploadColumns({ file, onToggle }) {
+  if (!file.columns?.length || file.layout?.dateSource === 'HEADER') return null;
+  return (
+    <div className="mt-2">
+      <p className="text-[11px] text-slate-500">실적(기본 건수)으로 더할 열</p>
+      <div className="mt-1 flex flex-wrap gap-1">
+        {file.columns.map((c, i) => (
+          <button
+            key={`${c.index}-${c.header}`}
+            onClick={() => onToggle(i)}
+            aria-pressed={c.use}
+            className={`rounded-full border px-2 py-0.5 text-[11px] ${
+              c.use ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-slate-200 bg-white text-slate-400 line-through'
+            }`}
+            title={`${KIND_LABEL[c.kind] ?? c.kind} 열 · 눌러서 ${c.use ? '빼기' : '넣기'}`}
+          >
+            {c.header}
+            <span className="ml-1 text-[10px] opacity-70">{KIND_LABEL[c.kind] ?? c.kind}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// 선택한 기간 밖이라 뺀 날짜와 날짜를 읽지 못한 행을 짧게 보여 준다
+function UploadExclusions({ file }) {
+  const excluded = file.excluded ?? [];
+  if (!excluded.length && !file.unreadableRows) return null;
+  const use = file.columns?.map((c) => c.use) ?? [];
+  const sumOf = (values) => values.reduce((s, v, i) => s + (file.layout?.dateSource === 'HEADER' || use[i] ? v : 0), 0);
+  const rows = excluded.reduce((n, e) => n + e.rows, 0);
+  return (
+    <div className="mt-2 rounded-md border border-slate-200 bg-white/70 px-2.5 py-2 text-xs text-slate-600">
+      {excluded.length > 0 && (
+        <>
+          <p className="flex items-start gap-1">
+            <CalendarDays className="w-3.5 h-3.5 mt-px shrink-0 text-slate-400" />
+            <span>
+              선택한 기간 밖이라 제외: {excluded.length}개 날짜 · {fmt(rows)}행
+              {file.includedDates?.length > 0 && <span className="text-slate-400"> (반영 {file.includedDates.join(', ')})</span>}
+            </span>
+          </p>
+          <ul className="mt-1 ml-5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
+            {excluded.slice(0, 12).map((e) => (
+              <li key={e.date} className="tabular-nums">
+                {e.date} {fmt(e.rows)}행 · {fmt(sumOf(e.values))}{unitOf(file)}
+              </li>
+            ))}
+            {excluded.length > 12 && <li>외 {excluded.length - 12}개</li>}
+          </ul>
+        </>
+      )}
+      {file.unreadableRows > 0 && (
+        <p className="mt-1 flex items-start gap-1 text-amber-700">
+          <TriangleAlert className="w-3.5 h-3.5 mt-px shrink-0" />
+          날짜를 읽지 못해 제외 {fmt(file.unreadableRows)}행: {file.unreadableSamples.join(', ')}
+          {file.unreadableRows > file.unreadableSamples.length && ' 외'}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function periodPresets(today = new Date()) {
   const y = today.getFullYear();
   const cq = Math.floor(today.getMonth() / 3) + 1;
@@ -170,8 +269,8 @@ export default function FeeCalculation({
   const later = (fn, ms) => timers.current.push(setTimeout(fn, ms));
 
   // ── Step 2: 실적 엑셀 업로드 ──
-  // 서버가 있으면 POST /api/fee/uploads(FeeExcelService.parseUpload), 없으면 브라우저에서 같은 규칙으로 읽는다.
-  // 읽은 기관별 건수(counts)가 산출의 기본 건수가 된다.
+  // 서버가 있으면 POST /api/fee/uploads(FeeExcelService.parseUpload, AI 구조 판별), 없으면 브라우저에서 규칙 기반으로 읽는다.
+  // 선택한 산출 기간 밖 날짜의 행은 빠지고(excluded), 실적으로 고른 수치 열을 더한 기관별 값(counts)이 산출의 기본 건수가 된다.
   const handleUpload = (file) => {
     if (!periodValid) {
       notify('산출 기간을 먼저 올바르게 입력해 주세요.', 'error');
@@ -190,21 +289,28 @@ export default function FeeCalculation({
     const k = key;
     setUploadError(null);
     setUploading(true);
-    (apiEnabled ? api.uploadPerformance(file) : parseUploadInBrowser(file))
+    const period = { from, to };
+    (apiEnabled ? api.uploadPerformance(file, period) : parseUploadInBrowser(file, period))
       .then((res) => {
         if (!res.counts.length) {
+          const outside = res.excluded.map((e) => e.date);
           throw new UploadError(
-            res.unmatched.length
-              ? `참가기관을 하나도 찾지 못했습니다. 기관명(또는 기관코드)을 확인해 주세요: ${res.unmatched.slice(0, 5).join(', ')}`
-              : '파일에 기관별 건수가 없습니다.',
+            outside.length && !res.rowCount && !res.unmatched.length
+              ? `선택한 기간(${periodLabel(from, to)})에 해당하는 행이 없습니다. 파일의 날짜: ${outside.slice(0, 6).join(', ')}${outside.length > 6 ? ' 외' : ''}`
+              : res.unmatched.length
+                ? `참가기관을 하나도 찾지 못했습니다. 기관 관리에 등록된 기관명(또는 기관코드)인지 확인해 주세요: ${res.unmatched.slice(0, 5).join(', ')}`
+                : '파일에 기관별 실적이 없습니다.',
           );
         }
         // 읽을 때의 기관 목록 버전을 남겨, 그 뒤 기관 관리에서 기관이 바뀌면 다시 올리도록 안내한다
         updateDraft({ file: { ...res, name: file.name, size: file.size, institutionVersion } }, k);
+        const excludedRows = res.excluded.reduce((n, e) => n + e.rows, 0) + res.unreadableRows;
+        const dropped = [
+          excludedRows && `기간 밖·날짜 불명 ${fmt(excludedRows)}행`,
+          res.unmatched.length && `기관을 찾지 못한 ${res.unmatched.length}곳`,
+        ].filter(Boolean);
         notify(
-          res.unmatched.length
-            ? `${file.name}: 실적 ${res.rowCount}행을 읽었고, 기관을 찾지 못한 ${res.unmatched.length}행은 제외했습니다.`
-            : `${file.name}: 실적 ${res.rowCount}행(${res.counts.length}개 기관)을 읽었습니다.`,
+          `${file.name}: 실적 ${fmt(res.rowCount)}행(${res.counts.length}개 기관)을 읽었습니다.${dropped.length ? ` ${dropped.join(', ')}은(는) 제외했습니다.` : ''}`,
           res.unmatched.length ? 'error' : undefined,
         );
       })
@@ -289,7 +395,12 @@ export default function FeeCalculation({
             ai,
             special,
             skill: applied,
-            source: { fileName: upload.name, institutions: upload.counts.length, unmatched: upload.unmatched },
+            source: {
+              fileName: upload.name,
+              institutions: upload.counts.length,
+              unmatched: upload.unmatched,
+              columns: upload.columns?.filter((c) => c.use).map((c) => c.header) ?? [],
+            },
             createdAt: new Date().toLocaleString('ko-KR'),
           },
         }));
@@ -538,7 +649,7 @@ export default function FeeCalculation({
                       <p className="text-sm font-semibold truncate">{draft.file.name}</p>
                       <p className="text-xs text-slate-500">
                         {(draft.file.size / 1024).toFixed(1)}KB · 실적 {fmt(draft.file.rowCount)}행 ·{' '}
-                        {draft.file.counts.length}개 기관 · 합계 {fmt(draft.file.totalCount)}건
+                        {draft.file.counts.length}개 기관 · 합계 {fmt(draft.file.totalCount)}{unitOf(draft.file)}
                       </p>
                     </div>
                     <button
@@ -549,19 +660,32 @@ export default function FeeCalculation({
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
+                  <UploadAnalysis file={draft.file} />
+                  <UploadColumns
+                    file={draft.file}
+                    onToggle={(i) => {
+                      const use = draft.file.columns.map((c, j) => (j === i ? !c.use : c.use));
+                      if (!use.some(Boolean)) {
+                        notify('실적으로 더할 열을 하나 이상 골라 주세요.', 'error');
+                        return;
+                      }
+                      updateDraft({ file: applyColumns(draft.file, use) });
+                    }}
+                  />
                   <div className="mt-3 grid max-h-48 grid-cols-2 gap-x-4 gap-y-0.5 overflow-y-auto pr-1 text-xs">
                     {draft.file.counts.map((c) => (
                       <div key={c.institutionId} className="flex justify-between">
                         <span className="text-slate-600">{c.name}</span>
-                        <span className="tabular-nums text-slate-800">{fmt(c.baseCount)}건</span>
+                        <span className="tabular-nums text-slate-800">{fmt(c.baseCount)}{unitOf(draft.file)}</span>
                       </div>
                     ))}
                   </div>
+                  <UploadExclusions file={draft.file} />
                   {draft.file.unmatched.length > 0 && (
                     <p className="mt-2 flex items-start gap-1 text-xs text-amber-700">
                       <TriangleAlert className="w-3.5 h-3.5 mt-px shrink-0" />
-                      기관을 찾지 못해 제외한 행 {draft.file.unmatched.length}개: {draft.file.unmatched.slice(0, 5).join(', ')}
-                      {draft.file.unmatched.length > 5 && ' 외'}
+                      기관을 찾지 못해 제외한 {draft.file.unmatched.length}곳: {draft.file.unmatched.slice(0, 5).join(', ')}
+                      {draft.file.unmatched.length > 5 && ' 외'} (기관 관리에 등록하면 포함됩니다)
                     </p>
                   )}
                   <p className="mt-1 text-[11px] text-slate-500">파일에 있는 기관만 산출 대상이 됩니다.</p>
@@ -782,7 +906,8 @@ export default function FeeCalculation({
               )}
               {run.source && (
                 <span>
-                  실적 출처 {run.source.fileName} ({run.source.institutions}개 기관)
+                  실적 출처 {run.source.fileName} ({run.source.institutions}개 기관
+                  {run.source.columns?.length ? ` · ${run.source.columns.join('+')}` : ''})
                 </span>
               )}
               {run.skill && <span>적용 기준 {run.skill.calcType}</span>}

@@ -160,6 +160,8 @@ class FeeCalcApplicationTests {
             for (int r = 0; r < rows.length; r++) {
                 Row row = s.createRow(r);
                 row.createCell(0).setCellValue(rows[r][0].toString());
+                // 날짜(년월)는 업로드에 꼭 필요하다
+                row.createCell(2).setCellValue(r == 0 ? "기준월" : "2026-07");
                 if (rows[r][1] instanceof Integer n) {
                     row.createCell(1).setCellValue(n);
                 } else {

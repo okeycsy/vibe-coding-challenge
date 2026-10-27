@@ -5,14 +5,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
-import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.FillPatternType;
 import org.apache.poi.ss.usermodel.Font;
@@ -38,6 +36,10 @@ import com.kftc.feecalc.domain.fee.entity.FeeCalculation;
 import com.kftc.feecalc.domain.fee.entity.FeeCalculationItem;
 import com.kftc.feecalc.domain.fee.entity.Institution;
 import com.kftc.feecalc.domain.fee.repository.InstitutionRepository;
+import com.kftc.feecalc.domain.fee.upload.SheetData;
+import com.kftc.feecalc.domain.fee.upload.UploadLayout;
+import com.kftc.feecalc.domain.fee.upload.UploadLayoutService;
+import com.kftc.feecalc.domain.fee.upload.UploadReader;
 
 import lombok.RequiredArgsConstructor;
 
@@ -54,6 +56,7 @@ public class FeeExcelService {
     private final InstitutionRepository institutionRepository;
     private final FeeCalculationService calculationService;
     private final SkillEngineService skillEngine;
+    private final UploadLayoutService layoutService;
 
     public record ExcelFile(String fileName, byte[] content) {
     }
@@ -61,99 +64,89 @@ public class FeeExcelService {
     // ---------- 업로드 ----------
 
     /**
-     * 첫 시트에서 머리글 행을 찾아 기관(기관코드·기관명)과 건수(건수·실적) 열을 읽는다.
-     * 같은 기관이 여러 행이면 합산하고, '합계' 행은 건너뛴다.
+     * 업로드 엑셀을 읽는다. 형식은 고정하지 않고 AI(키가 없거나 실패하면 규칙 기반)가 머리글 행·기관 열·날짜(년월 이상)·수치 열을 판별한다.
+     * from~to 를 주면 그 기간과 겹치지 않는 날짜의 행은 빼고 날짜별로 알려 준다. 같은 기관이 여러 행이면 합산하고 합계 행은 건너뛴다.
+     * 엑셀 원본은 저장하지 않는다.
      */
-    public UploadResult parseUpload(MultipartFile file) {
+    public UploadResult parseUpload(MultipartFile file, LocalDate from, LocalDate to) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException(ErrorCode.INVALID_EXCEL, "업로드할 파일을 선택해 주세요.");
         }
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new BusinessException(ErrorCode.INVALID_PERIOD, "시작일(From)이 종료일(To)보다 늦습니다.");
+        }
         // 기관 관리에서 추가·수정한 기관이 바로 반영되도록 요청마다 DB에서 읽는다 (비활성 기관 제외)
         List<Institution> institutions = institutionRepository.findByActiveTrueOrderBySortOrder();
-        DataFormatter fmt = new DataFormatter(Locale.KOREA);
 
+        List<SheetData> sheets = new ArrayList<>();
         try (InputStream in = file.getInputStream(); Workbook wb = WorkbookFactory.create(in)) {
-            Sheet sheet = wb.getSheetAt(0);
-            int headerRow = -1;
-            int instCol = -1;
-            int countCol = -1;
-            for (int r = sheet.getFirstRowNum(); r <= Math.min(sheet.getLastRowNum(), 20) && headerRow < 0; r++) {
-                Row row = sheet.getRow(r);
-                if (row == null) {
-                    continue;
-                }
-                int ic = -1;
-                int cc = -1;
-                for (Cell cell : row) {
-                    String h = fmt.formatCellValue(cell).replace(" ", "");
-                    if (ic < 0 && (h.contains("기관") || h.contains("금융회사") || h.contains("코드"))) {
-                        ic = cell.getColumnIndex();
-                    }
-                    if (cc < 0 && (h.contains("건수") || h.contains("실적"))) {
-                        cc = cell.getColumnIndex();
-                    }
-                }
-                if (ic >= 0 && cc >= 0) {
-                    headerRow = r;
-                    instCol = ic;
-                    countCol = cc;
-                }
+            for (int s = 0; s < Math.min(wb.getNumberOfSheets(), 10); s++) {
+                sheets.add(SheetData.of(wb.getSheetAt(s)));
             }
-            if (headerRow < 0) {
-                throw new BusinessException(ErrorCode.INVALID_EXCEL,
-                        "머리글 행을 찾지 못했습니다. '기관명'(또는 기관코드)과 '건수' 열이 필요합니다.");
-            }
-
-            Map<String, Long> sums = new LinkedHashMap<>();
-            List<String> unmatched = new ArrayList<>();
-            int rowCount = 0;
-            for (int r = headerRow + 1; r <= sheet.getLastRowNum(); r++) {
-                Row row = sheet.getRow(r);
-                if (row == null) {
-                    continue;
-                }
-                String instValue = fmt.formatCellValue(row.getCell(instCol)).trim();
-                if (instValue.isEmpty() || instValue.contains("합계")) {
-                    continue;
-                }
-                Long count = readCount(row.getCell(countCol), fmt);
-                if (count == null) {
-                    continue;
-                }
-                Institution inst = matchInstitution(instValue, institutions);
-                if (inst == null) {
-                    unmatched.add(instValue);
-                    continue;
-                }
-                sums.merge(inst.getCode(), count, Long::sum);
-                rowCount++;
-            }
-
-            List<InstitutionCount> counts = institutions.stream()
-                    .filter(i -> sums.containsKey(i.getCode()))
-                    .map(i -> new InstitutionCount(i.getCode(), i.getName(), sums.get(i.getCode())))
-                    .toList();
-            long total = counts.stream().mapToLong(InstitutionCount::baseCount).sum();
-            return new UploadResult(file.getOriginalFilename(), rowCount, total, counts, unmatched);
         } catch (IOException | RuntimeException e) {
-            if (e instanceof BusinessException be) {
-                throw be;
-            }
             throw new BusinessException(ErrorCode.INVALID_EXCEL, "엑셀 파일(xlsx, xls)을 읽을 수 없습니다.");
         }
+
+        UploadLayoutService.Detection detection = layoutService.detect(sheets);
+        UploadLayout layout = detection.layout();
+        if (layout == null) {
+            throw new BusinessException(ErrorCode.INVALID_EXCEL,
+                    "표 구조를 판별하지 못했습니다. 기관명(또는 기관코드) 열과 날짜(최소 년월: 기준월 열, 2026-07 같은 머리글, "
+                            + "또는 표 위 '2026년 3분기' 같은 제목)가 필요합니다."
+                            + (detection.note() == null ? "" : " " + detection.note()));
+        }
+        SheetData sheet = sheets.get(layout.sheet());
+        UploadReader.Read<Institution> read = UploadReader.read(sheet, layout,
+                v -> matchInstitution(v, institutions), from == null || to == null ? null : from, to);
+
+        List<UploadLayout.ValueColumn> valueColumns = layout.valueColumns();
+        List<UploadResult.Column> columns = valueColumns.stream()
+                .map(v -> new UploadResult.Column(v.index(), v.header(), v.kind(), v.use())).toList();
+        List<UploadResult.InstitutionValues> values = new ArrayList<>();
+        List<InstitutionCount> counts = new ArrayList<>();
+        for (Institution i : institutions) {
+            long[] sum = read.sums.get(i);
+            if (sum == null) {
+                continue;
+            }
+            values.add(new UploadResult.InstitutionValues(i.getCode(), i.getName(), Arrays.stream(sum).boxed().toList()));
+            long count = 0;
+            for (int c = 0; c < sum.length; c++) {
+                if (valueColumns.get(c).use()) {
+                    count += sum[c];
+                }
+            }
+            counts.add(new InstitutionCount(i.getCode(), i.getName(), Math.max(0, count)));
+        }
+        long total = counts.stream().mapToLong(InstitutionCount::baseCount).sum();
+        List<UploadResult.Excluded> excluded = read.excluded.entrySet().stream()
+                .map(e -> new UploadResult.Excluded(e.getKey(), e.getValue().rows, Arrays.stream(e.getValue().values).boxed().toList()))
+                .toList();
+        String dateHeader = switch (layout.dateSource()) {
+            case COLUMN -> sheet.text(layout.headerRow(), layout.dateColumn());
+            case HEADER -> layout.dateHeaderColumns().stream().map(c -> sheet.text(layout.headerRow(), c))
+                    .reduce((a, b) -> a + ", " + b).orElse("");
+            case TITLE -> layout.titleText();
+        };
+        UploadResult.Layout info = new UploadResult.Layout(sheet.name(), layout.headerRow() + 1,
+                sheet.text(layout.headerRow(), layout.institutionColumn()), layout.dateSource().name(), dateHeader, read.dateUnit());
+        return new UploadResult(file.getOriginalFilename(), read.rowCount, total, counts, List.copyOf(read.unmatched), info,
+                columns, values, excluded, read.unreadableRows, read.unreadableSamples, List.copyOf(read.includedDates),
+                new UploadResult.Analysis(detection.mode(), detection.model(), detection.note(), detection.reason()));
     }
 
-    /** 업로드 양식: 기관코드 | 기관명 | 건수 */
+    /** 업로드 양식: 기준월 | 기관코드 | 기관명 | 건수 (기준월은 이번 달로 채워 둠) */
     public ExcelFile uploadTemplate() {
         try (XSSFWorkbook wb = new XSSFWorkbook()) {
             Sheet sheet = wb.createSheet("실적");
             CellStyle header = headerStyle(wb);
-            writeRow(sheet, 0, header, "기관코드", "기관명", "건수");
+            writeRow(sheet, 0, header, "기준월", "기관코드", "기관명", "건수");
+            String month = LocalDate.now().toString().substring(0, 7);
             int r = 1;
             for (Institution inst : institutionRepository.findByActiveTrueOrderBySortOrder()) {
-                writeRow(sheet, r++, null, inst.getBankCode(), inst.getName(), 0L);
+                writeRow(sheet, r++, null, month, inst.getBankCode(), inst.getName(), 0L);
             }
-            autosize(sheet, 3);
+            autosize(sheet, 4);
             return new ExcelFile("회비실적_업로드양식.xlsx", toBytes(wb));
         } catch (IOException e) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "엑셀 생성에 실패했습니다.");
@@ -308,18 +301,6 @@ public class FeeExcelService {
             }
         }
         return best;
-    }
-
-    private Long readCount(Cell cell, DataFormatter fmt) {
-        if (cell == null) {
-            return null;
-        }
-        if (cell.getCellType() == CellType.NUMERIC
-                || (cell.getCellType() == CellType.FORMULA && cell.getCachedFormulaResultType() == CellType.NUMERIC)) {
-            return Math.round(cell.getNumericCellValue());
-        }
-        String digits = fmt.formatCellValue(cell).replaceAll("[,\\s건]", "");
-        return digits.matches("\\d+") ? Long.parseLong(digits) : null;
     }
 
     private CellStyle headerStyle(Workbook wb) {
