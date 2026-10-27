@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>80-proof</title>
+<style>
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #000; }
+  body { font-family: 'Pretendard', 'Noto Sans KR', sans-serif; color: #fff; -webkit-font-smoothing: antialiased; }
+  .bg { position: absolute; inset: 0; background: radial-gradient(1400px 700px at 30% 20%, #0f1b3d 0%, #070c1d 45%, #000 100%); }
+  .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  @keyframes up { to { opacity: 1; transform: none; } }
+  @keyframes fade { to { opacity: 1; } }
+  .eyebrow { font-size: 26px; color: #5fa0ff; font-weight: 700; letter-spacing: 0.18em; margin-bottom: 40px; opacity: 0; animation: fade 700ms forwards; }
+  .stats { display: grid; grid-template-columns: repeat(3, 460px); gap: 64px 70px; }
+  .stat { opacity: 0; transform: translateY(20px); animation: up 800ms cubic-bezier(.2,.8,.2,1) forwards; }
+  .stat b { display: block; font-size: 118px; font-weight: 900; letter-spacing: -0.04em; line-height: 1; font-variant-numeric: tabular-nums; }
+  .stat b small { font-size: 56px; font-weight: 800; letter-spacing: -0.02em; margin-left: 6px; color: #c7d2ea; }
+  .stat span { display: block; font-size: 28px; color: #9fb0d6; margin-top: 16px; font-weight: 500; }
+  .stat.biz b { color: #7fc4ff; }
+  .foot { font-size: 38px; color: #c7d2ea; font-weight: 600; margin-top: 84px; opacity: 0; transform: translateY(20px); animation: up 800ms cubic-bezier(.2,.8,.2,1) forwards; letter-spacing: -0.01em; }
+  .foot b { color: #fff; }
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="center">
+    <div class="eyebrow" style="animation-delay:.2s">바이브코딩 · 2026.10.14 – 10.27</div>
+    <div class="stats">
+      <div class="stat biz" style="animation-delay:.6s"><b>5<small>→</small>1</b><span>업무 5종 · 산출 엔진 1개</span></div>
+      <div class="stat biz" style="animation-delay:1.3s"><b>104<small>곳</small></b><span>등록 참가기관</span></div>
+      <div class="stat biz" style="animation-delay:2.0s"><b>0<small>원</small></b><span>합계 오차 · 자동 검증</span></div>
+      <div class="stat" style="animation-delay:2.9s"><b>14<small>일</small></b><span>개발 기간</span></div>
+      <div class="stat" style="animation-delay:3.6s"><b>38</b><span>병합된 PR</span></div>
+      <div class="stat" style="animation-delay:4.3s"><b>58</b><span>자동 테스트</span></div>
+    </div>
+    <div class="foot" style="animation-delay:5.6s">이 모든 것을 <b>바이브코딩으로 2주 만에</b> 만들었습니다.</div>
+  </div>
+</body>
+</html>

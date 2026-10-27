@@ -1,0 +1,5 @@
+# 시연용 실적 파일(가상 데이터 생성본·원본)과 녹화 중간 산출물은 커밋하지 않는다
+demo-files/
+tools/out/
+node_modules/
+*.log
