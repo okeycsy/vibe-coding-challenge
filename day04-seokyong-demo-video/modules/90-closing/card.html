@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>90-closing</title>
+<style>
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #000; }
+  body { font-family: 'Pretendard', 'Noto Sans KR', sans-serif; color: #fff; -webkit-font-smoothing: antialiased; }
+  .bg { position: absolute; inset: 0; background: radial-gradient(1400px 700px at 50% 35%, #0f1b3d 0%, #070c1d 45%, #000 100%); }
+  .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  @keyframes up { to { opacity: 1; transform: none; } }
+  @keyframes fade { to { opacity: 1; } }
+  .title { font-size: 104px; font-weight: 900; letter-spacing: -0.035em; line-height: 1.18; opacity: 0; transform: translateY(26px); animation: up 900ms cubic-bezier(.2,.8,.2,1) forwards; }
+  .slogan { font-size: 46px; font-weight: 500; color: #9fb0d6; margin-top: 30px; opacity: 0; transform: translateY(26px); animation: up 900ms cubic-bezier(.2,.8,.2,1) forwards; letter-spacing: -0.01em; }
+  .accent { width: 120px; height: 6px; background: linear-gradient(90deg, #178cdc, #6ea8ff); border-radius: 3px; margin-top: 40px; opacity: 0; animation: fade 700ms forwards; }
+  .url { font-size: 30px; color: #6f84b8; margin-top: 28px; font-weight: 500; opacity: 0; animation: fade 800ms forwards; letter-spacing: 0.01em; }
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="center">
+    <div class="title" style="animation-delay:.4s">규칙을 쓰면,<br>회비가 계산됩니다.</div>
+    <div class="slogan" style="animation-delay:2.4s">회비자동산출시스템</div>
+    <div class="accent" style="animation-delay:3.0s"></div>
+    <div class="url" style="animation-delay:3.4s">vibe-coding-challenge-nine.vercel.app</div>
+  </div>
+</body>
+</html>

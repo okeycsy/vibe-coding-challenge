@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>00-problem</title>
+<style>
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #000; }
+  body { font-family: 'Pretendard', 'Noto Sans KR', sans-serif; color: #fff; -webkit-font-smoothing: antialiased; }
+  .bg { position: absolute; inset: 0; background: radial-gradient(1400px 700px at 30% 20%, #0f1b3d 0%, #070c1d 45%, #000 100%); }
+  .left { position: absolute; left: 160px; right: 120px; top: 0; bottom: 0; display: flex; flex-direction: column; justify-content: center; }
+  .eyebrow { font-size: 26px; color: #5fa0ff; font-weight: 700; letter-spacing: 0.18em; margin-bottom: 44px; opacity: 0; animation: fade 700ms forwards; }
+  .line { font-size: 88px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.2; opacity: 0; transform: translateY(26px); animation: up 900ms cubic-bezier(.2,.8,.2,1) forwards; }
+  .line.dim { color: #93a3cc; font-weight: 600; font-size: 76px; }
+  .line b { color: #6ea8ff; font-weight: 800; }
+  @keyframes up { to { opacity: 1; transform: none; } }
+  @keyframes fade { to { opacity: 1; } }
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="left">
+    <div class="eyebrow" style="animation-delay:.2s">금융결제원 · 참가기관 회비 산출</div>
+    <div class="line" style="animation-delay:.6s">분기마다 반복되는 회비 산출.</div>
+    <div class="line" style="animation-delay:3.4s">업무 <b>5종</b>, 참가기관 <b>100여 곳</b>.</div>
+    <div class="line dim" style="animation-delay:6.4s">서로 다른 기준, 서로 다른 엑셀, 그리고 사람의 손.</div>
+  </div>
+</body>
+</html>
