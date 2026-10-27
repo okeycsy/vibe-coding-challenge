@@ -10,7 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.kftc.feecalc.common.exception.BusinessException;
 import com.kftc.feecalc.common.exception.ErrorCode;
-import com.kftc.feecalc.domain.fee.repository.BusinessRepository;
+import com.kftc.feecalc.domain.fee.service.BusinessCatalogService;
 import com.kftc.feecalc.domain.user.dto.MemberResponse;
 import com.kftc.feecalc.domain.user.dto.PasswordChangeRequest;
 import com.kftc.feecalc.domain.user.dto.ProfileUpdateRequest;
@@ -33,7 +33,7 @@ public class UserService {
 
     private final MemberRepository memberRepository;
     private final TaskRequestRepository taskRequestRepository;
-    private final BusinessRepository businessRepository;
+    private final BusinessCatalogService businessCatalog;
     private final PasswordEncoder passwordEncoder;
 
     public Member getMember(String loginId) {
@@ -98,7 +98,7 @@ public class UserService {
     public List<String> getTasks(String loginId) {
         Member member = getMember(loginId);
         if (member.getRole() == MemberRole.SYSADMIN) {
-            return businessRepository.findAllByOrderBySortOrder().stream().map(b -> b.getCode()).toList();
+            return businessCatalog.businessIds();
         }
         return MemberResponse.from(member).tasks();
     }
@@ -180,7 +180,7 @@ public class UserService {
     }
 
     private void requireBusiness(String businessCode) {
-        if (!businessRepository.existsById(businessCode)) {
+        if (!businessCatalog.exists(businessCode)) {
             throw new BusinessException(ErrorCode.BUSINESS_NOT_FOUND);
         }
     }

@@ -46,7 +46,6 @@ const ROLE_TONE = {
   institution: 'bg-emerald-50 text-emerald-700',
 };
 
-const bizName = (id) => BUSINESSES.find((b) => b.id === id)?.name;
 const btnPrimary =
   'inline-flex items-center gap-1 rounded-md bg-brand-700 px-2.5 py-1 text-xs text-white hover:bg-brand-800 disabled:opacity-40';
 const btnLine =
@@ -515,7 +514,8 @@ function MemberManagement({
 
 // ───────────────────────── 2. 업무 권한 관리 ─────────────────────────
 
-function TaskPermissions({ members, taskRequests, onDecideTask, onToggleTask }) {
+function TaskPermissions({ members, taskRequests, onDecideTask, onToggleTask, businesses = BUSINESSES }) {
+  const bizName = (id) => businesses.find((b) => b.id === id)?.name ?? id;
   const [filter, setFilter] = useState('승인 대기중');
   const [query, setQuery] = useState('');
   const [revoking, setRevoking] = useState(null); // { member, taskId }
@@ -640,7 +640,7 @@ function TaskPermissions({ members, taskRequests, onDecideTask, onToggleTask }) 
             <thead className="bg-slate-50 text-xs text-slate-500">
               <tr>
                 <Th>회원</Th>
-                {BUSINESSES.map((b) => (
+                {businesses.map((b) => (
                   <th key={b.id} className="px-3 py-2 text-center font-medium whitespace-nowrap">
                     {b.name}
                   </th>
@@ -658,11 +658,11 @@ function TaskPermissions({ members, taskRequests, onDecideTask, onToggleTask }) 
                     </p>
                   </td>
                   {m.role === 'sysadmin' ? (
-                    <td colSpan={BUSINESSES.length} className="px-3 py-2.5 text-center text-xs text-amber-700">
+                    <td colSpan={businesses.length} className="px-3 py-2.5 text-center text-xs text-amber-700">
                       관리자 권한 · 모든 업무 산출 가능
                     </td>
                   ) : (
-                    BUSINESSES.map((b) => {
+                    businesses.map((b) => {
                       const has = m.tasks.includes(b.id);
                       return (
                         <td key={b.id} className="px-3 py-2.5 text-center">
@@ -698,7 +698,7 @@ function TaskPermissions({ members, taskRequests, onDecideTask, onToggleTask }) 
               ))}
               {staff.length === 0 && (
                 <tr>
-                  <td colSpan={BUSINESSES.length + 1} className="px-4 py-8 text-center text-sm text-slate-400">
+                  <td colSpan={businesses.length + 1} className="px-4 py-8 text-center text-sm text-slate-400">
                     조건에 맞는 회원이 없습니다.
                   </td>
                 </tr>

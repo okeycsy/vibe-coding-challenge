@@ -11,7 +11,9 @@ const TEST_TONE = {
   진행중: 'bg-accent-50 text-accent-700 border-accent-200',
 };
 
-export default function ResultsManagement({ user, runs, setRuns, notify }) {
+export default function ResultsManagement({ user, runs, setRuns, notify, businesses = BUSINESSES }) {
+  // 산출 뒤 업무 관리에서 지운 업무도 산출할 때 남긴 업무명으로 보여 준다
+  const bizName = (run) => businesses.find((b) => b.id === run.businessId)?.name ?? run.businessName ?? run.businessId;
   const isOperator = user.side === 'kftc';
   const [tests, setTests] = useState(TEST_RESULTS);
   const [query, setQuery] = useState('');
@@ -20,10 +22,9 @@ export default function ResultsManagement({ user, runs, setRuns, notify }) {
   const mine = (id) => isOperator || id === user.institutionId;
 
   const reconRows = Object.entries(runs).flatMap(([key, run]) => {
-    const biz = BUSINESSES.find((b) => b.id === run.businessId);
     return run.rows
       .filter((r) => mine(r.institutionId))
-      .map((r) => ({ key, biz: biz.name, period: periodLabel(run.from, run.to), ...r }));
+      .map((r) => ({ key, biz: bizName(run), period: periodLabel(run.from, run.to), ...r }));
   });
   const filteredRecon = reconRows.filter((r) => !query || r.name.includes(query) || r.biz.includes(query));
 

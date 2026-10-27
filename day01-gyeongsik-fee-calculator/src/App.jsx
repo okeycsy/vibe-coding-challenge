@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BUSINESSES, INITIAL_LOGIN_LOCKS, INITIAL_NOTIFICATIONS, INITIAL_TASK_REQUESTS, MEMBERS, ROLES } from './data/mockData';
 import { Header, MENUS, Sidebar } from './components/Layout';
 import FeeCalculation from './components/FeeCalculation';
@@ -12,7 +12,7 @@ import SkillManagementPage from './components/SkillManagementPage';
 import TaskManagementPage from './components/TaskManagementPage';
 import InstitutionManagementPage from './components/InstitutionManagementPage';
 import { replaceInstitutions } from './utils/institutions';
-import { builtInTasks } from './utils/skill';
+import { builtInTasks, taskBusinesses } from './utils/skill';
 
 const MAX_ATTEMPTS = 5;
 // 하위 메뉴가 각각 한 페이지인 메뉴와 그 첫 페이지
@@ -70,8 +70,8 @@ export default function App() {
   // 시스템관리자는 전체 업무, 일반담당자는 승인된 업무만 산출할 수 있다. 참가기관은 산출하지 않는다.
   const allowedTasks =
     role === 'sysadmin' ? tasks.map((t) => t.businessId) : role === 'operator' ? (member?.tasks ?? []) : [];
-  // 회비 산출은 실적 예시 데이터가 있는 기본 업무 중 지우지 않은 업무만 (새 업무는 md 기준만 관리한다)
-  const calcBusinesses = BUSINESSES.filter((b) => tasks.some((t) => t.businessId === b.id));
+  // 회비 산출·업무 권한 화면의 업무 = 업무 관리 목록 (추가한 업무 포함, 지운 업무 제외)
+  const calcBusinesses = useMemo(() => taskBusinesses(tasks, BUSINESSES), [tasks]);
 
   const notify = (message, tone = 'info') => {
     clearTimeout(toastTimer.current);
@@ -219,7 +219,7 @@ export default function App() {
     persist(() => api.requestTask(member.id, taskId, reason).then(syncFromServer));
   };
 
-  const bizName = (taskId) => BUSINESSES.find((b) => b.id === taskId).name;
+  const bizName = (taskId) => calcBusinesses.find((b) => b.id === taskId)?.name ?? taskId;
   const mmNote = (m) => (prefsOf(m).notify.permission ? ' (Mattermost 알림 발송)' : '');
 
   // 회원의 업무 권한을 켜거나 끈다. 해제하면 그 회원의 산출 화면 드롭다운에서 바로 비활성화된다.
@@ -416,7 +416,7 @@ export default function App() {
                 onChangePage={(section) => selectMenu('skills', section)}
               />
             )}
-            {menu === 'results' && canSee('results') && <ResultsManagement {...shared} />}
+            {menu === 'results' && canSee('results') && <ResultsManagement {...shared} businesses={calcBusinesses} />}
             {menu === 'mypage' && canSee('mypage') && (
               <MyPage
                 page={activeSection ?? 'mypage-profile'}
@@ -425,6 +425,7 @@ export default function App() {
                 prefs={prefsOf(member)}
                 setPrefs={(fn) => setPrefsById((p) => ({ ...p, [member.id]: fn(prefsOf(member)) }))}
                 approvedTasks={member.tasks}
+                businesses={calcBusinesses}
                 taskRequests={taskRequests.filter((r) => r.memberId === member.id)}
                 onRequestTask={requestTask}
                 onChangePassword={changePassword}
@@ -467,6 +468,7 @@ export default function App() {
                 taskRequests={taskRequests}
                 onDecideTask={decideTask}
                 onToggleTask={toggleTask}
+                businesses={calcBusinesses}
                 isLocked={isLocked}
                 loginLocks={loginLocks}
                 maxAttempts={MAX_ATTEMPTS}

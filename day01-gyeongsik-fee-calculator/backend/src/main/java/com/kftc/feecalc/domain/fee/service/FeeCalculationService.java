@@ -56,6 +56,7 @@ public class FeeCalculationService {
     private final FeeCalculationRepository calculationRepository;
     private final AiIssueParser issueParser;
     private final DemoVolumeGenerator demoVolumeGenerator;
+    private final BusinessCatalogService businessCatalog;
     private final UserService userService;
     private final ApplicationEventPublisher eventPublisher;
     private final SkillEngineService skillEngine;
@@ -98,7 +99,7 @@ public class FeeCalculationService {
     @Transactional
     public CalculationResponse calculate(CalculationRequest req, boolean allowAi) {
         // businessId 에는 업무 ID(openbanking)나 skill.md 업무 코드(OPEN_BANKING) 모두 쓸 수 있다
-        Business business = getBusiness(skillEngine.businessIdOf(req.businessId()));
+        Business business = businessCatalog.require(skillEngine.businessIdOf(req.businessId()));
         SkillEngineService.ParsedSkill skill = skillEngine.getSkill(business.getCode());
         SkillEngineService.requireFormula(skill);
         if (req.requestedBy() != null && !req.requestedBy().isBlank()) {
@@ -204,6 +205,10 @@ public class FeeCalculationService {
                 result.merge(c.institutionId(), c.baseCount(), Long::sum);
             }
             return result;
+        }
+        if (business.getBaseVolume() <= 0) {
+            // 업무 관리에서 추가한 업무는 시연용 실적이 없다
+            throw new BusinessException(ErrorCode.INVALID_INPUT, business.getName() + " 업무는 실적 파일을 올려야 산출할 수 있습니다.");
         }
         for (Institution inst : institutions) {
             if (inst.getVolumeWeight() <= 0) {
