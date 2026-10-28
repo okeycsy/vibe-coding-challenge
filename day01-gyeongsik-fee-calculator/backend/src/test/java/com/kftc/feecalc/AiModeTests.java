@@ -98,31 +98,97 @@ class AiModeTests {
         assertThat(res.totalFeeAmount()).isEqualTo(120_000_000L);
     }
 
+    private org.springframework.test.web.servlet.ResultActions generate(String who, String code, String rules) throws Exception {
+        return mvc.perform(post("/api/v1/skills/" + code + "/generate-formula").header("X-Employee-Id", who)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(om.writeValueAsString(Map.of("businessRulesText", rules))));
+    }
+
     @Test
-    void AI가_만든_수식도_구문검사와_시험계산을_거치고_통과하지_못하면_내장_변환기로_만든다() throws Exception {
-        String rules = "- 분기 운영비 총액 2억원을 참가기관이 분담\n- 분담률 = 기관별 최종 인정 건수 ÷ 전체 합계";
+    void AI가_1번_규칙을_읽고_변수를_정의하고_그_변수로_수식을_만든다() throws Exception {
+        String rules = "- 출금이체·입금이체 성공 건을 실적으로 인정 (조회성 API 제외)\n- 건당 20원";
         given(llm.chatJson(eq(FormulaGeneratorService.SYSTEM), anyString())).willReturn(om.readTree("""
-                {"formula":"#totalCount == 0 ? 0 : 200000000.0 * #periodScale * #finalCount / #totalCount",
-                 "pattern":"총액 대비 단순 실적 비율","explanation":["총액 2억원 → 200000000.0","분담률 → #finalCount / #totalCount"]}"""));
-        mvc.perform(post("/api/v1/skills/FIN_INFO/generate-formula").header("X-Employee-Id", "hong")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(om.writeValueAsString(Map.of("businessRulesText", rules))))
+                {"variables":[{"name":"withdrawCount","type":"input","description":"출금이체 성공 건수"},
+                              {"name":"depositCount","type":"input","description":"입금이체 성공 건수"},
+                              {"name":"rawCount","type":"expr","expr":"#withdrawCount + #depositCount"},
+                              {"name":"unitPrice","type":"number","value":20}],
+                 "formula":"#finalCount * #unitPrice","pattern":"건당 단가 (출금+입금)",
+                 "explanation":["출금이체·입금이체 → input 2개","건당 20원 → unitPrice"]}"""));
+        generate("hong", "OPEN_BANKING", rules)
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message", containsString("변수 4개")))
                 .andExpect(jsonPath("$.data.source", is("AI")))
                 .andExpect(jsonPath("$.data.model", is("test-model")))
-                .andExpect(jsonPath("$.data.detectedPattern", is("총액 대비 단순 실적 비율")))
-                .andExpect(jsonPath("$.data.explanation[1]", is("분담률 → #finalCount / #totalCount")))
-                .andExpect(jsonPath("$.data.validationPassed", is(true)));
-
+                .andExpect(jsonPath("$.data.attempts", is(1)))
+                .andExpect(jsonPath("$.data.variables", is("withdrawCount = input(\"출금이체 성공 건수\")\ndepositCount = input(\"입금이체 성공 건수\")\nrawCount = #withdrawCount + #depositCount\nunitPrice = 20")))
+                .andExpect(jsonPath("$.data.variableList[2].kind", is("EXPR")))
+                .andExpect(jsonPath("$.data.inputs[1].label", is("입금이체 성공 건수")))
+                .andExpect(jsonPath("$.data.detectedPattern", is("건당 단가 (출금+입금)")))
+                .andExpect(jsonPath("$.data.explanation[1]", is("건당 20원 → unitPrice")))
+                .andExpect(jsonPath("$.data.validationPassed", is(true)))
+                // 첫 기관: 입력 1:2 로 나눈 100만 건 − 차감 10만 건 = 90만 건 × 20원
+                .andExpect(jsonPath("$.data.sampleResultNormal", is(18_000_000)))
+                .andExpect(jsonPath("$.data.sampleResultZero", is(0)));
+        // 파일은 그대로다
+        assertThat(files.read("OPEN_BANKING")).doesNotContain("withdrawCount");
+        // 변수를 블록 텍스트로 답해도 읽는다
         given(llm.chatJson(eq(FormulaGeneratorService.SYSTEM), anyString())).willReturn(om.readTree("""
-                {"formula":"T(java.lang.Runtime).getRuntime().exec('id')","pattern":"공격"}"""));
-        mvc.perform(post("/api/v1/skills/FIN_INFO/generate-formula").header("X-Employee-Id", "hong")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(om.writeValueAsString(Map.of("businessRulesText", rules))))
+                {"variables":"calls = input(\\"API 호출 건수\\")\\nbase = 900000","formula":"(#finalCount > 0 ? #base * #periodScale : 0) + #finalCount * 8",
+                 "pattern":"기본료 + 건당"}"""));
+        generate("hong", "OPEN_BANKING", rules)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.source", is("RULE_FALLBACK")))
-                .andExpect(jsonPath("$.data.note", containsString("구문 검사·시험 계산을 통과하지 못해")))
-                .andExpect(jsonPath("$.data.generatedFormula", containsString("200000000.0")));
+                .andExpect(jsonPath("$.data.inputs[0].name", is("calls")))
+                .andExpect(jsonPath("$.data.variableList[1].name", is("rawCount")))
+                .andExpect(jsonPath("$.data.variableList[1].auto", is(true)))
+                .andExpect(jsonPath("$.data.sampleResultNormal", is(900_000 + 900_000 * 8)));
+    }
+
+    @Test
+    void AI_수식이_검증에_떨어지면_오류를_알려_주고_한_번_더_묻고_그래도_안_되면_400으로_초안을_돌려준다() throws Exception {
+        String rules = "- 분기 운영비 총액 2억원을 참가기관이 분담\n- 분담률 = 기관별 최종 인정 건수 ÷ 전체 합계";
+        given(llm.chatJson(eq(FormulaGeneratorService.SYSTEM), anyString()))
+                .willReturn(om.readTree("""
+                        {"variables":[{"name":"totalFee","type":"number","value":200000000}],
+                         "formula":"T(java.lang.Runtime).getRuntime().exec('id')","pattern":"공격"}"""))
+                .willReturn(om.readTree("""
+                        {"variables":[{"name":"totalFee","type":"number","value":200000000}],
+                         "formula":"#totalCount == 0 ? 0 : #totalFee * 1.0 * #periodScale * #finalCount / #totalCount","pattern":"총액 대비 실적 비율"}"""));
+        generate("hong", "FIN_INFO", rules)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.attempts", is(2)))
+                .andExpect(jsonPath("$.data.note", containsString("다시 받았습니다")))
+                .andExpect(jsonPath("$.data.generatedFormula", containsString("#totalFee")))
+                // 2억 × 90만 / 900만 = 2,000만
+                .andExpect(jsonPath("$.data.sampleResultNormal", is(20_000_000)));
+        org.mockito.ArgumentCaptor<String> prompt = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(llm, org.mockito.Mockito.times(2)).chatJson(eq(FormulaGeneratorService.SYSTEM), prompt.capture());
+        assertThat(prompt.getAllValues().get(1)).contains("[검증 오류]").contains("T(java.lang.Runtime)");
+
+        // 두 번 모두 실패: 400 + 초안
+        given(llm.chatJson(eq(FormulaGeneratorService.SYSTEM), anyString())).willReturn(om.readTree("""
+                {"variables":[{"name":"a","type":"input","description":"a"},{"name":"b","type":"input","description":"b"}],
+                 "formula":"#a + #b","pattern":"합"}"""));
+        generate("hong", "FIN_INFO", rules)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("2번 모두")))
+                .andExpect(jsonPath("$.message", containsString("rawCount")))
+                .andExpect(jsonPath("$.data.attempts", is(2)))
+                .andExpect(jsonPath("$.data.draft.formula", is("#a + #b")))
+                .andExpect(jsonPath("$.data.draft.variables", containsString("a = input(\"a\")")));
+
+        // 수식이 정의하지 않은 변수를 쓰면 그 이름을 알려 준다
+        given(llm.chatJson(eq(FormulaGeneratorService.SYSTEM), anyString())).willReturn(om.readTree("""
+                {"variables":[],"formula":"#finalCount * #price","pattern":"건당"}"""));
+        generate("hong", "FIN_INFO", rules)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("#price")));
+
+        // AI 호출 자체가 실패하면 400 (패턴 변환기로 대신하지 않는다)
+        given(llm.chatJson(eq(FormulaGeneratorService.SYSTEM), anyString())).willThrow(new LlmClient.LlmException("AI 호출 실패 HTTP 429"));
+        generate("hong", "FIN_INFO", rules)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("HTTP 429")));
+        assertThat(files.read("FIN_INFO")).contains("120000000.0");
     }
 
     @Test

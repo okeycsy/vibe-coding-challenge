@@ -3,7 +3,9 @@ package com.kftc.feecalc.domain.fee.dto;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kftc.feecalc.domain.fee.entity.AiIssue;
@@ -26,6 +28,8 @@ public record CalculationResponse(
         String skillCode,
         String calcType,
         String formula,
+        /** 적용한 3번 ```variables 변수 정의 원문 (예전 문서는 "") */
+        String variables,
         /** 적용한 "## 4. 최종 정산 특이사항" 원문 */
         String specialRules,
         String source,
@@ -55,17 +59,35 @@ public record CalculationResponse(
         List<Item> items,
         List<Issue> issues) {
 
+    /** inputs = 실적 입력 변수별 값 (변수 이름 → 건수), baseCount 는 그 입력으로 계산한 rawCount */
     public record Item(Long id, String institutionId, String name, String code, long baseCount, long deduction,
                        long finalCount, String rateLabel, long equalFee, long perfFee, long fee,
                        boolean specialRuleApplied, long beforeSpecialFee, long specialAdjustment, String specialReason,
-                       List<String> reasons) {
+                       List<String> reasons, Map<String, Long> inputs) {
 
         static Item from(FeeCalculationItem i) {
             List<String> reasons = i.getDeductionReasons() == null || i.getDeductionReasons().isBlank()
                     ? List.of() : Arrays.asList(i.getDeductionReasons().split("\n"));
             return new Item(i.getId(), i.getInstitutionCode(), i.getInstitutionName(), i.getBankCode(),
                     i.getBaseCount(), i.getDeduction(), i.getFinalCount(), i.getRateLabel(), i.getEqualFee(), i.getPerfFee(), i.getFee(),
-                    i.isSpecialRuleApplied(), i.getBeforeSpecialFee(), i.getSpecialAdjustment(), i.getSpecialReason(), reasons);
+                    i.isSpecialRuleApplied(), i.getBeforeSpecialFee(), i.getSpecialAdjustment(), i.getSpecialReason(), reasons,
+                    inputsOf(i.getInputsJson()));
+        }
+    }
+
+    /** 저장된 입력 JSON → 변수별 값 (없거나 깨졌으면 빈 맵) */
+    public static Map<String, Long> inputsOf(String json) {
+        try {
+            if (json == null || json.isBlank()) {
+                return Map.of();
+            }
+            Map<String, Object> raw = OM.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<LinkedHashMap<String, Object>>() {
+            });
+            Map<String, Long> result = new LinkedHashMap<>();
+            raw.forEach((k, v) -> result.put(k, v instanceof Number n ? n.longValue() : 0L));
+            return result;
+        } catch (Exception e) {
+            return Map.of();
         }
     }
 
@@ -91,7 +113,8 @@ public record CalculationResponse(
                 c.getBusiness().getMethod().getCode(), c.getPeriodFrom(), c.getPeriodTo(),
                 new Period(c.getPeriodFrom(), c.getPeriodTo()).label(), c.getPeriodScale(),
                 c.getAppliedUnitPrice(), c.getAppliedTotalFee(), c.getSkillCode(), c.getAppliedCalcType(),
-                c.getAppliedFormula(), c.getAppliedSpecialRules() == null ? "" : c.getAppliedSpecialRules(), c.getSource(), c.getUploadFileName(),
+                c.getAppliedFormula(), c.getAppliedVariables() == null ? "" : c.getAppliedVariables(),
+                c.getAppliedSpecialRules() == null ? "" : c.getAppliedSpecialRules(), c.getSource(), c.getUploadFileName(),
                 c.getCalculatedBy(), c.getCalculatedAt(),
                 items.stream().mapToLong(Item::baseCount).sum(),
                 items.stream().mapToLong(Item::deduction).sum(),

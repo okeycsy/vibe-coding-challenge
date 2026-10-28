@@ -6,6 +6,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 import com.kftc.feecalc.domain.fee.upload.UploadLayout.DateSource;
+import com.kftc.feecalc.domain.fee.upload.UploadLayout.SkillInput;
 import com.kftc.feecalc.domain.fee.upload.UploadLayout.ValueColumn;
 
 /**
@@ -156,12 +157,67 @@ public final class RuleLayoutDetector {
         return AMOUNT.matcher(h).find() ? "AMOUNT" : COUNT.matcher(h).find() ? "COUNT" : "NUMBER";
     }
 
-    /** 실적에 넣을 기본 열: 머리글에 '건수'·'실적'이 있으면 그 열만, 없으면 금액이 아닌 열 모두, 그것도 없으면 전부 */
+    /** 실적에 넣을 기본 열: 머리글에 '건수'·'실적'이 있으면 그 열만, 없으면 금액이 아닌 열 모두, 그것도 없으면 전부 (변수는 rawCount) */
     public static List<ValueColumn> defaultUse(List<ValueColumn> values) {
         boolean prefer = values.stream().anyMatch(v -> PREFER.matcher(squash(v.header())).find());
         boolean nonAmount = values.stream().anyMatch(v -> !"AMOUNT".equals(v.kind()));
         return values.stream().map(v -> new ValueColumn(v.index(), v.header(), v.kind(),
                 prefer ? PREFER.matcher(squash(v.header())).find() : !nonAmount || !"AMOUNT".equals(v.kind()))).toList();
+    }
+
+    /** 머리글·설명을 맞춰 볼 때 떼는 말: 공백·괄호·'건수'·'횟수'·'실적'·'성공'·count 등 */
+    private static final Pattern NOISE = Pattern.compile("[\\s()\\[\\]_\\-·,.]|건수|횟수|실적|성공|처리|count|cnt|수$", Pattern.CASE_INSENSITIVE);
+
+    static String key(String text) {
+        String t = text == null ? "" : text.toLowerCase();
+        String prev;
+        do {
+            prev = t;
+            t = NOISE.matcher(t).replaceAll("");
+        } while (!t.equals(prev));
+        return t;
+    }
+
+    /**
+     * 수치 열을 skill.md 실적 입력 변수에 연결한다 (AI 가 없거나 AI 가 정하지 않은 열). 입력이 rawCount 하나뿐이면 {@link #defaultUse} 와 같고,
+     * 여럿이면 열 머리글과 입력 설명의 핵심 낱말이 서로 포함되는 쪽으로 연결한다 (가장 길게 맞는 입력, 금액 열은 설명에 '금액'이 있을 때만).
+     * 이미 변수가 있는 열은 그대로 둔다. 맞는 열이 없는 입력은 비워 둔다(화면에서 고른다). 프론트 utils/upload.js suggestMapping 과 같은 규칙
+     */
+    public static List<ValueColumn> assignVariables(List<ValueColumn> values, List<SkillInput> inputs) {
+        if (inputs == null || inputs.isEmpty() || inputs.size() == 1 && SkillInput.DEFAULT_NAME.equals(inputs.get(0).name())) {
+            return values.stream().anyMatch(ValueColumn::use) ? values : defaultUse(values);
+        }
+        List<ValueColumn> out = new ArrayList<>();
+        for (ValueColumn v : values) {
+            if (v.variable() != null) {
+                out.add(v);
+                continue;
+            }
+            String h = key(v.header());
+            SkillInput best = null;
+            int bestScore = 0;
+            for (SkillInput in : inputs) {
+                String l = key(in.label());
+                if (h.isEmpty() || l.isEmpty()) {
+                    continue;
+                }
+                if ("AMOUNT".equals(v.kind()) && !in.label().contains("금액")) {
+                    continue;
+                }
+                int score = h.equals(l) ? 1000 + l.length() : h.contains(l) || l.contains(h) ? Math.min(h.length(), l.length()) : 0;
+                if (score > bestScore) {
+                    best = in;
+                    bestScore = score;
+                }
+            }
+            out.add(v.withVariable(best == null ? null : best.name()));
+        }
+        // 입력이 하나뿐인데(이름만 다른) 아무 열도 못 맞추면 기본 규칙(건수·실적 열)으로 그 입력에 넣는다
+        if (inputs.size() == 1 && out.stream().noneMatch(ValueColumn::use)) {
+            String only = inputs.get(0).name();
+            return defaultUse(out).stream().map(v -> v.withVariable(v.use() ? only : null)).toList();
+        }
+        return out;
     }
 
     static double textRate(SheetData sheet, List<Integer> data, int c) {

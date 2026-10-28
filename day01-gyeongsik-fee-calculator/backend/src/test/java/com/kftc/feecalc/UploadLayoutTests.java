@@ -5,6 +5,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -12,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.io.ByteArrayOutputStream;
 import java.time.LocalDate;
+import java.util.List;
 
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.Row;
@@ -29,6 +31,7 @@ import org.springframework.test.web.servlet.ResultActions;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kftc.feecalc.domain.fee.ai.LlmClient;
+import com.kftc.feecalc.domain.fee.service.SkillFileService;
 import com.kftc.feecalc.domain.fee.upload.UploadDate;
 
 /** 자유 형식 실적 엑셀: 구조 판별(AI·규칙 기반), 날짜(년월 이상) 읽기, 산출 기간 밖 행 제외 (모두 가짜 데이터) */
@@ -48,6 +51,29 @@ class UploadLayoutTests {
 
     @MockBean
     LlmClient llm;
+
+    @Autowired
+    SkillFileService files;
+
+    /** 3번을 실적 입력 3개(거래내역조회·계좌실명조회·ATM 출금)짜리 변수 정의로 바꾼 오픈뱅킹 기준 문서 */
+    private String withInputs() {
+        String md = files.read("OPEN_BANKING");
+        return md.replaceAll("(?s)## 3\\..*?(?=## 4\\.)", """
+                ## 3. 정산 수식
+
+                ```variables
+                inquiry = input("거래내역조회 건수")
+                verify = input("계좌실명조회 건수")
+                atm = input("ATM 출금 건수")
+                rawCount = #inquiry + #verify + #atm
+                ```
+
+                ```formula
+                #finalCount * 10
+                ```
+
+                """);
+    }
 
     @Test
     void 날짜는_년월_이상이면_여러_형식을_읽는다() {
@@ -100,6 +126,84 @@ class UploadLayoutTests {
     private ResultActions upload(byte[] xlsx, String from, String to) throws Exception {
         return mvc.perform(multipart("/api/fee/uploads").file(new MockMultipartFile("file", "api.xlsx", XLSX, xlsx))
                 .param("from", from).param("to", to));
+    }
+
+    private ResultActions upload(byte[] xlsx, String from, String to, String taskCode) throws Exception {
+        return mvc.perform(multipart("/api/fee/uploads").file(new MockMultipartFile("file", "api.xlsx", XLSX, xlsx))
+                .param("from", from).param("to", to).param("taskCode", taskCode));
+    }
+
+    @Test
+    void 업무_코드를_주면_수치_열을_기준_문서의_실적_입력_변수에_머리글로_연결한다() throws Exception {
+        given(llm.enabled()).willReturn(false);
+        files.save("OPEN_BANKING", withInputs(), "admin");
+        upload(apiStyle(), "2026-07-01", "2026-09-30", "OPEN_BANKING")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.analysis.mode", is("RULE")))
+                // 입력 변수 순서대로: 거래내역조회 → inquiry, 계좌실명조회 → verify, ATM 출금은 맞는 열이 없다
+                .andExpect(jsonPath("$.data.mapping", hasSize(3)))
+                .andExpect(jsonPath("$.data.mapping[0].variable", is("inquiry")))
+                .andExpect(jsonPath("$.data.mapping[0].label", is("거래내역조회 건수")))
+                .andExpect(jsonPath("$.data.mapping[0].columns", is(List.of(0))))
+                .andExpect(jsonPath("$.data.mapping[1].columns", is(List.of(1))))
+                .andExpect(jsonPath("$.data.mapping[2].variable", is("atm")))
+                .andExpect(jsonPath("$.data.mapping[2].columns", hasSize(0)))
+                .andExpect(jsonPath("$.data.columns[0].variable", is("inquiry")))
+                .andExpect(jsonPath("$.data.columns[0].use", is(true)))
+                .andExpect(jsonPath("$.data.columns[2].use", is(false)))
+                .andExpect(jsonPath("$.data.columns[4].use", is(false)))
+                // 신한 7~9월: 거래내역조회 100×3, 계좌실명조회 10×3 → rawCount = 300 + 30 + 0
+                .andExpect(jsonPath("$.data.counts[0].inputs.inquiry", is(300)))
+                .andExpect(jsonPath("$.data.counts[0].inputs.verify", is(30)))
+                .andExpect(jsonPath("$.data.counts[0].inputs.atm", is(0)))
+                .andExpect(jsonPath("$.data.counts[0].baseCount", is(330)))
+                .andExpect(jsonPath("$.data.totalCount", is(330 + 660)))
+                .andExpect(jsonPath("$.message", containsString("실적 항목 1개(ATM 출금 건수)에 연결할 열을 골라 주세요")));
+
+        // 업무 코드가 없거나(예전 방식) 없는 업무면 rawCount 하나에 건수 열을 모두 더한다
+        upload(apiStyle(), "2026-07-01", "2026-09-30")
+                .andExpect(jsonPath("$.data.mapping", hasSize(1)))
+                .andExpect(jsonPath("$.data.mapping[0].variable", is("rawCount")))
+                .andExpect(jsonPath("$.data.mapping[0].columns", hasSize(5)))
+                .andExpect(jsonPath("$.data.counts[0].inputs.rawCount", is(333)))
+                .andExpect(jsonPath("$.data.counts[0].baseCount", is(333)));
+        upload(apiStyle(), "2026-07-01", "2026-09-30", "NO_SUCH_TASK")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mapping[0].variable", is("rawCount")));
+        // 변수 블록이 없는 기준(CMS)은 실적 입력이 rawCount 하나다
+        upload(apiStyle(), "2026-07-01", "2026-09-30", "cms")
+                .andExpect(jsonPath("$.data.mapping", hasSize(1)))
+                .andExpect(jsonPath("$.data.mapping[0].label", is("기본 건수")))
+                .andExpect(jsonPath("$.data.counts[0].baseCount", is(333)));
+    }
+
+    @Test
+    void AI는_실적_항목_목록을_받아_열마다_변수를_정하고_모르는_변수_이름은_버린다() throws Exception {
+        given(llm.enabled()).willReturn(true);
+        given(llm.model()).willReturn("test-model");
+        files.save("OPEN_BANKING", withInputs(), "admin");
+        // 실적 항목 목록이 프롬프트에 들어가야 이 답을 준다 (아니면 null → 규칙 기반)
+        given(llm.chatJson(anyString(), contains("[실적 항목]"))).willReturn(om.readTree("""
+                {"sheet":0,"headerRow":0,"institutionColumn":1,"codeColumn":-1,"dateSource":"COLUMN","dateColumn":0,
+                 "valueColumns":[{"column":2,"kind":"COUNT","use":true,"variable":"atm"},
+                                 {"column":3,"kind":"COUNT","use":true,"variable":"bogus"},
+                                 {"column":5,"kind":"COUNT","use":true,"variable":"verify"}],
+                 "reason":"항목별 열"}"""));
+        upload(apiStyle(), "2026-07-01", "2026-09-30", "OPEN_BANKING")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.analysis.mode", is("AI")))
+                .andExpect(jsonPath("$.data.columns", hasSize(3)))
+                // AI 가 정한 연결을 그대로 쓴다 (머리글 규칙으로 덮지 않는다). 없는 변수 이름 bogus 는 연결 없음
+                .andExpect(jsonPath("$.data.columns[0].variable", is("atm")))
+                .andExpect(jsonPath("$.data.columns[1].use", is(false)))
+                .andExpect(jsonPath("$.data.columns[2].variable", is("verify")))
+                .andExpect(jsonPath("$.data.mapping[0].columns", hasSize(0)))
+                .andExpect(jsonPath("$.data.mapping[1].columns", is(List.of(2))))
+                .andExpect(jsonPath("$.data.mapping[2].columns", is(List.of(0))))
+                .andExpect(jsonPath("$.data.counts[0].inputs.atm", is(300)))
+                .andExpect(jsonPath("$.data.counts[0].inputs.verify", is(0)))
+                .andExpect(jsonPath("$.data.counts[0].baseCount", is(300)))
+                .andExpect(jsonPath("$.message", containsString("거래내역조회 건수")));
     }
 
     @Test

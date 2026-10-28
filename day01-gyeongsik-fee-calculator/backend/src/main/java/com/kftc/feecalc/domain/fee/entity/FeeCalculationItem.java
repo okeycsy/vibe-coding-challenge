@@ -70,11 +70,15 @@ public class FeeCalculationItem {
     @Column(length = 2000)
     private String deductionReasons;
 
+    /** 실적 입력 변수별 값 JSON {"withdrawCount":120,...} (skill.md ```variables 의 input). 예전 방식은 {"rawCount":기준 실적} */
+    @Column(length = 2000)
+    private String inputsJson;
+
     private int sortOrder;
 
     @Builder
     private FeeCalculationItem(String institutionCode, String institutionName, String bankCode, long baseCount,
-                               long deduction, String deductionReasons, int sortOrder) {
+                               long deduction, String deductionReasons, String inputsJson, int sortOrder) {
         this.institutionCode = institutionCode;
         this.institutionName = institutionName;
         this.bankCode = bankCode;
@@ -82,6 +86,7 @@ public class FeeCalculationItem {
         this.deduction = deduction;
         this.finalCount = baseCount - deduction;
         this.deductionReasons = deductionReasons;
+        this.inputsJson = inputsJson;
         this.sortOrder = sortOrder;
     }
 

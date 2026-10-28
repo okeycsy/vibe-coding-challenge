@@ -17,6 +17,8 @@ public record UploadResult(
         List<String> unmatched,
         Layout layout,
         List<Column> columns,
+        /** 실적 입력 변수별로 연결한 열 (skill.md ```variables 의 input 순서, 예전 방식은 rawCount 하나) */
+        List<Mapping> mapping,
         /** 기관별 수치 열 합계 (columns 순서) */
         List<InstitutionValues> values,
         /** 산출 기간 밖이라 뺀 날짜별 행 수·합계 */
@@ -33,8 +35,12 @@ public record UploadResult(
                          String dateUnit) {
     }
 
-    /** 수치 열. kind = COUNT · AMOUNT · NUMBER, use = 실적(기본 건수)에 넣는지 기본값 */
-    public record Column(int index, String header, String kind, boolean use) {
+    /** 수치 열. kind = COUNT · AMOUNT · NUMBER, variable = 더해 넣을 실적 입력 변수(없으면 null), use = variable 이 있는지 */
+    public record Column(int index, String header, String kind, boolean use, String variable) {
+    }
+
+    /** 실적 입력 변수 하나에 연결한 열. columns 는 UploadResult.columns 안의 위치(0부터, 엑셀 열 번호가 아님) */
+    public record Mapping(String variable, String label, List<Integer> columns) {
     }
 
     public record InstitutionValues(String institutionId, String name, List<Long> values) {

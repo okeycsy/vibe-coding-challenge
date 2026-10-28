@@ -74,16 +74,22 @@ public class FeeController {
 
     // ---------- 엑셀 업로드 ----------
 
-    /** from·to 를 주면 그 기간 밖 날짜의 행은 빼고 excluded 로 알려 준다 */
+    /**
+     * from·to 를 주면 그 기간 밖 날짜의 행은 빼고 excluded 로 알려 준다.
+     * taskCode(업무 코드 또는 업무 ID)를 주면 그 업무 skill.md 의 실적 입력 변수에 수치 열을 연결해(mapping) 변수별 건수(counts[].inputs)를 만든다
+     */
     @PostMapping(value = "/uploads", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<UploadResult> upload(@RequestParam("file") MultipartFile file,
                                             @RequestParam(value = "from", required = false) LocalDate from,
-                                            @RequestParam(value = "to", required = false) LocalDate to) {
-        UploadResult result = excelService.parseUpload(file, from, to);
+                                            @RequestParam(value = "to", required = false) LocalDate to,
+                                            @RequestParam(value = "taskCode", required = false) String taskCode) {
+        UploadResult result = excelService.parseUpload(file, from, to, taskCode);
         int excludedRows = result.excluded().stream().mapToInt(UploadResult.Excluded::rows).sum() + result.unreadableRows();
+        List<String> unmapped = result.mapping().stream().filter(m -> m.columns().isEmpty()).map(UploadResult.Mapping::label).toList();
         String msg = "실적 " + result.rowCount() + "행을 읽었습니다."
                 + (excludedRows > 0 ? " 기간 밖·날짜 불명 " + excludedRows + "행은 제외했습니다." : "")
-                + (result.unmatched().isEmpty() ? "" : " 기관을 찾지 못한 " + result.unmatched().size() + "곳은 제외했습니다.");
+                + (result.unmatched().isEmpty() ? "" : " 기관을 찾지 못한 " + result.unmatched().size() + "곳은 제외했습니다.")
+                + (unmapped.isEmpty() ? "" : " 실적 항목 " + unmapped.size() + "개(" + String.join(", ", unmapped) + ")에 연결할 열을 골라 주세요.");
         return ApiResponse.ok(msg, result);
     }
 

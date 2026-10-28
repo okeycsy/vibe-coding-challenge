@@ -6,6 +6,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -23,7 +24,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.kftc.feecalc.domain.fee.ai.RuleBasedFormulaGenerator;
 import com.kftc.feecalc.domain.fee.dto.CalculationRequest;
 import com.kftc.feecalc.domain.fee.dto.CalculationResponse;
 import com.kftc.feecalc.domain.fee.service.FeeCalculationService;
@@ -264,7 +264,7 @@ class AiPipelineTests {
         for (int i = 0; i < counts.length; i++) {
             cs.add(new Counts(counts[i], 0, counts[i]));
         }
-        SkillEngineService.RawFees raw = SkillEngineService.computeRaw(skill, cs, 1.0);
+        SkillEngineService.RawFees raw = SkillEngineService.computeRawCounts(skill, cs, 1.0);
         for (int i = 0; i < counts.length; i++) {
             lines.add(new Line(codes[i], codes[i], names[i], List.of(), counts[i], raw.equalMicro().get(i), raw.perfMicro().get(i)));
         }
@@ -354,68 +354,29 @@ class AiPipelineTests {
     }
 
     @Test
-    void 내장_변환기는_다섯_업무의_1번_규칙으로_3번_수식을_글자_그대로_다시_만든다() {
-        List<Counts> samples = List.of(new Counts(0, 0, 0), new Counts(500, 0, 500), new Counts(800_000, 0, 800_000),
-                new Counts(2_500_000, 0, 2_500_000), new Counts(4_000_000, 0, 4_000_000), new Counts(9_000_000, 0, 9_000_000));
-        Map<String, String> patterns = Map.of("OPEN_BANKING", "구간별 차등 단가 (3구간 누진)", "FIN_INFO", "총액 대비 단순 실적 비율",
-                "CMS", "기본료 + 건당 단가", "CD_NET", "균등 30% + 실적비례 70% 혼합분담", "INTERBANK", "건당 단가 + 최저·최고 한도");
-        for (String code : patterns.keySet()) {
-            SkillEngineService.ParsedSkill s = engine.getSkill(code);
-            RuleBasedFormulaGenerator.Generated g = RuleBasedFormulaGenerator.generate(s.summaryText()).orElseThrow();
-            assertThat(g.pattern()).as(code).isEqualTo(patterns.get(code));
-            assertThat(g.formula()).as(code).isEqualTo(s.formula());
-            assertThat(g.steps()).isNotEmpty();
-            SkillEngineService.validateFormula(g.formula());
-            for (Counts c : samples) {
-                for (double scale : List.of(1.0, 0.5)) {
-                    assertThat(SkillEngineService.evaluate(g.formula(), c, 20_000_000, 8, scale))
-                            .isEqualByComparingTo(SkillEngineService.evaluate(s.formula(), c, 20_000_000, 8, scale));
-                }
-            }
-        }
-        // 실적 비율을 따로 적은 혼합형
-        RuleBasedFormulaGenerator.Generated mixed = RuleBasedFormulaGenerator.generate(
-                "- 총액 2억원 중 40%는 기관 수로 균등 분담\n- 60%는 실적 비례").orElseThrow();
-        assertThat(mixed.formula()).isEqualTo("200000000.0 * #periodScale * ((#institutionCount == 0 ? 0 : 0.4 / #institutionCount)"
-                + " + (#totalCount == 0 ? 0 : 0.6 * #finalCount / #totalCount))");
-        // 혼합형은 분리 수식도 함께 만들고, 둘의 합은 총액 수식과 같다
-        assertThat(mixed.equalFormula()).isEqualTo("#institutionCount == 0 ? 0 : 200000000.0 * #periodScale * 0.4 / #institutionCount");
-        assertThat(mixed.perfFormula()).isEqualTo("#totalCount == 0 ? 0 : 200000000.0 * #periodScale * 0.6 * #finalCount / #totalCount");
-        Counts c = new Counts(900_000, 0, 900_000);
-        assertThat(SkillEngineService.evaluate(mixed.equalFormula(), c, 9_000_000, 8, 1.0)
-                .add(SkillEngineService.evaluate(mixed.perfFormula(), c, 9_000_000, 8, 1.0)))
-                .isEqualByComparingTo(SkillEngineService.evaluate(mixed.formula(), c, 9_000_000, 8, 1.0));
-        assertThat(RuleBasedFormulaGenerator.generate("- 건당 단가 12원").orElseThrow().equalFormula()).isNull();
-    }
-
-    @Test
-    void 일번_규칙_텍스트로_삼번_수식을_만들어_주고_저장은_하지_않는다() throws Exception {
+    void AI_키가_없으면_수식_생성은_400이고_권한_검사가_먼저다() throws Exception {
         String original = files.read("CD_NET");
         String rules = engine.getSkill("CD_NET").summaryText().replace("3억원", "4억원");
         generate("admin", "CD_NET", rules)
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.source", is("RULE")))
-                .andExpect(jsonPath("$.data.detectedPattern", is("균등 30% + 실적비례 70% 혼합분담")))
-                .andExpect(jsonPath("$.data.generatedFormula", containsString("400000000.0 * #periodScale")))
-                .andExpect(jsonPath("$.data.equalFormula", containsString("0.3 / #institutionCount")))
-                .andExpect(jsonPath("$.data.perfFormula", containsString("0.7 * #finalCount / #totalCount")))
-                .andExpect(jsonPath("$.data.explanation[0]", containsString("4억원")))
-                .andExpect(jsonPath("$.data.validationPassed", is(true)))
-                // 4억 × (0.3/8 + 0.7 × 90만/900만) = 4,300만, 실적 0 · 반 분기 = 4억 × 0.5 × 0.3/8 = 750만
-                .andExpect(jsonPath("$.data.sampleResultNormal", is(43_000_000)))
-                .andExpect(jsonPath("$.data.sampleResultZero", is(7_500_000)));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("AI 키(AI_API_KEY)가 없어")));
         assertThat(files.read("CD_NET")).isEqualTo(original);
-
         // 권한: 저장과 같다 (kimms 는 CMS·타행환만)
         generate("kimms", "CD_NET", rules).andExpect(status().isForbidden());
-        generate("kimms", "CMS", engine.getSkill("CMS").summaryText())
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.sampleResultZero", is(0)));
-        // 알아듣지 못하는 규칙, 빈 규칙
-        generate("admin", "FIN_INFO", "- 담당자가 정한다")
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message", containsString("수식을 직접 작성해 주세요")));
         generate("admin", "FIN_INFO", " ").andExpect(status().isBadRequest());
+        // 변수 블록이 있는 문서도 키 없이 저장·조회·산출은 된다 (산출은 AI 를 쓰지 않는다)
+        String md = original.replace("```formula", "```variables\natmCount = input(\"타행 CD/ATM 거래 건수\")\ntotalFee = 300000000\n```\n\n```formula")
+                .replace("300000000.0 * #periodScale", "#totalFee * 1.0 * #periodScale");
+        mvc.perform(put("/api/v1/skills/CD_NET").header(H, "admin").contentType(MediaType.APPLICATION_JSON)
+                        .content(om.writeValueAsString(Map.of("content", md))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.variables", containsString("atmCount = input")))
+                .andExpect(jsonPath("$.data.inputs[0].label", is("타행 CD/ATM 거래 건수")))
+                .andExpect(jsonPath("$.data.variableList[1].name", is("rawCount")));
+        CalculationResponse res = calculationService.calculate(new CalculationRequest("cd",
+                LocalDate.of(2026, 7, 1), LocalDate.of(2026, 9, 30), List.of(), null, null, "admin"));
+        assertThat(res.totalFeeAmount()).isEqualTo(300_000_000L);
+        assertRaisedAndShared(res, "shinhan");
     }
 
     @Test
