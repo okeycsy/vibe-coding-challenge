@@ -52,7 +52,7 @@ npm run dev      # http://localhost:5173
 npm run build    # dist/ 에 정적 파일 생성
 ```
 
-백엔드와 함께 띄우려면 `backend/`에서 `mvn spring-boot:run`을 실행한 뒤 `VITE_API_BASE_URL=http://localhost:8080 npm run dev`로 화면을 띄웁니다. 이 값이 없으면 화면은 예시 데이터(Mock)만으로 동작합니다.
+백엔드와 함께 띄우려면 `backend/`에서 `mvn spring-boot:run`을 실행한 뒤 `VITE_API_BASE_URL=http://localhost:8080 npm run dev`로 화면을 띄웁니다. 이 값이 없으면 화면은 예시 데이터(Mock)만으로 동작합니다. AI 키 없이 "AI 변수·수식 생성 → 반영 → 실적 엑셀 열 연결 → 산출" 흐름 전체를 자동으로 확인하려면 [e2e/README.md](e2e/README.md)(가짜 AI 서버 + Playwright)를 보세요.
 
 ## 공개 배포 (Vercel)
 - 주소: https://vibe-coding-challenge-nine.vercel.app/
