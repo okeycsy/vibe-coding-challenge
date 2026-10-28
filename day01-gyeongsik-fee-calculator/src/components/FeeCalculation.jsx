@@ -24,9 +24,9 @@ import { downloadReconciliation, downloadRevenueResolution } from '../utils/exce
 import { Card, Select, StatusBadge } from './ui';
 import DateField from './DateField';
 import { api, apiEnabled } from '../utils/api';
-import { FORMULA_MISSING, builtInTasks, hasFormula, lines, localSkillDetail } from '../utils/skill';
+import { FORMULA_MISSING, LEGACY_VARIABLES, builtInTasks, hasFormula, lines, localSkillDetail, parseVariables, skillInputs } from '../utils/skill';
 import { SOURCE_LABEL } from '../utils/postprocess';
-import { MAX_UPLOAD_MB, SAMPLE_FILE, UploadError, applyColumns, checkUploadFile, parseUploadInBrowser } from '../utils/upload';
+import { DEFAULT_INPUTS, MAX_UPLOAD_MB, SAMPLE_FILE, UploadError, applyMapping, checkUploadFile, parseUploadInBrowser } from '../utils/upload';
 
 const NEXT_STATUS = { 대기: '확인중', 확인중: '완료', 완료: '대기' };
 
@@ -86,27 +86,68 @@ function UploadAnalysis({ file }) {
   );
 }
 
-function UploadColumns({ file, onToggle }) {
+// 업로드 결과의 입력별 연결 목록 (서버 mapping, 없으면 columns[].variable 로 만든다)
+const mappingOf = (file) =>
+  file.mapping?.length
+    ? file.mapping
+    : DEFAULT_INPUTS.map((d) => ({ ...d, variable: d.name, columns: file.columns.map((c, i) => (c.use ? i : -1)).filter((i) => i >= 0) }));
+const unmappedOf = (file) => mappingOf(file).filter((m) => !m.columns.length);
+
+// 실적 입력 변수(skill.md ```variables 의 input)마다 어느 수치 열을 더할지 고른다. 한 열은 한 입력에만 들어간다.
+// 입력이 rawCount 하나뿐인 예전 기준은 "실적으로 더할 열" 한 줄이다
+function UploadMapping({ file, onChange }) {
   if (!file.columns?.length || file.layout?.dateSource === 'HEADER') return null;
+  const mapping = mappingOf(file);
+  const single = mapping.length === 1;
+  const toggle = (m, i) => {
+    const next = mapping.map((x) => ({ ...x, columns: x.columns.filter((c) => c !== i) }));
+    if (!m.columns.includes(i)) next.find((x) => x.variable === m.variable).columns.push(i);
+    next.forEach((x) => x.columns.sort((a, b) => a - b));
+    if (single && !next[0].columns.length) return '실적으로 더할 열을 하나 이상 골라 주세요.';
+    onChange(next);
+    return null;
+  };
   return (
-    <div className="mt-2">
-      <p className="text-[11px] text-slate-500">실적(기본 건수)으로 더할 열</p>
-      <div className="mt-1 flex flex-wrap gap-1">
-        {file.columns.map((c, i) => (
-          <button
-            key={`${c.index}-${c.header}`}
-            onClick={() => onToggle(i)}
-            aria-pressed={c.use}
-            className={`rounded-full border px-2 py-0.5 text-[11px] ${
-              c.use ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-slate-200 bg-white text-slate-400 line-through'
-            }`}
-            title={`${KIND_LABEL[c.kind] ?? c.kind} 열 · 눌러서 ${c.use ? '빼기' : '넣기'}`}
-          >
-            {c.header}
-            <span className="ml-1 text-[10px] opacity-70">{KIND_LABEL[c.kind] ?? c.kind}</span>
-          </button>
-        ))}
-      </div>
+    <div className="mt-2 space-y-1.5">
+      {!single && (
+        <p className="text-[11px] text-slate-500">
+          실적 항목별로 더할 열 <span className="text-slate-400">(기준 문서의 실적 입력 변수 {mapping.length}개 · 열 하나는 한 항목에만)</span>
+        </p>
+      )}
+      {mapping.map((m) => (
+        <div key={m.variable} className="flex flex-wrap items-center gap-1">
+          <span className={`mr-1 text-[11px] ${m.columns.length ? 'text-slate-600' : 'text-amber-700'}`} title={`#${m.variable}`}>
+            {single ? '실적(기본 건수)으로 더할 열' : m.label}
+            {!single && <span className="ml-1 font-mono text-[10px] text-slate-400">#{m.variable}</span>}
+            {!m.columns.length && <span className="ml-1 text-[10px]">· 연결된 열 없음</span>}
+          </span>
+          {file.columns.map((c, i) => {
+            const mine = m.columns.includes(i);
+            const other = !mine && c.use;
+            return (
+              <button
+                key={`${c.index}-${c.header}`}
+                onClick={() => {
+                  const err = toggle(m, i);
+                  if (err) onChange(null, err);
+                }}
+                aria-pressed={mine}
+                className={`rounded-full border px-2 py-0.5 text-[11px] ${
+                  mine
+                    ? 'border-brand-300 bg-brand-50 text-brand-700'
+                    : other
+                      ? 'border-slate-100 bg-slate-50 text-slate-300'
+                      : 'border-slate-200 bg-white text-slate-400 line-through'
+                }`}
+                title={`${KIND_LABEL[c.kind] ?? c.kind} 열 · 눌러서 ${mine ? '빼기' : other ? '이 항목으로 옮기기' : '넣기'}`}
+              >
+                {c.header}
+                <span className="ml-1 text-[10px] opacity-70">{KIND_LABEL[c.kind] ?? c.kind}</span>
+              </button>
+            );
+          })}
+        </div>
+      ))}
     </div>
   );
 }
@@ -190,6 +231,8 @@ export default function FeeCalculation({
   const [loadingStep, setLoadingStep] = useState(-1);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
+  // 연결된 열이 없는 실적 항목을 0 으로 보고 산출할지 (파일별)
+  const [zeroOk, setZeroOk] = useState({});
   const fileInput = useRef(null);
   const [dragOver, setDragOver] = useState(false);
   const [tooltip, setTooltip] = useState(null);
@@ -263,6 +306,11 @@ export default function FeeCalculation({
   const key = periodValid ? runKey(businessId, from, to) : null;
   const draft = (key && drafts[key]) ?? { file: null, issues: [] };
   const run = key ? runs[key] : undefined;
+  // 이 업무 기준의 실적 입력 변수 (업로드 열을 연결할 항목). 기준을 못 읽으면 기본 건수 하나
+  const inputDefs = skill ? skillInputs(skill) : DEFAULT_INPUTS;
+  const variables = skill?.variables ? parseVariables(skill.variables) : LEGACY_VARIABLES;
+  const unmapped = draft.file ? unmappedOf(draft.file) : [];
+  const mappingReady = !unmapped.length || !!zeroOk[`${key}:${draft.file?.name}`];
 
   const updateDraft = (patch, k = key) =>
     setDrafts((d) => ({ ...d, [k]: { ...(d[k] ?? { file: null, issues: [] }), ...patch } }));
@@ -291,7 +339,8 @@ export default function FeeCalculation({
     setUploadError(null);
     setUploading(true);
     const period = { from, to };
-    (apiEnabled ? api.uploadPerformance(file, period) : parseUploadInBrowser(file, period))
+    // 업무 기준의 실적 입력 변수에 수치 열을 연결한다 (서버: taskCode 로 서버가, Mock: 브라우저가 같은 규칙으로)
+    (apiEnabled ? api.uploadPerformance(file, period, skill?.taskCode ?? businessId) : parseUploadInBrowser(file, period, skill))
       .then((res) => {
         if (!res.counts.length) {
           const outside = res.excluded.map((e) => e.date);
@@ -310,9 +359,12 @@ export default function FeeCalculation({
           excludedRows && `기간 밖·날짜 불명 ${fmt(excludedRows)}행`,
           res.unmatched.length && `기관을 찾지 못한 ${res.unmatched.length}곳`,
         ].filter(Boolean);
+        const missing = unmappedOf({ ...res, columns: res.columns ?? [] });
         notify(
-          `${file.name}: 실적 ${fmt(res.rowCount)}행(${res.counts.length}개 기관)을 읽었습니다.${dropped.length ? ` ${dropped.join(', ')}은(는) 제외했습니다.` : ''}`,
-          res.unmatched.length ? 'error' : undefined,
+          `${file.name}: 실적 ${fmt(res.rowCount)}행(${res.counts.length}개 기관)을 읽었습니다.${dropped.length ? ` ${dropped.join(', ')}은(는) 제외했습니다.` : ''}${
+            missing.length ? ` 실적 항목 ${missing.length}개(${missing.map((m) => m.label).join(', ')})에 연결할 열을 골라 주세요.` : ''
+          }`,
+          res.unmatched.length || missing.length ? 'error' : undefined,
         );
       })
       .catch((e) => fail(`${file.name}을(를) 읽지 못했습니다. ${e.message}`))
@@ -347,10 +399,14 @@ export default function FeeCalculation({
       notify(FORMULA_MISSING, 'error');
       return;
     }
+    if (!mappingReady) {
+      notify(`실적 항목 ${unmapped.length}개(${unmapped.map((m) => m.label).join(', ')})에 연결할 엑셀 열을 고르거나 0으로 계산하도록 표시해 주세요.`, 'error');
+      return;
+    }
     const k = key;
     const issues = draft.issues;
     const upload = draft.file;
-    const used = { calcType: skill.calcType, formula: skill.formula, summary: skill.summary, specialRules: skill.specialRules ?? [] };
+    const used = { calcType: skill.calcType, formula: skill.formula, variables: skill.variables ?? '', summary: skill.summary, specialRules: skill.specialRules ?? [] };
     setLoadingStep(0);
     later(() => setLoadingStep(1), 500);
     later(() => setLoadingStep(2), 1000);
@@ -377,7 +433,7 @@ export default function FeeCalculation({
               checks: res.checks ?? [],
               notes: res.notes ?? [],
             },
-            used: { ...used, calcType: res.calcType, formula: res.formula, specialRules: lines(res.specialRules) },
+            used: { ...used, calcType: res.calcType, formula: res.formula, variables: res.variables ?? '', specialRules: lines(res.specialRules) },
           }))
       : new Promise((resolve) =>
           resolve({ ...calculateFees({ businessId, from, to, issues, skill, counts: upload.counts }), used }),
@@ -397,11 +453,14 @@ export default function FeeCalculation({
             ai,
             special,
             skill: applied,
+            inputDefs,
             source: {
               fileName: upload.name,
               institutions: upload.counts.length,
               unmatched: upload.unmatched,
               columns: upload.columns?.filter((c) => c.use).map((c) => c.header) ?? [],
+              // 실적 항목별로 더한 열 (항목이 둘 이상일 때 표시)
+              mapping: mappingOf(upload).map((m) => `${m.label}: ${m.columns.map((i) => upload.columns[i]?.header).join('+') || '없음(0)'}`),
             },
             createdAt: new Date().toLocaleString('ko-KR'),
           },
@@ -430,6 +489,7 @@ export default function FeeCalculation({
       business: { ...business, summary: run.skill?.summary ?? business.summary },
       skill: run.skill,
       special: isOperator ? run.special : null,
+      inputDefs: run.inputDefs ?? [],
       from,
       to,
       rows: visibleRows,
@@ -663,25 +723,45 @@ export default function FeeCalculation({
                     </button>
                   </div>
                   <UploadAnalysis file={draft.file} />
-                  <UploadColumns
+                  <UploadMapping
                     file={draft.file}
-                    onToggle={(i) => {
-                      const use = draft.file.columns.map((c, j) => (j === i ? !c.use : c.use));
-                      if (!use.some(Boolean)) {
-                        notify('실적으로 더할 열을 하나 이상 골라 주세요.', 'error');
+                    onChange={(mapping, error) => {
+                      if (error) {
+                        notify(error, 'error');
                         return;
                       }
-                      updateDraft({ file: applyColumns(draft.file, use) });
+                      updateDraft({ file: { ...draft.file, ...applyMapping(draft.file, mapping, variables) } });
                     }}
                   />
+                  {unmapped.length > 0 && (
+                    <label className="mt-2 flex items-start gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+                      <input
+                        type="checkbox"
+                        checked={mappingReady}
+                        onChange={(e) => setZeroOk((z) => ({ ...z, [`${key}:${draft.file.name}`]: e.target.checked }))}
+                        className="mt-0.5"
+                      />
+                      <span>
+                        연결된 열이 없는 실적 항목 {unmapped.length}개({unmapped.map((m) => m.label).join(', ')})는 0으로 계산합니다. 파일에 해당 열이 없다면 체크하고 산출하세요.
+                      </span>
+                    </label>
+                  )}
                   <div className="mt-3 grid max-h-48 grid-cols-2 gap-x-4 gap-y-0.5 overflow-y-auto pr-1 text-xs">
                     {draft.file.counts.map((c) => (
-                      <div key={c.institutionId} className="flex justify-between">
+                      <div key={c.institutionId} className="flex justify-between gap-2">
                         <span className="text-slate-600">{c.name}</span>
-                        <span className="tabular-nums text-slate-800">{fmt(c.baseCount)}{unitOf(draft.file)}</span>
+                        <span className="tabular-nums text-slate-800" title={inputDefs.length > 1 ? inputDefs.map((d) => `${d.label} ${fmt(c.inputs?.[d.name] ?? 0)}`).join(' / ') : undefined}>
+                          {fmt(c.baseCount)}{unitOf(draft.file)}
+                          {inputDefs.length > 1 && (
+                            <span className="ml-1 text-[10px] text-slate-400">({inputDefs.map((d) => fmt(c.inputs?.[d.name] ?? 0)).join(' / ')})</span>
+                          )}
+                        </span>
                       </div>
                     ))}
                   </div>
+                  {inputDefs.length > 1 && (
+                    <p className="mt-1 text-[10px] text-slate-400">괄호 안은 실적 항목별 건수 ({inputDefs.map((d) => d.label).join(' / ')}). 기준 실적은 변수 정의의 rawCount 로 계산한 값입니다.</p>
+                  )}
                   <UploadExclusions file={draft.file} />
                   {draft.file.unmatched.length > 0 && (
                     <p className="mt-2 flex items-start gap-1 text-xs text-amber-700">
@@ -812,7 +892,7 @@ export default function FeeCalculation({
             )}
             <button
               onClick={runCalculation}
-              disabled={!periodValid || !draft.file || loading}
+              disabled={!periodValid || !draft.file || loading || !mappingReady}
               className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-brand-700 to-accent-500 px-5 py-2.5 text-sm font-semibold text-white shadow hover:shadow-md disabled:from-slate-300 disabled:to-slate-300 disabled:shadow-none"
             >
               {loading ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
@@ -907,9 +987,9 @@ export default function FeeCalculation({
                 </span>
               )}
               {run.source && (
-                <span>
+                <span title={run.source.mapping?.join(' · ')}>
                   실적 출처 {run.source.fileName} ({run.source.institutions}개 기관
-                  {run.source.columns?.length ? ` · ${run.source.columns.join('+')}` : ''})
+                  {run.source.mapping?.length > 1 ? ` · ${run.source.mapping.join(' · ')}` : run.source.columns?.length ? ` · ${run.source.columns.join('+')}` : ''})
                 </span>
               )}
               {run.skill && <span>적용 기준 {run.skill.calcType}</span>}
@@ -950,6 +1030,7 @@ export default function FeeCalculation({
                   <tr>
                     {[
                       '참가기관명',
+                      ...(run.inputDefs?.length > 1 ? run.inputDefs.map((d) => d.label) : []),
                       '기본 건수',
                       'AI 예외 차감 건수',
                       '실적(최종인정건수)',
@@ -958,10 +1039,10 @@ export default function FeeCalculation({
                       '실적분담분',
                       '산출 회비(총합)',
                       '대사 상태',
-                    ].map((h, i) => (
+                    ].map((h, i, all) => (
                       <th
                         key={h}
-                        className={`px-4 py-2.5 font-medium whitespace-nowrap ${i === 0 ? 'text-left' : i === 8 ? 'text-center' : 'text-right'}`}
+                        className={`px-4 py-2.5 font-medium whitespace-nowrap ${i === 0 ? 'text-left' : i === all.length - 1 ? 'text-center' : 'text-right'}`}
                       >
                         {h}
                       </th>
@@ -981,6 +1062,12 @@ export default function FeeCalculation({
                           <span className="font-medium text-brand-900">{r.name}</span>
                           <span className="ml-1.5 text-[11px] text-slate-400">{r.code}</span>
                         </td>
+                        {run.inputDefs?.length > 1 &&
+                          run.inputDefs.map((d) => (
+                            <td key={d.name} className="px-4 py-2.5 text-right tabular-nums text-slate-500">
+                              {fmt(r.inputs?.[d.name] ?? 0)}
+                            </td>
+                          ))}
                         <td className="px-4 py-2.5 text-right tabular-nums">{fmt(r.baseCount)}</td>
                         <td className="px-4 py-2.5 text-right tabular-nums">
                           {hit ? (
@@ -1068,6 +1155,12 @@ export default function FeeCalculation({
                   <tfoot className="bg-slate-50 border-t-2 border-slate-200 text-sm font-semibold">
                     <tr>
                       <td className="px-4 py-2.5">합계</td>
+                      {run.inputDefs?.length > 1 &&
+                        run.inputDefs.map((d) => (
+                          <td key={d.name} className="px-4 py-2.5 text-right tabular-nums text-slate-500">
+                            {fmt(visibleRows.reduce((s, r) => s + (r.inputs?.[d.name] ?? 0), 0))}
+                          </td>
+                        ))}
                       <td className="px-4 py-2.5 text-right tabular-nums">{fmt(totals.base)}</td>
                       <td className="px-4 py-2.5 text-right tabular-nums text-rose-600">
                         {totals.ded ? `-${fmt(totals.ded)}` : 0}

@@ -88,8 +88,8 @@ public class SkillManagementController {
     }
 
     /**
-     * "## 1. 비즈니스 규칙 요약" 텍스트로 "## 3. 정산 수식"을 만든다 (AI, 키가 없으면 내장 변환기). 저장 권한과 같은 권한이 필요하고
-     * (없으면 403), 파일은 저장하지 않는다: [AI 계산식 빌더]에서 확인·시뮬레이션 후 PUT 으로 저장한다(저장 때 검증을 한 번 더 한다).
+     * "## 1. 비즈니스 규칙 요약" 텍스트로 "## 3. 정산 수식"(변수 정의 + 수식)을 AI 가 만든다 (키가 없으면 400). 저장 권한과 같은 권한이
+     * 필요하고 (없으면 403), 파일은 저장하지 않는다: [AI 계산식 빌더]에서 확인·시뮬레이션 후 PUT 으로 저장한다(저장 때 검증을 한 번 더 한다).
      */
     @PostMapping("/{taskCode}/generate-formula")
     public ApiResponse<FormulaGenerateResponse> generateFormula(
@@ -98,9 +98,7 @@ public class SkillManagementController {
             @Valid @RequestBody FormulaGenerateRequest request) {
         String code = accessControl.checkPermission(employeeId, taskCode);
         FormulaGenerateResponse res = formulaGenerator.generate(code, request.businessRulesText());
-        return ApiResponse.ok("AI".equals(res.source())
-                ? "AI가 1번 규칙으로 3번 수식을 작성했습니다. 시뮬레이션 후 확정 반영해 주세요."
-                : "1번 규칙으로 3번 수식을 작성했습니다. 시뮬레이션 후 확정 반영해 주세요.", res);
+        return ApiResponse.ok("AI가 1번 규칙을 읽고 변수 " + res.variableList().size() + "개와 3번 수식을 작성했습니다. 시뮬레이션 후 확정 반영해 주세요.", res);
     }
 
     /**

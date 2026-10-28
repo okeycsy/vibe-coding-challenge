@@ -32,13 +32,14 @@ import com.kftc.feecalc.domain.fee.entity.Institution;
 import com.kftc.feecalc.domain.fee.repository.BusinessRepository;
 import com.kftc.feecalc.domain.fee.repository.FeeCalculationRepository;
 import com.kftc.feecalc.domain.fee.repository.InstitutionRepository;
+import com.kftc.feecalc.domain.fee.service.SkillVariables.Row;
 import com.kftc.feecalc.domain.user.service.UserService;
 
 import lombok.RequiredArgsConstructor;
 
 /**
  * 회비 산출.
- * 1) 기관별 기준 실적(업로드 또는 시연용) → 2) 이슈 문장을 skill.md "## 2. AI 예외 차감 지침"으로 판별해 차감
+ * 1) 기관별 실적 입력(업로드 엑셀 열을 연결한 ```variables 의 input 값, 또는 시연용) → 2) 이슈 문장을 skill.md "## 2. AI 예외 차감 지침"으로 판별해 차감
  * ({@link AiFeePostProcessor}, 키가 없으면 규칙 기반) → 2단계 정산 파이프라인:
  * Step 1: "## 3. 정산 수식"(SpEL)으로 1차 정밀 계산 + 원 단위 배분(균등분담분·실적분담분 분해)
  * → Step 2: "## 4. 최종 정산 특이사항"의 후처리 스크립트({@link PostprocessScript}, skill.md 의 postprocess 블록)를
@@ -119,6 +120,7 @@ public class FeeCalculationService {
                 .skillCode(skill.taskCode())
                 .appliedCalcType(skill.calcType())
                 .appliedFormula(skill.formula())
+                .appliedVariables(skill.variables().hasBlock() ? skill.variables().text() : null)
                 .appliedSpecialRules(skill.specialRulesRaw())
                 .source(uploaded ? "UPLOAD" : "DEMO")
                 .uploadFileName(req.uploadFileName())
@@ -146,30 +148,39 @@ public class FeeCalculationService {
                     .build());
         }
 
-        // 기관별 기준 실적 → 차감
-        Map<String, Long> baseCounts = baseCounts(req, business, period, institutions);
+        // 기관별 실적 입력 + 차감 → 변수 정의로 rawCount·finalCount 확정 (deductedCount 는 rawCount 를 넘지 않게)
+        Map<String, Map<String, Long>> inputs = inputs(req, business, period, institutions, skill);
         Map<String, Institution> byCode = new LinkedHashMap<>();
-        int order = 0;
+        List<Row> rows = new ArrayList<>();
+        List<List<ParsedIssue>> relatedByRow = new ArrayList<>();
         for (Institution inst : institutions) {
-            Long base = baseCounts.get(inst.getCode());
-            if (base == null) {
+            Map<String, Long> in = inputs.get(inst.getCode());
+            if (in == null) {
                 continue;
             }
             byCode.put(inst.getCode(), inst);
             List<ParsedIssue> related = deducted.stream()
                     .filter(p -> p.institutionId().equals(inst.getCode()))
                     .toList();
-            long deduction = Math.min(base, related.stream().mapToLong(ParsedIssue::count).sum());
+            rows.add(new Row(in, related.stream().mapToLong(ParsedIssue::count).sum()));
+            relatedByRow.add(related);
+        }
+        // Step 1) 변수 계산 + "## 3. 정산 수식" 1차 계산
+        SkillEngineService.RawFees raw = SkillEngineService.computeRaw(skill, rows, scale);
+        int order = 0;
+        for (Institution inst : byCode.values()) {
+            int i = order;
             calc.addItem(FeeCalculationItem.builder()
                     .institutionCode(inst.getCode()).institutionName(inst.getName()).bankCode(inst.getBankCode())
-                    .baseCount(base).deduction(deduction)
-                    .deductionReasons(String.join("\n", related.stream().map(ParsedIssue::text).toList()))
+                    .baseCount(raw.bound().rawCount()[i]).deduction(raw.bound().deducted()[i])
+                    .deductionReasons(String.join("\n", relatedByRow.get(i).stream().map(ParsedIssue::text).toList()))
+                    .inputsJson(toJson(rows.get(i).inputs()))
                     .sortOrder(order++)
                     .build());
         }
 
-        // Step 1) "## 3. 정산 수식" 1차 계산 → Step 2) "## 4. 최종 정산 특이사항" 후처리
-        applySkill(calc, skill, scale, byCode);
+        // Step 2) 원 단위 배분 → "## 4. 최종 정산 특이사항" 후처리
+        applySkill(calc, skill, raw, byCode);
         calc.applyTotalFee(calc.getTotalFeeAmount());
         calc.applyAiResult(review.outcome().mode().name(),
                 allowAi && aiPostProcessor.aiEnabled() ? aiPostProcessor.model() : null,
@@ -193,16 +204,31 @@ public class FeeCalculationService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.CALCULATION_NOT_FOUND));
     }
 
-    private Map<String, Long> baseCounts(CalculationRequest req, Business business, Period period,
-                                         List<Institution> institutions) {
-        Map<String, Long> result = new LinkedHashMap<>();
+    /**
+     * 기관별 실적 입력(변수 이름 → 값). 업로드 실적은 counts[].inputs(실적 항목별 건수)를, 그것이 없으면 baseCount 를 하나뿐인 입력 변수에
+     * 넣는다(입력이 여럿인 기준이면 400: 엑셀 열을 연결해야 한다). 같은 기관이 여러 번 오면 더한다. 시연용 실적은 입력이 하나인 기준에서만 만든다
+     */
+    private Map<String, Map<String, Long>> inputs(CalculationRequest req, Business business, Period period,
+                                                  List<Institution> institutions, SkillEngineService.ParsedSkill skill) {
+        List<SkillVariables.Definition> defs = skill.variables().inputs();
+        Map<String, Map<String, Long>> result = new LinkedHashMap<>();
         if (req.counts() != null && !req.counts().isEmpty()) {
             for (InstitutionCount c : req.counts()) {
                 if (institutions.stream().noneMatch(i -> i.getCode().equals(c.institutionId()))) {
                     throw new BusinessException(ErrorCode.INVALID_INPUT,
                             "알 수 없거나 사용 중지된 기관입니다: " + c.institutionId() + " (실적 파일을 다시 올려 주세요)");
                 }
-                result.merge(c.institutionId(), c.baseCount(), Long::sum);
+                Map<String, Long> row = result.computeIfAbsent(c.institutionId(), k -> new LinkedHashMap<>());
+                boolean byInput = c.inputs() != null && defs.stream().anyMatch(d -> c.inputs().containsKey(d.name()));
+                if (byInput) {
+                    for (SkillVariables.Definition d : defs) {
+                        Long v = c.inputs().get(d.name());
+                        row.merge(d.name(), v == null ? 0L : Math.max(0L, v), Long::sum);
+                    }
+                } else {
+                    SkillEngineService.requireSingleInput(skill);
+                    row.merge(defs.get(0).name(), c.baseCount(), Long::sum);
+                }
             }
             return result;
         }
@@ -210,11 +236,12 @@ public class FeeCalculationService {
             // 업무 관리에서 추가한 업무는 시연용 실적이 없다
             throw new BusinessException(ErrorCode.INVALID_INPUT, business.getName() + " 업무는 실적 파일을 올려야 산출할 수 있습니다.");
         }
+        SkillEngineService.requireSingleInput(skill);
         for (Institution inst : institutions) {
             if (inst.getVolumeWeight() <= 0) {
                 continue; // 업로드 테스트용 기관은 시연용 실적에서 뺀다
             }
-            result.put(inst.getCode(), demoVolumeGenerator.baseCount(business, period, inst));
+            result.put(inst.getCode(), Map.of(defs.get(0).name(), demoVolumeGenerator.baseCount(business, period, inst)));
         }
         return result;
     }
@@ -224,13 +251,9 @@ public class FeeCalculationService {
      * Step 2: "## 4. 최종 정산 특이사항" 후처리 스크립트로 정수화·보정·검증한다 (스크립트가 없으면 기본 배분 allocate(fee)).
      * 표시 단위가 "원/건"이면 실효 단가(최종 회비 ÷ 인정 건수), 그 밖에는 회비 합계 대비 비율을 rateLabel 로 남긴다.
      */
-    private void applySkill(FeeCalculation calc, SkillEngineService.ParsedSkill skill, double scale,
+    private void applySkill(FeeCalculation calc, SkillEngineService.ParsedSkill skill, SkillEngineService.RawFees raw,
                             Map<String, Institution> byCode) {
         List<FeeCalculationItem> items = calc.getItems();
-        SkillEngineService.RawFees raw = SkillEngineService.computeRaw(skill,
-                items.stream().map(i -> new SkillEngineService.Counts(i.getBaseCount(), i.getDeduction(), i.getFinalCount()))
-                        .toList(),
-                scale);
         List<PostprocessEngine.Line> lines = new ArrayList<>();
         for (int idx = 0; idx < items.size(); idx++) {
             FeeCalculationItem item = items.get(idx);

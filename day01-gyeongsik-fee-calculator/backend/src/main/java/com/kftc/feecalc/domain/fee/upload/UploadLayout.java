@@ -27,8 +27,26 @@ public record UploadLayout(
         COLUMN, HEADER, TITLE
     }
 
-    /** 수치 열. kind = COUNT(건수) · AMOUNT(금액) · NUMBER(그 밖의 수치), use = 실적(기본 건수)에 넣을지 기본값 */
-    public record ValueColumn(int index, String header, String kind, boolean use) {
+    /**
+     * 수치 열. kind = COUNT(건수) · AMOUNT(금액) · NUMBER(그 밖의 수치), variable = 이 열을 더해 넣을 skill.md 실적 입력 변수
+     * (없으면 null), use = 어떤 변수에든 연결됐는지(variable != null, 예전 응답과의 호환용)
+     */
+    public record ValueColumn(int index, String header, String kind, boolean use, String variable) {
+
+        public ValueColumn(int index, String header, String kind, boolean use) {
+            this(index, header, kind, use, use ? SkillInput.DEFAULT_NAME : null);
+        }
+
+        public ValueColumn withVariable(String variable) {
+            return new ValueColumn(index, header, kind, variable != null, variable);
+        }
+    }
+
+    /** 실적 입력 변수 (skill.md ```variables 의 input). 블록이 없는 예전 문서는 rawCount "기본 건수" 하나 */
+    public record SkillInput(String name, String label) {
+
+        public static final String DEFAULT_NAME = "rawCount";
+        public static final List<SkillInput> DEFAULT = List.of(new SkillInput(DEFAULT_NAME, "기본 건수"));
     }
 
     public UploadLayout withValueColumns(List<ValueColumn> columns) {

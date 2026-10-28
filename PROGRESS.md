@@ -9,6 +9,7 @@
 - [대용] `day01-daeyong-fee-calculator/` 금융정보업무 회비 산출 v4 완료(통합 요구사항): 업무별 설정, 분기 배분 방식 A/B, 균등회비 방식 A/B, 실적 인정 항목, 우체국 10원 처리, 엑셀 열 매핑·검증·미리보기, 기관별 산출 근거·검증, 단일 HTML 프로그램 + claude.ai 웹 페이지. 확인 필요 기본값 목록은 `docs/DESIGN.md` 7장. 공통 규칙 초안 `docs/COMMON_RULES_DRAFT.md`(R-1~R-15, D-1~D-15)
 - [대용] `day02-daeyong-fee-rules-proto/` 공통 규칙 초안만 보고 다시 쓴 두 번째 구현 + 병행검증(화면 7탭, v4 결과 엑셀 비교, `npm run crosscheck` 무작위 500건 일치). 단일 HTML `release/fee-rules-proto.html`
 - [대용] `day03-daeyong-final-pitch/` 최종 심사용 발표 시나리오(2분 30초 키노트 문법, 심사 기준별 핵심 포인트, 내레이션)와 시연 영상 v1(1080p, 카드 4장 + 실제 화면 7비트, 자막/무자막) — `docs/scenario.md`, `video/`. 영상은 로컬에서 띄운 main 코드를 Playwright로 녹화(AI 키 없어 "규칙 기반" 배지), 피드백 후 2차본 예정
+- [대용] `day01-gyeongsik-fee-calculator/` 에 "AI 가 1번 비즈니스 규칙을 읽고 변수·SpEL 생성" 반영(경식 폴더, John 승인): 업무별 수식 패턴 제거, AI 가 규칙에서 실적 입력·상수·합계·파생 변수(3번 ```variables 블록)를 스스로 정의하고 그 변수로 수식 작성(서버 `SkillVariables` 엔진 + 브라우저 동일 엔진), 실적 엑셀의 여러 건수 열을 실적 항목별로 골라 연결(AI 판독 + 머리글 규칙 + 화면 칩), 항목별 건수로 산출·대사 엑셀. 검증: 서버 테스트 70건, 가짜 AI 서버 E2E `e2e/`
 - [우성] `day01-woosung-fee-ai/` 회비자동산출 AI툴 1차 구현 완료 (분담기준 AI 학습·버전 관리, xlsx/csv/hwp/hwpx 실적 업로드, 기관별 산출·Excel 다운로드)
 - [석용] `day04-seokyong-demo-video/` 시연 영상 v2 + 모듈형 제작 체계: 모듈 11개(카드 4 + 화면 7), 모듈별 `module.js`(앱 조작·스포트라이트) + `captions.json`(자막·효과 코멘트), `record.js`(모듈 단위 녹화)·`assemble.py`(크로스페이드 조립 + ASS 자막 패널). `video/시연영상_v2_자막.mp4`·`무자막.mp4`, `video/modules/`. 앞으로 영상 수정은 이 모듈 단위로 한다
 
@@ -28,6 +29,11 @@
 - 공개 배포는 Vercel Git 연결로 한다 (Root Directory `day01-gyeongsik-fee-calculator`, Production Branch `main`). 토큰·GitHub Actions 배포는 쓰지 않는다
 
 ## 세션 로그
+### 2026-10-28 (대용, AI 변수 생성 SpEL)
+- `day01-gyeongsik-fee-calculator/`: 3번 정산 수식에 ```variables 블록 도입 — `name = input("설명")`(기관별 실적 입력), 상수, `sum(#x)`, 파생 수식. 예약 변수 deductedCount·finalCount·totalCount·institutionCount·periodScale, `rawCount` 는 입력이 하나면 자동, 여럿이면 파생 수식으로 정의
+- AI 계산식 빌더: 패턴 매칭 생성기 삭제, AI 전용(키 없으면 400). AI 답(JSON variables+formula)을 서버가 파싱 → 구문·미정의 변수·기관 8곳 시험 계산 2벌 검증, 실패 시 오류를 알려 1회 재요청, 그래도 실패면 초안을 화면에 불러와 직접 수정
+- 실적 엑셀 업로드에 `taskCode` 를 주면 수치 열을 skill.md 실적 입력 변수에 연결(AI 판독 → 머리글·설명 핵심어 규칙 → 화면 칩으로 수정). 산출 요청 `counts[].inputs`, 결과·대사 엑셀에 항목별 건수 열과 "3. 변수 정의(적용)"
+- 검증: `mvn test` 70건(SkillVariablesTests·UploadLayoutTests·SkillEngineTests 보강), `npm run build`, 가짜 OpenAI 호환 서버 + Playwright E2E(`e2e/README.md`)
 ### 2026-10-27 (석용, 시연 영상 v2 — 모듈형 제작 체계)
 - John 요청: ① 시연 영상을 화면(큰 기능)별로 모듈화해 고칠 부분만 애자일하게 수정, ② C-level용으로 설명 글자 다듬기, ③ 사업 효과(정량·정성) 코멘트 한두 개, ④ 줌인이 코멘트와 맞는 화면을 강조하지 못함 → 전체 재설계
 - `day04-seokyong-demo-video/`(석용 전용 폴더 신설, 대용 폴더는 손대지 않음): 모듈 11개 = 카드 4(문제·리빌·증거·끝) + 화면 7(기준 문서·AI 수식·업로드·AI 이슈·산출 검증·대사·참가기관). 모듈마다 `setup()`이 새 페이지에서 앱 상태를 처음부터 만들고 `run()`만 녹화 → 한 모듈만 다시 찍을 수 있음. 자막은 전부 `captions.json`(ASS로 조립 때 굽기) → 문구 수정에 재녹화 불필요

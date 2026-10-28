@@ -265,6 +265,65 @@ class SkillEngineTests {
     }
 
     @Test
+    void 실적_입력이_여럿인_기준은_항목별_건수로_산출하고_항목_없이는_막는다() throws Exception {
+        files.save("CMS", files.read("CMS").replaceAll("(?s)## 3\\..*?(?=## 4\\.)", """
+                ## 3. 정산 수식
+
+                ```variables
+                withdraw = input("출금이체 건수")
+                deposit = input("입금이체 건수")
+                rawCount = #withdraw + #deposit
+                unit = 10
+                ```
+
+                ```formula
+                #finalCount * #unit * #periodScale
+                ```
+
+                """), "admin");
+        Map<String, Object> body = Map.of("businessId", "cms", "from", "2026-07-01", "to", "2026-09-30",
+                "counts", List.of(Map.of("institutionId", "shinhan", "baseCount", 0, "inputs", Map.of("withdraw", 100, "deposit", 50)),
+                        Map.of("institutionId", "kb", "baseCount", 0, "inputs", Map.of("withdraw", 200))),
+                "uploadFileName", "cms.xlsx", "requestedBy", "admin");
+        String json = mvc.perform(post("/api/v1/fees/calculate").contentType(MediaType.APPLICATION_JSON).content(om.writeValueAsString(body)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.variables", containsString("withdraw = input(\"출금이체 건수\")")))
+                .andExpect(jsonPath("$.data.items[0].inputs.withdraw", is(100)))
+                .andExpect(jsonPath("$.data.items[0].inputs.deposit", is(50)))
+                .andExpect(jsonPath("$.data.items[0].baseCount", is(150)))
+                .andExpect(jsonPath("$.data.items[0].fee", is(1500)))
+                .andExpect(jsonPath("$.data.items[1].inputs.deposit", is(0)))
+                .andExpect(jsonPath("$.data.items[1].baseCount", is(200)))
+                .andExpect(jsonPath("$.data.items[1].fee", is(2000)))
+                .andExpect(jsonPath("$.data.totalBaseCount", is(350)))
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        long id = om.readTree(json).path("data").path("id").asLong();
+        // 대사용 엑셀에 항목별 건수 열과 변수 정의가 들어간다
+        byte[] xlsx = mvc.perform(get("/api/fee/calculations/" + id + "/excel/reconcile")).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray();
+        try (var wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(xlsx))) {
+            var detail = wb.getSheet("대사내역");
+            assertThat(detail.getRow(0).getCell(3).getStringCellValue()).isEqualTo("실적 항목별 건수");
+            assertThat(detail.getRow(1).getCell(3).getStringCellValue()).isEqualTo("withdraw 100 / deposit 50");
+            assertThat(detail.getRow(1).getCell(2).getNumericCellValue()).isEqualTo(150);
+            var basis = wb.getSheet("산출기준");
+            StringBuilder sb = new StringBuilder();
+            basis.forEach(row -> sb.append(row.getCell(0).getStringCellValue()).append('=').append(row.getCell(1).toString()).append('\n'));
+            assertThat(sb.toString()).contains("3. 변수 정의(적용)=rawCount = #withdraw + #deposit");
+        }
+
+        // 항목별 건수 없이 기준 실적만 보내거나 시연용 실적으로 산출하면 열 연결을 안내한다
+        mvc.perform(post("/api/v1/fees/calculate").header(H, "admin").contentType(MediaType.APPLICATION_JSON).content(om.writeValueAsString(
+                        Map.of("businessId", "cms", "from", "2026-07-01", "to", "2026-09-30",
+                                "counts", List.of(Map.of("institutionId", "shinhan", "baseCount", 150))))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("실적 항목 2개(출금이체 건수, 입금이체 건수)를 각각 입력")));
+        assertThatThrownBy(() -> calculationService.calculate(new CalculationRequest("cms",
+                LocalDate.of(2026, 7, 1), LocalDate.of(2026, 9, 30), List.of(), null, null, null)))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("각각 입력");
+    }
+
+    @Test
     void 기존_산출API도_skill_md_수식을_쓴다() {
         CalculationResponse res = calculationService.calculate(new CalculationRequest("cms",
                 LocalDate.of(2026, 7, 1), LocalDate.of(2026, 9, 30), List.of(), null, null, null));

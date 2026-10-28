@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.kftc.feecalc.domain.fee.ai.LlmClient;
 import com.kftc.feecalc.domain.fee.ai.LlmClient.LlmException;
 import com.kftc.feecalc.domain.fee.upload.UploadLayout.DateSource;
+import com.kftc.feecalc.domain.fee.upload.UploadLayout.SkillInput;
 import com.kftc.feecalc.domain.fee.upload.UploadLayout.ValueColumn;
 
 import lombok.RequiredArgsConstructor;
@@ -44,8 +45,10 @@ public class UploadLayoutService {
             kind 는 COUNT(건수·횟수), AMOUNT(금액·수수료), NUMBER(그 밖의 수치) 중 하나야. \
             use 는 회비 실적(건수)으로 더할 열이면 true: '건수'·'실적' 열이 있으면 그 열만, 없으면 금액이 아닌 수치 열 모두.
             머리글이 여러 줄이면 열 이름이 가장 잘 드러나는 줄을 headerRow 로 골라. 기관코드 열이 기관명 열과 따로 있으면 codeColumn 에, 없으면 -1.
+            [실적 항목] 목록이 함께 오면 그 업무의 수식이 쓰는 실적 입력 변수야. 수치 열마다 어느 실적 항목(name)에 해당하는지 variable 에 적어 \
+            (한 항목에 여러 열을 더해도 되고, 어느 항목에도 해당하지 않는 열은 null). variable 이 있으면 use 는 true. 목록이 없으면 variable 은 생략해.
             반드시 다음 JSON 객체로만 답해: {"sheet":0,"headerRow":0,"institutionColumn":1,"codeColumn":-1,"dateSource":"COLUMN",\
-            "dateColumn":0,"valueColumns":[{"column":2,"kind":"COUNT","use":true}],"reason":"판단 근거 한 문장"}
+            "dateColumn":0,"valueColumns":[{"column":2,"kind":"COUNT","use":true,"variable":"withdrawCount"}],"reason":"판단 근거 한 문장"}
             해당 열이 없으면 -1 을 넣어. 기관 열이나 날짜를 찾지 못하면 institutionColumn 또는 dateSource 를 null 로 답해.""";
 
     public record Detection(UploadLayout layout, String mode, String model, String note, String reason) {
@@ -54,25 +57,35 @@ public class UploadLayoutService {
     private final LlmClient llm;
     private final Map<String, Detection> cache = new ConcurrentHashMap<>();
 
-    /** 판별 결과. 규칙 기반으로도 못 찾으면 null 이 아니라 layout 이 null 인 Detection (note 에 AI 실패 원인) */
+    /** 판별 결과 (실적 입력은 rawCount 하나인 예전 방식) */
     public Detection detect(List<SheetData> sheets) {
+        return detect(sheets, SkillInput.DEFAULT);
+    }
+
+    /**
+     * 판별 결과. inputs 는 업무 skill.md 의 실적 입력 변수(수치 열을 어느 변수에 더할지 AI 가 함께 정하고, 못 정한 열은 머리글 규칙으로 연결).
+     * 규칙 기반으로도 못 찾으면 null 이 아니라 layout 이 null 인 Detection (note 에 AI 실패 원인)
+     */
+    public Detection detect(List<SheetData> sheets, List<SkillInput> inputs) {
         String note = null;
+        List<SkillInput> ins = inputs == null || inputs.isEmpty() ? SkillInput.DEFAULT : inputs;
         if (llm.enabled()) {
             String preview = preview(sheets);
-            Detection cached = cache.get(preview);
+            String user = preview + inputsPrompt(ins);
+            Detection cached = cache.get(user);
             if (cached != null) {
                 return cached;
             }
             try {
-                JsonNode res = llm.chatJson(SYSTEM, preview);
-                UploadLayout layout = fromJson(res, sheets);
+                JsonNode res = llm.chatJson(SYSTEM, user);
+                UploadLayout layout = fromJson(res, sheets, ins);
                 String error = layout == null ? "AI 가 기관 열이나 날짜를 찾지 못했다고 답했습니다" : validate(sheets, layout);
                 if (error == null) {
-                    Detection d = new Detection(normalize(sheets, layout), "AI", llm.model(), null, res.path("reason").asText(null));
+                    Detection d = new Detection(normalize(sheets, layout, ins), "AI", llm.model(), null, res.path("reason").asText(null));
                     if (cache.size() >= CACHE_LIMIT) {
                         cache.clear();
                     }
-                    cache.put(preview, d);
+                    cache.put(user, d);
                     return d;
                 }
                 note = "AI 판별 결과가 검증을 통과하지 못해 규칙 기반으로 읽음 (" + error + ")";
@@ -84,7 +97,25 @@ public class UploadLayoutService {
             log.warn(note);
         }
         UploadLayout rule = RuleLayoutDetector.detect(sheets);
+        if (rule != null && rule.dateSource() != DateSource.HEADER) {
+            rule = rule.withValueColumns(RuleLayoutDetector.assignVariables(
+                    rule.valueColumns().stream().map(v -> v.withVariable(null)).toList(), ins));
+        } else if (rule != null) {
+            rule = rule.withValueColumns(List.of(new ValueColumn(-1, "실적", "COUNT", true, ins.get(0).name())));
+        }
         return new Detection(rule, note == null ? "RULE" : "RULE_FALLBACK", null, note, null);
+    }
+
+    /** AI 에 함께 보내는 실적 항목 목록 (예전 방식 rawCount 하나면 보내지 않는다) */
+    static String inputsPrompt(List<SkillInput> inputs) {
+        if (inputs.size() == 1 && SkillInput.DEFAULT_NAME.equals(inputs.get(0).name())) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder("\n[실적 항목] (name: 설명)\n");
+        for (SkillInput in : inputs) {
+            sb.append("- ").append(in.name()).append(": ").append(in.label()).append('\n');
+        }
+        return sb.toString();
     }
 
     /** AI 에 보여 줄 미리보기: 시트마다 앞쪽 행을 "r번호 | c0=값 | c1=값" 형태로 */
@@ -115,6 +146,10 @@ public class UploadLayoutService {
     }
 
     static UploadLayout fromJson(JsonNode res, List<SheetData> sheets) {
+        return fromJson(res, sheets, SkillInput.DEFAULT);
+    }
+
+    static UploadLayout fromJson(JsonNode res, List<SheetData> sheets, List<SkillInput> inputs) {
         if (!res.path("institutionColumn").isInt() || !res.path("dateSource").isTextual()) {
             return null;
         }
@@ -138,16 +173,22 @@ public class UploadLayoutService {
         }
         String title = source == DateSource.TITLE ? RuleLayoutDetector.titleDate(sheet, headerRow) : null;
         List<ValueColumn> values = new ArrayList<>();
+        boolean legacy = inputs.size() == 1 && SkillInput.DEFAULT_NAME.equals(inputs.get(0).name());
         if (source == DateSource.HEADER) {
-            values.add(new ValueColumn(-1, "실적", "COUNT", true));
+            values.add(new ValueColumn(-1, "실적", "COUNT", true, inputs.get(0).name()));
         } else {
             for (JsonNode v : res.path("valueColumns")) {
                 int c = v.path("column").asInt(-1);
                 String header = sheet.text(headerRow, c);
                 String kind = v.path("kind").asText("");
+                String variable = v.path("variable").isTextual() ? v.path("variable").asText().strip() : null;
+                boolean known = variable != null && inputs.stream().anyMatch(in -> in.name().equals(variable));
+                boolean use = v.path("use").asBoolean(false);
+                // 예전 방식(rawCount 하나)이면 use 가 곧 연결, 입력이 여럿이면 AI 가 적은 variable 이 실제 입력 이름일 때만 연결
+                String assigned = known ? variable : legacy && use ? SkillInput.DEFAULT_NAME : null;
                 values.add(new ValueColumn(c, header.isEmpty() ? "열 " + (c + 1) : header,
                         Set.of("COUNT", "AMOUNT", "NUMBER").contains(kind) ? kind : RuleLayoutDetector.kind(header),
-                        v.path("use").asBoolean(false)));
+                        assigned != null, assigned));
             }
         }
         return new UploadLayout(s, headerRow, inst, code, source, date, headerDates, title, values);
@@ -193,8 +234,15 @@ public class UploadLayoutService {
         return null;
     }
 
-    /** 검증된 AI 판별에서 숫자가 아닌 값 열·중복 열을 빼고, 실적에 넣을 열이 하나도 없으면 기본 규칙으로 정한다 */
     static UploadLayout normalize(List<SheetData> sheets, UploadLayout l) {
+        return normalize(sheets, l, SkillInput.DEFAULT);
+    }
+
+    /**
+     * 검증된 AI 판별에서 숫자가 아닌 값 열·중복 열을 빼고, AI 가 변수에 연결하지 않은 열은 머리글 규칙으로 연결한다
+     * (예전 방식이면 실적에 넣을 열이 하나도 없을 때 기본 규칙)
+     */
+    static UploadLayout normalize(List<SheetData> sheets, UploadLayout l, List<SkillInput> inputs) {
         if (l.dateSource() == DateSource.HEADER) {
             return l;
         }
@@ -205,10 +253,11 @@ public class UploadLayoutService {
                 .filter(v -> v.index() >= 0 && v.index() < sheet.width() && seen.add(v.index())
                         && RuleLayoutDetector.numberRate(sheet, data, v.index()) >= 0.5)
                 .toList();
-        if (values.stream().noneMatch(ValueColumn::use)) {
-            values = RuleLayoutDetector.defaultUse(values);
+        boolean legacy = inputs.size() == 1 && SkillInput.DEFAULT_NAME.equals(inputs.get(0).name());
+        if (legacy) {
+            return l.withValueColumns(values.stream().noneMatch(ValueColumn::use) ? RuleLayoutDetector.defaultUse(values) : values);
         }
-        return l.withValueColumns(values);
+        return l.withValueColumns(values.stream().anyMatch(ValueColumn::use) ? values : RuleLayoutDetector.assignVariables(values, inputs));
     }
 
     private static double filledRate(SheetData sheet, List<Integer> data, int c) {

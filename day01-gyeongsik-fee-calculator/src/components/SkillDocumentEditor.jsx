@@ -2,8 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Code2, Eye, History, Info, LayoutList, LoaderCircle, RotateCcw, Save, TriangleAlert, WandSparkles } from 'lucide-react';
 import { api, apiEnabled } from '../utils/api';
 import { fmt } from '../utils/fee';
-import { generateFormulaLocally } from '../utils/formulaGenerator';
-import { composeSkill, hasFormula, parseSkill, replaceFormulas, splitSkill } from '../utils/skill';
+import { composeSkill, hasFormula, parseSkill, replaceFormulas, replaceVariables, splitSkill } from '../utils/skill';
 import { SOURCE_LABEL } from './AiStatus';
 
 const MODES = [
@@ -13,8 +12,8 @@ const MODES = [
 ];
 const BLOCKED = '수식(formula) 블록 구문이 올바르지 않아 저장이 차단되었습니다.';
 
-// [① 기준 문서 편집] 업무 담당자가 자연어 규칙(머리말, 1·2·4번 섹션)을 작성한다. 3번 정산 수식은 직접 고치지 않고, 폼에서 1번 규칙으로
-// 바로 생성(서버 AI 또는 내장 변환기)해 넣거나 [② AI 계산식 빌더]에서 다듬는다. 3번이 비어 있어도 초안으로 저장된다(산출만 막힘).
+// [① 기준 문서 편집] 업무 담당자가 자연어 규칙(머리말, 1·2·4번 섹션)을 작성한다. 3번 변수 정의·정산 수식은 직접 고치지 않고, 폼에서 1번 규칙으로
+// 바로 생성(서버 AI 가 1번을 읽고 변수와 수식을 만든다)해 넣거나 [② AI 계산식 빌더]에서 다듬는다. 3번이 비어 있어도 초안으로 저장된다(산출만 막힘).
 // 편집 내용은 마크다운 원문(text) 하나로 들고 있고, 폼 입력은 원문을 섹션별로 나눠 고친 뒤 표준 4섹션 마크다운으로 다시 합친다.
 export default function SkillDocumentEditor({ detail, saveContent, onDirty, onReset, onGoBuilder }) {
   const [text, setText] = useState(detail.content);
@@ -47,25 +46,28 @@ export default function SkillDocumentEditor({ detail, saveContent, onDirty, onRe
     }
   }, [text, detail.taskCode]);
   const formula = live.parsed
-    ? live.parsed.equalFormula != null
-      ? `# 균등분담 (formula:equal)\n${live.parsed.equalFormula}\n\n# 실적분담 (formula:perf)\n${live.parsed.perfFormula}`
-      : live.parsed.formula
+    ? [
+        live.parsed.variables ? `# 변수 정의 (variables)\n${live.parsed.variables}\n` : '',
+        live.parsed.equalFormula != null
+          ? `# 균등분담 (formula:equal)\n${live.parsed.equalFormula}\n\n# 실적분담 (formula:perf)\n${live.parsed.perfFormula}`
+          : live.parsed.formula,
+      ]
+        .filter(Boolean)
+        .join('\n')
     : (parts.formulaSection.match(/```formula[^\n]*\n([\s\S]*?)```/)?.[1]?.trim() ?? '');
   const savedSpecial = useMemo(() => splitSkill(detail.content).special, [detail.content]);
 
-  // 폼에 적은(저장 전이어도) 1번 규칙으로 3번 수식을 만들어 원문에 넣는다. 저장은 [저장 및 반영하기]로
+  // 폼에 적은(저장 전이어도) 1번 규칙으로 3번 변수 정의·수식을 AI 가 만들어 원문에 넣는다 (서버 AI 전용). 저장은 [저장 및 반영하기]로
   const [generating, setGenerating] = useState(false);
   const [gen, setGen] = useState(null);
   const generate = async () => {
     setGen(null);
     setGenerating(true);
     try {
-      const res = apiEnabled
-        ? await api.generateFormula(detail.taskCode, parts.summary)
-        : generateFormulaLocally(detail.taskCode, parts.summary);
+      const res = await api.generateFormula(detail.taskCode, parts.summary);
       const split = res.equalFormula && res.perfFormula;
       const next = replaceFormulas(
-        text,
+        replaceVariables(text, res.variables ?? ''),
         split ? { equal: res.equalFormula, perf: res.perfFormula, total: null } : { total: res.generatedFormula },
       );
       setText(next);
@@ -217,16 +219,22 @@ export default function SkillDocumentEditor({ detail, saveContent, onDirty, onRe
             <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-sm font-semibold text-brand-900">
-                  ## 3. 정산 수식 <span className="text-[11px] font-normal text-slate-500">(직접 입력 대신 생성)</span>
+                  ## 3. 정산 수식 <span className="text-[11px] font-normal text-slate-500">(변수 정의 + 수식 · 직접 입력 대신 AI 생성)</span>
                 </p>
                 <button
                   onClick={generate}
-                  disabled={generating || !parts.summary.trim()}
-                  title={parts.summary.trim() ? '위 1번 규칙(저장 전 내용 포함)으로 수식을 만들어 넣습니다' : '1번 규칙을 먼저 적어 주세요'}
+                  disabled={generating || !parts.summary.trim() || !apiEnabled}
+                  title={
+                    !apiEnabled
+                      ? '서버 미연결(Mock) 상태라 AI 생성을 쓸 수 없습니다. AI 계산식 빌더에서 변수와 수식을 직접 작성해 주세요.'
+                      : parts.summary.trim()
+                        ? 'AI 가 위 1번 규칙(저장 전 내용 포함)을 읽고 변수 정의와 수식을 만들어 넣습니다'
+                        : '1번 규칙을 먼저 적어 주세요'
+                  }
                   className="ml-auto flex items-center gap-1 rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-xs font-medium text-violet-700 hover:bg-violet-50 disabled:opacity-40"
                 >
                   {generating ? <LoaderCircle className="w-3.5 h-3.5 animate-spin" /> : <WandSparkles className="w-3.5 h-3.5" />}
-                  ✨ 1번 규칙으로 수식 생성
+                  ✨ AI 가 1번 규칙 읽고 변수·수식 생성
                 </button>
                 <button
                   onClick={() => onGoBuilder('formula')}
@@ -236,7 +244,7 @@ export default function SkillDocumentEditor({ detail, saveContent, onDirty, onRe
                 </button>
               </div>
               <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-900 p-2.5 font-mono text-[11px] text-emerald-200">
-                {formula || '(아직 수식이 없습니다. [1번 규칙으로 수식 생성]을 누르거나 AI 계산식 빌더에서 만들어 주세요. 비어 있어도 초안으로 저장됩니다.)'}
+                {formula || '(아직 수식이 없습니다. [AI 가 1번 규칙 읽고 변수·수식 생성]을 누르거나 AI 계산식 빌더에서 만들어 주세요. 비어 있어도 초안으로 저장됩니다.)'}
               </pre>
               {gen?.error && (
                 <p role="alert" className="mt-1.5 flex gap-1 text-[11px] text-rose-700">
@@ -246,7 +254,8 @@ export default function SkillDocumentEditor({ detail, saveContent, onDirty, onRe
               {gen?.result && (
                 <p className={`mt-1.5 text-[11px] ${gen.result.validationPassed ? 'text-emerald-700' : 'text-amber-700'}`}>
                   {gen.result.validationPassed ? '✅ ' : '⚠️ '}
-                  {gen.result.detectedPattern} · {SOURCE_LABEL[gen.result.source] ?? gen.result.source} · {gen.result.validationMessage}
+                  {gen.result.detectedPattern} · {SOURCE_LABEL[gen.result.source] ?? gen.result.source} · 변수 {gen.result.variableList?.length ?? 0}개
+                  {gen.result.inputs?.length > 0 && ` (실적 입력: ${gen.result.inputs.map((v) => v.label).join(', ')})`} · {gen.result.validationMessage}
                   {gen.result.note && <span className="block text-slate-500">{gen.result.note}</span>}
                   <span className="block text-slate-500">문서에 넣었습니다. [저장 및 반영하기]를 눌러야 저장됩니다.</span>
                 </p>
@@ -425,14 +434,17 @@ export function MarkdownPreview({ markdown }) {
                   {b.lang === 'formula:equal' ? '균등분담 수식' : b.lang === 'formula:perf' ? '실적분담 수식' : '정산 수식'}
                 </p>
               )}
+              {b.lang === 'variables' && <p className="text-[11px] font-semibold text-sky-700 mb-1">변수 정의 (실적 입력 · 상수 · 합계 · 파생 수식)</p>}
               {b.lang === 'postprocess' && <p className="text-[11px] font-semibold text-violet-700 mb-1">후처리 스크립트</p>}
               <pre
                 className={`whitespace-pre-wrap rounded-lg p-3 font-mono text-xs ${
                   b.lang.startsWith('formula')
                     ? 'bg-slate-900 text-emerald-200 ring-2 ring-emerald-300/40'
-                    : b.lang === 'postprocess'
-                      ? 'bg-slate-900 text-violet-200 ring-2 ring-violet-300/40'
-                      : 'bg-slate-100 text-slate-700'
+                    : b.lang === 'variables'
+                      ? 'bg-slate-900 text-sky-200 ring-2 ring-sky-300/40'
+                      : b.lang === 'postprocess'
+                        ? 'bg-slate-900 text-violet-200 ring-2 ring-violet-300/40'
+                        : 'bg-slate-100 text-slate-700'
                 }`}
               >
                 {b.text}

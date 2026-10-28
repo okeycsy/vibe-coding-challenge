@@ -61,6 +61,10 @@ public class FeeCalculation {
     @Column(length = 2000)
     private String appliedFormula;
 
+    /** 산출에 적용한 3번 ```variables 변수 정의 원문 (블록이 없는 예전 문서는 null) */
+    @Column(length = 6000)
+    private String appliedVariables;
+
     /** 산출에 적용한 "## 4. 최종 정산 특이사항" 원문 (없으면 빈 문자열) */
     @Column(length = 4000)
     private String appliedSpecialRules;
@@ -109,8 +113,8 @@ public class FeeCalculation {
     @Builder
     private FeeCalculation(Business business, LocalDate periodFrom, LocalDate periodTo, double periodScale,
                            Long appliedUnitPrice, Long appliedTotalFee, String skillCode, String appliedCalcType,
-                           String appliedFormula, String appliedSpecialRules, String source, String uploadFileName,
-                           String calculatedBy, LocalDateTime calculatedAt) {
+                           String appliedFormula, String appliedVariables, String appliedSpecialRules, String source,
+                           String uploadFileName, String calculatedBy, LocalDateTime calculatedAt) {
         this.business = business;
         this.periodFrom = periodFrom;
         this.periodTo = periodTo;
@@ -120,6 +124,7 @@ public class FeeCalculation {
         this.skillCode = skillCode;
         this.appliedCalcType = appliedCalcType;
         this.appliedFormula = appliedFormula;
+        this.appliedVariables = appliedVariables;
         this.appliedSpecialRules = appliedSpecialRules;
         this.source = source;
         this.uploadFileName = uploadFileName;

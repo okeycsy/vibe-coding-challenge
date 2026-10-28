@@ -81,8 +81,9 @@ export const api = {
   skill: (taskCode) => request('GET', `/api/v1/skills/${taskCode}`),
   saveSkill: (taskCode, content) => request('PUT', `/api/v1/skills/${taskCode}`, { content }),
   resetSkill: (taskCode) => request('POST', `/api/v1/skills/${taskCode}/reset`),
-  // 1번 비즈니스 규칙 텍스트 → 3번 정산 수식 자동 생성 (저장하지 않는다). AI 키가 없으면 서버도 내장 변환기
-  // → { generatedFormula, detectedPattern, explanation[], validationPassed, sampleResultNormal, sampleResultZero, source, ... }
+  // 1번 비즈니스 규칙 텍스트 → AI 가 읽고 3번 변수 정의(```variables)와 정산 수식을 함께 생성 (저장하지 않는다). AI 키가 없으면 400
+  // → { variables, variableList[], inputs[], generatedFormula, equalFormula, perfFormula, detectedPattern, explanation[],
+  //     validationPassed, validationMessage, sampleResultNormal, sampleResultZero, source: 'AI', model, note, attempts }
   generateFormula: (taskCode, businessRulesText) =>
     request('POST', `/api/v1/skills/${taskCode}/generate-formula`, { businessRulesText }),
   // → { generatedScript, explanation[], unsupported[], validationPassed, validationMessage, sample[], checks[], notes[], source, model, note }
@@ -103,18 +104,21 @@ export const api = {
   deleteInstitution: (id) => request('DELETE', `/api/v1/institutions/${id}`),
   // 매칭 시험 → { value, excel: { id, name, code, matchedBy } | null, issue: {...} | null }
   matchInstitution: (value) => request('GET', `/api/v1/institutions/match?value=${encodeURIComponent(value)}`),
-  // 실적 엑셀 업로드 → UploadResult { fileName, rowCount, totalCount, counts, unmatched, layout, columns, values, excluded, … }.
-  // 서버가 AI(키가 없거나 실패하면 규칙 기반)로 표 구조를 판별하고, from~to 밖 날짜의 행은 빼서 excluded 로 알려 준다. 잘못된 파일은 400
-  uploadPerformance: (file, period) => {
+  // 실적 엑셀 업로드 → UploadResult { fileName, rowCount, totalCount, counts[{ institutionId, name, baseCount, inputs }], unmatched, layout,
+  // columns[{ index, header, kind, use, variable }], mapping[{ variable, label, columns[] }], values, excluded, … }.
+  // 서버가 AI(키가 없거나 실패하면 규칙 기반)로 표 구조를 판별하고, taskCode 를 주면 그 업무 skill.md 의 실적 입력 변수에 수치 열을 연결한다.
+  // from~to 밖 날짜의 행은 빼서 excluded 로 알려 준다. 잘못된 파일은 400
+  uploadPerformance: (file, period, taskCode) => {
     const form = new FormData();
     form.append('file', file);
     if (period?.from && period?.to) {
       form.append('from', period.from);
       form.append('to', period.to);
     }
+    if (taskCode) form.append('taskCode', taskCode);
     return request('POST', '/api/fee/uploads', form);
   },
-  // skill.md 수식으로 산출 → 화면 결과 행 형태로 (counts 를 주면 업로드 실적으로 산출)
+  // skill.md 수식으로 산출 → 화면 결과 행 형태로 (counts 를 주면 업로드 실적으로 산출. counts[].inputs 가 실적 항목별 건수)
   calculate: async (body) => {
     const res = await request('POST', '/api/v1/fees/calculate', body);
     return { ...res, rows: res.items.map(({ id, ...item }) => ({ ...item, status: '대기' })) };

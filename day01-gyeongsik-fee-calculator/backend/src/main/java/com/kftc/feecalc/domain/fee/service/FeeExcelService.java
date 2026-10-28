@@ -6,8 +6,10 @@ import java.io.InputStream;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
@@ -38,6 +40,7 @@ import com.kftc.feecalc.domain.fee.entity.Institution;
 import com.kftc.feecalc.domain.fee.repository.InstitutionRepository;
 import com.kftc.feecalc.domain.fee.upload.SheetData;
 import com.kftc.feecalc.domain.fee.upload.UploadLayout;
+import com.kftc.feecalc.domain.fee.upload.UploadLayout.SkillInput;
 import com.kftc.feecalc.domain.fee.upload.UploadLayoutService;
 import com.kftc.feecalc.domain.fee.upload.UploadReader;
 
@@ -69,6 +72,15 @@ public class FeeExcelService {
      * 엑셀 원본은 저장하지 않는다.
      */
     public UploadResult parseUpload(MultipartFile file, LocalDate from, LocalDate to) {
+        return parseUpload(file, from, to, null);
+    }
+
+    /**
+     * taskCode(업무 코드 또는 업무 ID)를 주면 그 업무 skill.md 의 실적 입력 변수(```variables 의 input)에 수치 열을 연결하고
+     * (AI 가 열마다 variable 을 정하고, 못 정한 열은 머리글 규칙으로), 기관별 변수 값(counts[].inputs)과 변수 정의로 계산한 rawCount(baseCount)를 돌려준다.
+     * 업무가 없거나 기준 문서를 아직 못 읽으면 예전 방식(rawCount 하나)으로 읽는다
+     */
+    public UploadResult parseUpload(MultipartFile file, LocalDate from, LocalDate to, String taskCode) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException(ErrorCode.INVALID_EXCEL, "업로드할 파일을 선택해 주세요.");
         }
@@ -87,7 +99,10 @@ public class FeeExcelService {
             throw new BusinessException(ErrorCode.INVALID_EXCEL, "엑셀 파일(xlsx, xls)을 읽을 수 없습니다.");
         }
 
-        UploadLayoutService.Detection detection = layoutService.detect(sheets);
+        SkillVariables variables = variablesOf(taskCode);
+        List<SkillInput> inputs = variables == null ? SkillInput.DEFAULT
+                : variables.inputs().stream().map(d -> new SkillInput(d.name(), d.label())).toList();
+        UploadLayoutService.Detection detection = layoutService.detect(sheets, inputs);
         UploadLayout layout = detection.layout();
         if (layout == null) {
             throw new BusinessException(ErrorCode.INVALID_EXCEL,
@@ -101,22 +116,41 @@ public class FeeExcelService {
 
         List<UploadLayout.ValueColumn> valueColumns = layout.valueColumns();
         List<UploadResult.Column> columns = valueColumns.stream()
-                .map(v -> new UploadResult.Column(v.index(), v.header(), v.kind(), v.use())).toList();
+                .map(v -> new UploadResult.Column(v.index(), v.header(), v.kind(), v.use(), v.variable())).toList();
+        List<UploadResult.Mapping> mapping = new ArrayList<>();
+        for (SkillInput in : inputs) {
+            List<Integer> cols = new ArrayList<>();
+            for (int c = 0; c < valueColumns.size(); c++) {
+                if (in.name().equals(valueColumns.get(c).variable())) {
+                    cols.add(c);
+                }
+            }
+            mapping.add(new UploadResult.Mapping(in.name(), in.label(), cols));
+        }
         List<UploadResult.InstitutionValues> values = new ArrayList<>();
-        List<InstitutionCount> counts = new ArrayList<>();
+        List<Institution> matched = new ArrayList<>();
+        List<Map<String, Long>> inputValues = new ArrayList<>();
         for (Institution i : institutions) {
             long[] sum = read.sums.get(i);
             if (sum == null) {
                 continue;
             }
+            matched.add(i);
             values.add(new UploadResult.InstitutionValues(i.getCode(), i.getName(), Arrays.stream(sum).boxed().toList()));
-            long count = 0;
-            for (int c = 0; c < sum.length; c++) {
-                if (valueColumns.get(c).use()) {
-                    count += sum[c];
+            Map<String, Long> byInput = new LinkedHashMap<>();
+            for (UploadResult.Mapping m : mapping) {
+                long count = 0;
+                for (int c : m.columns()) {
+                    count += c < sum.length ? sum[c] : 0;
                 }
+                byInput.put(m.variable(), Math.max(0, count));
             }
-            counts.add(new InstitutionCount(i.getCode(), i.getName(), Math.max(0, count)));
+            inputValues.add(byInput);
+        }
+        long[] base = baseCounts(variables, inputValues);
+        List<InstitutionCount> counts = new ArrayList<>();
+        for (int i = 0; i < matched.size(); i++) {
+            counts.add(new InstitutionCount(matched.get(i).getCode(), matched.get(i).getName(), base[i], inputValues.get(i)));
         }
         long total = counts.stream().mapToLong(InstitutionCount::baseCount).sum();
         List<UploadResult.Excluded> excluded = read.excluded.entrySet().stream()
@@ -131,8 +165,39 @@ public class FeeExcelService {
         UploadResult.Layout info = new UploadResult.Layout(sheet.name(), layout.headerRow() + 1,
                 sheet.text(layout.headerRow(), layout.institutionColumn()), layout.dateSource().name(), dateHeader, read.dateUnit());
         return new UploadResult(file.getOriginalFilename(), read.rowCount, total, counts, List.copyOf(read.unmatched), info,
-                columns, values, excluded, read.unreadableRows, read.unreadableSamples, List.copyOf(read.includedDates),
+                columns, mapping, values, excluded, read.unreadableRows, read.unreadableSamples, List.copyOf(read.includedDates),
                 new UploadResult.Analysis(detection.mode(), detection.model(), detection.note(), detection.reason()));
+    }
+
+    /** 업무의 변수 정의. 업무 코드가 없거나 기준 문서를 못 읽으면(없는 업무·구조 오류) null = 예전 방식 */
+    private SkillVariables variablesOf(String taskCode) {
+        if (taskCode == null || taskCode.isBlank()) {
+            return null;
+        }
+        try {
+            return skillEngine.getSkill(taskCode.trim()).variables();
+        } catch (BusinessException e) {
+            return null;
+        }
+    }
+
+    /**
+     * 기관별 rawCount: 변수 정의가 있으면 그 정의로 계산(입력 합이 아니라 rawCount 줄의 값), 계산할 수 없으면(수식 오류 등) 입력 합계.
+     * 산출 때는 FeeCalculationService 가 같은 정의로 다시 계산하므로 여기서는 화면 표시용이다
+     */
+    private static long[] baseCounts(SkillVariables variables, List<Map<String, Long>> inputValues) {
+        long[] base = new long[inputValues.size()];
+        if (variables != null) {
+            try {
+                return variables.bind(inputValues.stream().map(in -> new SkillVariables.Row(in, 0)).toList(), 1.0).rawCount();
+            } catch (RuntimeException e) {
+                // 변수 정의가 이 입력으로는 계산되지 않음 → 입력 합계로 보여 주고, 산출 때 같은 오류를 알린다
+            }
+        }
+        for (int i = 0; i < base.length; i++) {
+            base[i] = Math.max(0, inputValues.get(i).values().stream().mapToLong(Long::longValue).sum());
+        }
+        return base;
     }
 
     /** 업로드 양식: 기준월 | 기관코드 | 기관명 | 건수 (기준월은 이번 달로 채워 둠) */
@@ -165,24 +230,38 @@ public class FeeExcelService {
             CellStyle header = headerStyle(wb);
 
             Sheet detail = wb.createSheet("대사내역");
-            writeRow(detail, 0, header, "기관코드", "기관명", "기준 실적", "AI 차감", "실적(최종인정건수)",
-                    "적용 단가/분담률", "균등분담분(원)", "실적분담분(원)", "산출 회비(총합, 원)", "특이사항 보정 전(원)",
-                    "특이사항 보정(원)", "특이사항 보정 사유", "차감 사유");
+            // 실적 입력이 여럿(변수 정의의 input 2개 이상)이면 기준 실적 옆에 항목별 건수를 함께 적는다
+            boolean multiInput = calc.getItems().stream().anyMatch(i -> CalculationResponse.inputsOf(i.getInputsJson()).size() >= 2);
+            List<Object> head = new ArrayList<>(List.of("기관코드", "기관명", "기준 실적"));
+            if (multiInput) {
+                head.add("실적 항목별 건수");
+            }
+            head.addAll(List.of("AI 차감", "실적(최종인정건수)", "적용 단가/분담률", "균등분담분(원)", "실적분담분(원)", "산출 회비(총합, 원)",
+                    "특이사항 보정 전(원)", "특이사항 보정(원)", "특이사항 보정 사유", "차감 사유"));
+            writeRow(detail, 0, header, head.toArray());
             int r = 1;
             for (FeeCalculationItem i : calc.getItems()) {
-                writeRow(detail, r++, null, i.getBankCode(), i.getInstitutionName(), i.getBaseCount(), i.getDeduction(),
-                        i.getFinalCount(), i.getRateLabel(), i.getEqualFee(), i.getPerfFee(), i.getFee(),
+                List<Object> row = new ArrayList<>(List.of(i.getBankCode(), i.getInstitutionName(), i.getBaseCount()));
+                if (multiInput) {
+                    row.add(inputsText(i.getInputsJson()));
+                }
+                row.addAll(Arrays.asList(i.getDeduction(), i.getFinalCount(), i.getRateLabel(), i.getEqualFee(), i.getPerfFee(), i.getFee(),
                         i.getBeforeSpecialFee(), i.getSpecialAdjustment(),
                         i.getSpecialReason() == null ? "" : i.getSpecialReason(),
-                        i.getDeductionReasons() == null ? "" : i.getDeductionReasons().replace("\n", " / "));
+                        i.getDeductionReasons() == null ? "" : i.getDeductionReasons().replace("\n", " / ")));
+                writeRow(detail, r++, null, row.toArray());
             }
-            writeRow(detail, r, header, "합계", "", calc.getItems().stream().mapToLong(FeeCalculationItem::getBaseCount).sum(),
-                    calc.getItems().stream().mapToLong(FeeCalculationItem::getDeduction).sum(),
+            List<Object> total = new ArrayList<>(List.of("합계", "", calc.getItems().stream().mapToLong(FeeCalculationItem::getBaseCount).sum()));
+            if (multiInput) {
+                total.add("");
+            }
+            total.addAll(Arrays.asList(calc.getItems().stream().mapToLong(FeeCalculationItem::getDeduction).sum(),
                     calc.getTotalFinalCount(), "", calc.getItems().stream().mapToLong(FeeCalculationItem::getEqualFee).sum(),
                     calc.getItems().stream().mapToLong(FeeCalculationItem::getPerfFee).sum(), calc.getTotalFeeAmount(),
                     calc.getItems().stream().mapToLong(FeeCalculationItem::getBeforeSpecialFee).sum(),
-                    calc.getItems().stream().mapToLong(FeeCalculationItem::getSpecialAdjustment).sum(), "", "");
-            autosize(detail, 13);
+                    calc.getItems().stream().mapToLong(FeeCalculationItem::getSpecialAdjustment).sum(), "", ""));
+            writeRow(detail, r, header, total.toArray());
+            autosize(detail, head.size());
 
             Sheet basis = wb.createSheet("산출기준");
             int b = 0;
@@ -209,6 +288,9 @@ public class FeeExcelService {
                     ? skillEngine.getSkill(calc.getSkillCode()).summary() : biz.getSummary();
             for (String line : summary) {
                 writeRow(basis, b++, null, "1. 비즈니스 규칙 요약", line);
+            }
+            for (String line : SkillEngineService.lines(calc.getAppliedVariables())) {
+                writeRow(basis, b++, null, "3. 변수 정의(적용)", line);
             }
             if (calc.getAppliedFormula() != null) {
                 writeRow(basis, b++, null, "3. 정산 수식(적용)", calc.getAppliedFormula().replaceAll("\\s+", " "));
@@ -301,6 +383,14 @@ public class FeeExcelService {
             }
         }
         return best;
+    }
+
+    /** 실적 항목별 건수 표시: "출금이체 건수 120 / 입금이체 건수 30" (변수 이름은 적용 변수 정의의 input 설명으로 바꾼다) */
+    static String inputsText(String inputsJson) {
+        Map<String, Long> in = CalculationResponse.inputsOf(inputsJson);
+        StringBuilder sb = new StringBuilder();
+        in.forEach((k, v) -> sb.append(sb.isEmpty() ? "" : " / ").append(k).append(' ').append(String.format("%,d", v)));
+        return sb.toString();
     }
 
     private CellStyle headerStyle(Workbook wb) {

@@ -14,21 +14,23 @@ function save(sheets, filename) {
 
 
 // 참가기관에 보내 실적·회비를 대사(확인)받기 위한 파일
-// skill: 산출에 쓴 기준 { summary, formula, specialRules } (산출기준 시트에 1번·3번·4번을 남긴다),
-// special: 4번 후처리 실행 결과 { postprocess, source, checks, notes }
-export function downloadReconciliation({ business, from, to, rows, issues, skill, special }) {
+// skill: 산출에 쓴 기준 { summary, variables, formula, specialRules } (산출기준 시트에 1번·3번·4번을 남긴다),
+// special: 4번 후처리 실행 결과 { postprocess, source, checks, notes }, inputDefs: 실적 입력 변수(2개 이상이면 항목별 건수 열을 넣는다)
+export function downloadReconciliation({ business, from, to, rows, issues, skill, special, inputDefs = [] }) {
   const period = periodLabel(from, to);
+  const multi = inputDefs.length >= 2 ? inputDefs : [];
   save(
     [
       {
         name: '대사내역',
-        widths: [14, 30, 8, 14, 12, 16, 18, 16, 14, 14, 18, 18, 16, 50, 10, 50],
+        widths: [14, 30, 8, 14, 12, ...multi.map(() => 14), 16, 18, 16, 14, 14, 18, 18, 16, 50, 10, 50],
         rows: rows.map((r) => ({
           업무: business.name,
           산출기간: period,
           기관코드: r.code,
           참가기관명: r.name,
           기본건수: r.baseCount,
+          ...Object.fromEntries(multi.map((d) => [d.label, r.inputs?.[d.name] ?? 0])),
           'AI 예외 차감 건수': r.deduction,
           '실적(최종인정건수)': r.finalCount,
           '적용 단가/분담률': r.rateLabel,
@@ -47,6 +49,11 @@ export function downloadReconciliation({ business, from, to, rows, issues, skill
         widths: [24, 100],
         rows: [
           ...business.summary.map((v) => ({ 항목: '1. 비즈니스 규칙 요약', 내용: v })),
+          ...(skill?.variables ?? '')
+            .split('\n')
+            .map((v) => v.trim())
+            .filter(Boolean)
+            .map((v) => ({ 항목: '3. 변수 정의(적용)', 내용: v })),
           ...(skill?.formula ? [{ 항목: '3. 정산 수식(적용)', 내용: skill.formula.replace(/\s+/g, ' ') }] : []),
           ...(skill?.specialRules?.length
             ? skill.specialRules.map((v) => ({ 항목: '4. 최종 정산 특이사항', 내용: v }))
