@@ -43,7 +43,7 @@ Docker 지원 무료 호스팅인 [Render](https://render.com)에 이 폴더의 
 - **인증이 없습니다.** 주소를 아는 누구나 회원 목록 조회, 가입 승인, 권한 부여, 비밀번호 초기화 같은 관리자 API를 호출할 수 있습니다. 예시 데이터만 넣고, 실제 회원·실적은 절대 올리지 마세요.
 - Vercel 주소가 바뀌거나 미리보기 주소에서도 쓰려면 Render 환경변수 `CORS_ALLOWED_ORIGINS`에 쉼표로 이어 적습니다(기본값을 덮어쓰므로 localhost 주소도 함께).
 - Mattermost: 환경변수 `MATTERMOST_WEBHOOK_URL`에 Incoming Webhook 주소를 넣으면 실제로 발송하고, 비어 있으면 로그만 남깁니다.
-- AI(LLM): Render Environment에 `AI_API_KEY`를 넣으면 회비 산출의 이슈 판별과, AI 계산식 빌더의 3번 수식 생성·4번 후처리 스크립트 생성에 AI를 씁니다. 4번 특이사항은 산출 때 AI를 부르지 않고 확정된 스크립트만 실행합니다. 금액 계산 자체는 AI가 하지 않습니다. **키는 저장소에 절대 커밋하지 않고 환경변수로만** 넣습니다. 비어 있으면 규칙 기반으로 동작합니다(아래 "2단계 정산 파이프라인").
+- AI(LLM): Render Environment에 `AI_API_KEY`를 넣으면 회비 산출의 이슈 판별, 실적 엑셀의 표 구조 판별·열 연결, AI 계산식 빌더의 3번 변수·수식 생성(**AI 전용**: 키가 없으면 400으로 직접 작성을 안내)·4번 후처리 스크립트 생성에 AI를 씁니다. 4번 특이사항은 산출 때 AI를 부르지 않고 확정된 스크립트만 실행합니다. 금액 계산 자체는 AI가 하지 않습니다. **키는 저장소에 절대 커밋하지 않고 환경변수로만** 넣습니다. 비어 있으면 이슈 판별·엑셀 판별·4번 스크립트는 규칙 기반으로 동작합니다(아래 "2단계 정산 파이프라인").
   | 환경변수 | 기본값 | 설명 |
   |------|----|----|
   | `AI_API_KEY` | (없음) | OpenAI, Gemini 또는 Claude(Anthropic) API 키. 이름을 `OPENAI_API_KEY`·`GEMINI_API_KEY`·`GOOGLE_API_KEY`로 넣어도 읽음(앞뒤 따옴표는 뗌) |
@@ -117,7 +117,7 @@ src/main/java/com/kftc/feecalc/
 | GET | `/businesses`, `/businesses/{code}` | 업무별 회비 기준(방식·단가·총액·분담기준 요약) |
 | PUT | `/businesses/{code}/rate` | 단가(건당 방식)·총액(분담 방식) 변경 |
 | GET | `/institutions` | 참가기관과 별칭 (사용 중지 기관 포함): `{ id, name, code, aliases, type, active, uploadOnly }` |
-| POST | `/uploads` | 실적 엑셀 업로드(multipart `file`, 선택 `from`·`to`). 형식 고정 없음: AI 키가 있으면 시트 앞부분 미리보기로 AI가 머리글 행·기관 열·날짜 위치(COLUMN 날짜 열 / HEADER 날짜 머리글 가로형 / TITLE 표 위 제목)·수치 열(kind COUNT·AMOUNT·NUMBER, use)을 판별하고 시트로 검증, 키가 없거나 실패·검증 탈락하면 규칙 기반(`RuleLayoutDetector`, analysis.mode RULE/RULE_FALLBACK + note). 날짜는 최소 년월(2026-07, 2026년 7월, 202607, 날짜 서식, 2026년 3분기 등), 빈 날짜 칸은 위 행 날짜. `from`~`to`와 겹치지 않는 날짜 행은 `excluded`(날짜별 행 수·합계), 날짜 불명 행은 `unreadableRows`. 기관별 열 합계 `values`, use 열 합 `counts`. 원본은 저장하지 않음 |
+| POST | `/uploads` | 실적 엑셀 업로드(multipart `file`, 선택 `from`·`to`·`taskCode`). 형식 고정 없음: AI 키가 있으면 시트 앞부분 미리보기로 AI가 머리글 행·기관 열·날짜 위치(COLUMN 날짜 열 / HEADER 날짜 머리글 가로형 / TITLE 표 위 제목)·수치 열(kind COUNT·AMOUNT·NUMBER, use)을 판별하고 시트로 검증, 키가 없거나 실패·검증 탈락하면 규칙 기반(`RuleLayoutDetector`, analysis.mode RULE/RULE_FALLBACK + note). 날짜는 최소 년월(2026-07, 2026년 7월, 202607, 날짜 서식, 2026년 3분기 등), 빈 날짜 칸은 위 행 날짜. `from`~`to`와 겹치지 않는 날짜 행은 `excluded`(날짜별 행 수·합계), 날짜 불명 행은 `unreadableRows`. 기관별 열 합계 `values`. `taskCode`(업무 코드 또는 업무 ID)를 주면 그 업무 skill.md 의 실적 입력 변수(```` ```variables ````의 `input`, 없으면 `rawCount` 하나)마다 어느 수치 열을 더할지 연결: AI 가 열마다 `variable`을 정하고(프롬프트에 `[실적 항목]` 목록을 함께 보냄, 모르는 이름은 버림), AI 가 정하지 않은 열은 머리글과 입력 설명의 핵심 낱말이 서로 포함되는 쪽으로(`RuleLayoutDetector.assignVariables`, 공백·괄호·'건수'·'실적' 등은 뗌, 금액 열은 설명에 '금액'이 있을 때만). 응답 `columns[].variable`, `mapping[{ variable, label, columns[](columns 안의 위치) }]`, `counts[].inputs`(변수별 건수)와 `counts[].baseCount`(변수 정의로 계산한 rawCount, 계산 불가면 입력 합). 연결된 열이 없는 항목은 `message`로 알려 줌. 원본은 저장하지 않음 |
 | GET | `/uploads/template` | 업로드 양식 엑셀 |
 | POST | `/issues/parse` | AI 이슈 문장 미리보기 해석 `{ text }` → 기관·건수·일자·사유 |
 | POST | `/calculations` | 산출 `{ businessId, from, to, issues[], counts?, uploadFileName?, requestedBy? }` |
@@ -137,7 +137,8 @@ src/main/java/com/kftc/feecalc/
 
 skill.md 표준 4섹션: `## 1. 비즈니스 규칙 요약`(필수) · `## 2. AI 예외 차감 지침`(선택) · `## 3. 정산 수식`(필수) · `## 4. 최종 정산 특이사항`(선택). 3번 섹션은 다음 `## ` 제목 앞에서 끝납니다.
 
-- **3번 수식 블록** (각 2000자 이하): ```` ```formula ````(회비 총액) 하나, 또는 ```` ```formula:equal ````(균등분담회비) + ```` ```formula:perf ````(실적분담회비) 분리형. 분리형이면 ```` ```formula ```` 통합식은 선택(표시용, 없으면 `(균등) + (실적)`). 블록 사이의 `### 3-1.` 같은 소제목·설명은 그대로 둡니다. 응답: `formula`, `equalFormula`, `perfFormula`(분리형이 아니면 null)
+- **3번 변수 정의 블록**(선택, 6000자 이하): ```` ```variables ```` 안에 한 줄에 하나 `이름 = 값`(이름은 영문 소문자로 시작하는 camelCase 40자 이하, `#`·`//` 줄은 주석, 30줄 이하). 값은 `input("엑셀 열 설명")`(기관별 실적 입력, 10개 이하), `sum(#기관별변수)`(전 기관 합계), 숫자(상수), 앞에서 정의한 변수와 예약 변수로 만든 SpEL 수식(기관별 값을 쓰면 기관별 변수). 예약 변수 `deductedCount`·`finalCount`·`totalCount`·`institutionCount`·`periodScale`는 정의할 수 없고, `rawCount`(기준 실적)는 input 또는 input 을 쓰는 수식으로 정의합니다(없으면 input 이 0개일 때 `rawCount = input("기본 건수")`, 1개일 때 `rawCount = #그입력`을 보충, 2개 이상이면 정의 필수). rawCount 줄 앞에서는 `#deductedCount`·`#finalCount`·`#totalCount`를 쓸 수 없습니다. 블록이 없는 예전 문서는 `rawCount = input("기본 건수")` 하나와 같습니다. 응답: `variables`(원문), `variableList`, `inputs`
+- **3번 수식 블록** (각 2000자 이하): ```` ```formula ````(회비 총액) 하나, 또는 ```` ```formula:equal ````(균등분담회비) + ```` ```formula:perf ````(실적분담회비) 분리형. 분리형이면 ```` ```formula ```` 통합식은 선택(표시용, 없으면 `(균등) + (실적)`). 수식에는 정의한 변수와 예약 변수만 쓸 수 있습니다. 블록 사이의 `### 3-1.` 같은 소제목·설명은 그대로 둡니다. 응답: `formula`, `equalFormula`, `perfFormula`(분리형이 아니면 null)
 - **4번**: 자연어 문장(`specialRules`·`specialRulesRaw`) + ```` ```postprocess ```` 후처리 스크립트 블록(`postprocess`, 빌더에서 만들어 확정)
 
 1. **이슈 차감 판별**: 이슈 문장의 기관·건수는 기존 해석기로 찾고, AI(키가 없으면 규칙 기반 `RuleBasedFeeRules`)가 `## 2. AI 예외 차감 지침`에 비춰 차감 대상인지만 정합니다. 응답 `issues[].applied`·`judgement`, `aiMode`(`AI`/`RULE`/`RULE_FALLBACK`)는 이 판별에만 해당
@@ -164,7 +165,7 @@ skill.md 표준 4섹션: `## 1. 비즈니스 규칙 요약`(필수) · `## 2. AI
 |--------|------|------|
 | GET | `/api/v1/ai/status` | `{ enabled, model, mode }` (키 값은 내보내지 않음) |
 | POST | `/api/v1/skills/{taskCode}/generate-postprocess` | `{ specialRulesText }`(4번 자연어) → `{ generatedScript, explanation[], unsupported[], validationPassed, validationMessage, sample[](시험용 기관 7곳 실행 결과), checks[], notes[], source(AI/RULE/RULE_FALLBACK), model, note }`. 권한 확인은 generate-formula와 같고(403), **파일은 저장하지 않음**. AI 스크립트도 문법·시험 실행을 통과해야 하고, 못 하면 내장 변환기(`SpecialRuleConverter`, 프론트 `convertSpecialRules`와 동일): 소수점 반올림 → roundHalf, "균등/실적 합계 … N% … 보정" → fixSum(총액 유지 문장이 있으면 다른 쪽도 나머지 %로), 최저/최고 회비, "N원 단위 절상/절사/반올림"(문장의 기관, 차이분 문장이 있으면 첫 번째 기관) + "차이분/증액분 … 실적 … 1원씩 차감" → spreadDiff, 총액 유지·0원 이상 → assert |
-| POST | `/api/v1/skills/{taskCode}/generate-formula` | `{ businessRulesText }`(1번 비즈니스 규칙) → `{ generatedFormula, equalFormula, perfFormula(혼합형이면 분리 수식, 아니면 null), detectedPattern, explanation[], validationPassed, validationMessage, sampleResultNormal, sampleResultZero, source(AI/RULE/RULE_FALLBACK), model, note }`. `X-Employee-Id`로 업무 권한 확인(없으면 403), **파일은 저장하지 않음**. AI 수식도 길이·SpEL 구문 검사를 통과해야 하고, 못 하면 규칙 기반 생성기(`RuleBasedFormulaGenerator`, 프론트 `src/utils/formulaGenerator.js`와 동일)로 만듭니다: 균등 X% + 실적 Y% 혼합 / 구간별 차등 단가 / 기본료 + 건당 단가 / 건당 단가 + 최저·최고 한도 / 총액 대비 단순 실적 비율. 그것도 못 하면 400 |
+| POST | `/api/v1/skills/{taskCode}/generate-formula` | `{ businessRulesText }`(1번 비즈니스 규칙) → `{ variables(```variables 블록 텍스트), variableList[{ name, kind(INPUT/SUM/NUMBER/EXPR), label, expr, perInstitution, auto }], inputs[](실적 입력 변수), generatedFormula, equalFormula, perfFormula(혼합형이면 분리 수식, 아니면 null), detectedPattern, explanation[], validationPassed, validationMessage, sampleResultNormal, sampleResultZero, source('AI'), model, note, attempts }`. `X-Employee-Id`로 업무 권한 확인(없으면 403), **파일은 저장하지 않음**. **AI 전용**(`FormulaGeneratorService`, 패턴 변환기 없음): AI 가 1번 규칙을 읽고 필요한 변수(실적 항목 `input`, 총액·비율 상수, 합계, 파생 수식)를 스스로 정의하고 그 변수로 SpEL 을 씁니다. 답변은 저장과 같은 검증(변수 블록 파싱 → 수식 구문·미정의 변수 → 기관 8곳 시험 계산 2벌)을 통과해야 하고, 떨어지면 `[검증 오류]`를 붙여 한 번 더 묻습니다(최대 2회). 그래도 안 되면 400 `INVALID_FORMULA` 에 `data.draft`(마지막 초안)·`attempts`·`error`를 담아 돌려주고, AI 키가 없으면 400 으로 직접 작성을 안내합니다 |
 
 ### skills — `/api/v1/skills` (업무별 회비분담기준 skill.md 관리)
 모든 요청에 `X-Employee-Id: <로그인 ID>` 헤더가 필요합니다(없으면 401). 시스템관리자는 전체 업무, 일반담당자는 승인된 업무 권한(신청 승인 또는 관리자 부여)이 있는 업무만, 참가기관은 접근할 수 없습니다(403 "해당 업무의 회비분담기준(skill.md) 접근 권한이 없습니다.").
@@ -208,8 +209,10 @@ skill.md 저장 (`SkillFileService`)
 
 산출 엔진 (`SkillEngineService`)
 - 섹션: `## 1. 비즈니스 규칙 요약`(화면 요약 박스), `## 2. AI 예외 차감 지침`, `## 3. 정산 수식`(```` ```formula ```` 코드 블록 안 SpEL). 머리말의 `- 산정 유형:`·`- 표시 단위:`(원/건 또는 %)는 화면 배지와 결과 표 문구에 씁니다
-- 수식 변수: `#rawCount` 기본건수, `#deductedCount` AI 차감건수, `#finalCount` 최종인정건수, `#totalCount` 전체 기관 인정건수 합계, `#institutionCount` 참가기관 수, `#periodScale` 기간 환산 비율(분기 = 1)
-- 업무별 수식 패턴: 오픈뱅킹 구간별 누진 단가(구간 단가는 수식에 한 번씩만 나옴), 금거정 총액 × 건수 비율, CMS 기본료 + 건당 단가, CD공동망 30% 균등 + 70% 실적 비례, 타행환 건당 단가 + 최저·최고 한도
+- 수식 변수: 3번 ```` ```variables ````에서 정의한 변수(`SkillVariables`가 정의 순서대로 기관별로 계산: `input` 값은 산출 요청 `counts[].inputs`에서, 없으면 0) + 예약 변수 `#rawCount` 기준 실적(변수 정의의 rawCount), `#deductedCount` AI 차감건수(rawCount 를 넘지 않게), `#finalCount` 최종인정건수, `#totalCount` 전체 기관 인정건수 합계, `#institutionCount` 참가기관 수, `#periodScale` 기간 환산 비율(분기 = 1). 산출 요청에 `counts[].inputs`가 없으면 `baseCount`를 하나뿐인 입력 변수에 넣고, 입력이 둘 이상인 기준이면 400(엑셀 열 연결 필요). 시연용 실적도 입력이 하나인 기준에서만 만듭니다
+- 혼합형 판정: 단일 수식이 `#institutionCount`와 기관별 변수를 함께 쓰면 기관별 변수가 모두 0 인 가상 기관의 값을 균등분담분으로 봅니다
+- 기본 제공 업무 skill.md 는 변수 블록 없이 `#finalCount` 등 예약 변수만 쓰며(오픈뱅킹 구간별 누진 단가, 금거정 총액 × 건수 비율, CMS 기본료 + 건당 단가, CD공동망 30% 균등 + 70% 실적 비례, 타행환 건당 단가 + 최저·최고 한도), 이전과 같은 금액이 나옵니다
+- 산출 결과에는 적용한 변수 정의(`variables`)와 기관별 입력값(`items[].inputs`)이 남고, 대사용 엑셀에는 실적 입력이 둘 이상이면 "실적 항목별 건수" 열과 "3. 변수 정의(적용)" 행이 들어갑니다
 - 원 단위: 기관별 수식 결과의 원 미만을 버리고, (결과 합계 반올림 − 버린 합계)를 원 미만이 큰 기관부터 1원씩 배정합니다. 총액 분담은 합계 = 총액이 됩니다
 - 보안: 수식은 `SimpleEvaluationContext.forReadOnlyDataBinding()`으로 평가해 `T(java.lang.Runtime)` 같은 타입 참조, 생성자, 메서드 호출, 빈 참조를 막습니다
 - 정수끼리 나누면 SpEL은 소수점을 버립니다. 비율 계산은 `120000000.0`처럼 소수점을 붙여 씁니다

@@ -1,7 +1,7 @@
 // 이슈 차감 판별(Step A)의 규칙 기반(Rule-based) 해석. 서버 RuleBasedFeeRules 와 같은 규칙이다.
 // 서버 미연결(Mock) 모드는 브라우저에 AI 키를 둘 수 없으므로 늘 이 규칙으로 동작한다.
 // 서버 연결 시에는 서버가 AI(LLM)를 부르고, 키가 없거나 AI가 실패하면 서버도 같은 규칙으로 동작한다.
-// (금액 후처리는 "## 4. 최종 정산 특이사항"을 읽는 specialRules.js, 1번 규칙 → 3번 수식은 formulaGenerator.js)
+// (금액 후처리는 "## 4. 최종 정산 특이사항"을 읽는 specialRules.js, 1번 규칙 → 3번 변수·수식은 서버 AI 가 만든다)
 import { lines } from './skill';
 
 // ── Step A: 이슈 차감 판별 ──

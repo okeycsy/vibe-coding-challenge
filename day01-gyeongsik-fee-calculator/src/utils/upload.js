@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { activeInstitutions, matchExcelValue } from './institutions';
+import { LEGACY_VARIABLES, bindVariables, inputsOf, parseVariables, variableInfo } from './skill';
 
 // 실적 엑셀 업로드. 형식을 고정하지 않고 표 구조를 판별해 읽는다.
 // 서버가 있으면 서버(FeeExcelService.parseUpload)가 AI(키가 없거나 실패하면 규칙 기반)로 판별하고,
@@ -146,15 +147,66 @@ export const columnKind = (header) => {
   return AMOUNT_RE.test(h) ? 'AMOUNT' : COUNT_RE.test(h) ? 'COUNT' : 'NUMBER';
 };
 
-// 실적에 넣을 기본 열: 머리글에 '건수'·'실적'이 있으면 그 열만, 없으면 금액이 아닌 열 모두, 그것도 없으면 전부
+// 실적에 넣을 기본 열: 머리글에 '건수'·'실적'이 있으면 그 열만, 없으면 금액이 아닌 열 모두, 그것도 없으면 전부 (변수는 rawCount)
 function defaultUse(values) {
   const prefer = values.some((v) => PREFER_RE.test(squash(v.header)));
   const nonAmount = values.some((v) => v.kind !== 'AMOUNT');
-  return values.map((v) => ({
-    ...v,
-    use: prefer ? PREFER_RE.test(squash(v.header)) : !nonAmount || v.kind !== 'AMOUNT',
-  }));
+  return values.map((v) => {
+    const use = prefer ? PREFER_RE.test(squash(v.header)) : !nonAmount || v.kind !== 'AMOUNT';
+    return { ...v, use, variable: use ? 'rawCount' : null };
+  });
 }
+
+// ── 실적 입력 변수(skill.md ```variables 의 input) ↔ 수치 열 연결 (서버 RuleLayoutDetector.assignVariables 와 같은 규칙) ──
+export const DEFAULT_INPUTS = inputsOf(LEGACY_VARIABLES).map(variableInfo);
+const isLegacyInputs = (inputs) => !inputs?.length || (inputs.length === 1 && inputs[0].name === 'rawCount');
+// 머리글·설명을 맞춰 볼 때 떼는 말: 공백·괄호·'건수'·'횟수'·'실적'·'성공'·count 등
+const NOISE_RE = /[\s()[\]_\-·,.]|건수|횟수|실적|성공|처리|count|cnt|수$/gi;
+export function headerKey(text) {
+  let t = String(text ?? '').toLowerCase();
+  let prev;
+  do {
+    prev = t;
+    t = t.replace(NOISE_RE, '');
+  } while (t !== prev);
+  return t;
+}
+
+// 수치 열을 실적 입력 변수에 연결한다. 입력이 rawCount 하나뿐이면 defaultUse 와 같고, 여럿이면 열 머리글과 입력 설명의 핵심 낱말이
+// 서로 포함되는 쪽으로(가장 길게 맞는 입력, 금액 열은 설명에 '금액'이 있을 때만). 이미 변수가 있는 열은 그대로, 맞는 열이 없는 입력은 비워 둔다
+export function suggestMapping(columns, inputs) {
+  if (isLegacyInputs(inputs)) return columns.some((c) => c.use) ? columns : defaultUse(columns);
+  const out = columns.map((c) => {
+    if (c.variable) return { ...c, use: true };
+    const h = headerKey(c.header);
+    let best = null;
+    let bestScore = 0;
+    for (const input of inputs) {
+      const l = headerKey(input.label);
+      if (!h || !l) continue;
+      if (c.kind === 'AMOUNT' && !input.label.includes('금액')) continue;
+      const score = h === l ? 1000 + l.length : h.includes(l) || l.includes(h) ? Math.min(h.length, l.length) : 0;
+      if (score > bestScore) {
+        best = input;
+        bestScore = score;
+      }
+    }
+    return { ...c, use: !!best, variable: best?.name ?? null };
+  });
+  // 입력이 하나뿐인데(이름만 다른) 아무 열도 못 맞추면 기본 규칙(건수·실적 열)으로 그 입력에 넣는다
+  if (inputs.length === 1 && !out.some((c) => c.use)) {
+    return defaultUse(out).map((c) => ({ ...c, variable: c.use ? inputs[0].name : null }));
+  }
+  return out;
+}
+
+// columns[].variable → 입력별 연결 목록 [{ variable, label, columns: [columns 안의 위치] }] (서버 UploadResult.mapping 과 같다)
+export const mappingOf = (columns, inputs) =>
+  (isLegacyInputs(inputs) ? DEFAULT_INPUTS : inputs).map((input) => ({
+    variable: input.name,
+    label: input.label,
+    columns: columns.map((c, i) => (c.variable === input.name ? i : -1)).filter((i) => i >= 0),
+  }));
 
 function dataRows(rows, headerRow) {
   const out = [];
@@ -184,7 +236,7 @@ function valueColumns(rows, headerRow, data, exclude) {
     const header = cellText(cellAt(rows, headerRow, c));
     const h = squash(header);
     if (exclude.includes(c) || !h || SKIP_RE.test(h) || numberRate(rows, data, c) < 0.5) continue;
-    values.push({ index: c, header, kind: columnKind(h), use: false });
+    values.push({ index: c, header, kind: columnKind(h), use: false, variable: null });
   }
   return defaultUse(values);
 }
@@ -233,7 +285,7 @@ function tryHeader(rows, s, r) {
     if (c !== inst && c !== code && parseUploadDate(cellAt(rows, r, c)) && numberRate(rows, data, c) >= 0.5) headerDates.push(c);
   }
   if (headerDates.length) {
-    return { ...base, dateSource: 'HEADER', dateHeaderColumns: headerDates, valueColumns: [{ index: -1, header: '실적', kind: 'COUNT', use: true }] };
+    return { ...base, dateSource: 'HEADER', dateHeaderColumns: headerDates, valueColumns: [{ index: -1, header: '실적', kind: 'COUNT', use: true, variable: 'rawCount' }] };
   }
   const title = titleDate(rows, r);
   if (title) {
@@ -343,23 +395,38 @@ function readRows(rows, layout, period) {
   return out;
 }
 
-// 선택한 열(use)로 기관별 건수를 다시 더한다. 화면에서 열을 바꿀 때도 쓴다
-export function applyColumns(result, use) {
-  const counts = result.values.map((v) => ({
+// 입력별 연결(mapping)로 기관별 실적 항목 값(counts[].inputs)을 다시 더하고, 변수 정의(variables)가 있으면 그 정의로 rawCount(baseCount)를
+// 계산한다(계산할 수 없으면 입력 합계). 화면에서 열 연결을 바꿀 때도 쓴다 (서버 FeeExcelService.parseUpload 와 같은 규칙)
+export function applyMapping(result, mapping, variables = null) {
+  const columns = result.columns.map((c, i) => {
+    const m = mapping.find((x) => x.columns.includes(i));
+    return { ...c, use: !!m, variable: m?.variable ?? null };
+  });
+  const inputs = result.values.map((v) =>
+    Object.fromEntries(mapping.map((m) => [m.variable, Math.max(0, m.columns.reduce((s, i) => s + (v.values[i] ?? 0), 0))])),
+  );
+  let base;
+  try {
+    base = variables ? bindVariables(variables, inputs.map((x) => ({ inputs: x, deductedCount: 0 })), 1).rawCount : null;
+  } catch {
+    base = null;
+  }
+  const counts = result.values.map((v, i) => ({
     institutionId: v.institutionId,
     name: v.name,
-    baseCount: Math.max(0, v.values.reduce((s, x, i) => s + (use[i] ? x : 0), 0)),
+    baseCount: base ? base[i] : Math.max(0, Object.values(inputs[i]).reduce((s, x) => s + x, 0)),
+    inputs: inputs[i],
   }));
-  return {
-    ...result,
-    columns: result.columns.map((c, i) => ({ ...c, use: !!use[i] })),
-    counts,
-    totalCount: counts.reduce((s, c) => s + c.baseCount, 0),
-  };
+  return { ...result, columns, mapping, counts, totalCount: counts.reduce((s, c) => s + c.baseCount, 0) };
 }
 
-// period = { from, to } ('YYYY-MM-DD'). 없으면 기간으로 거르지 않는다
-export async function parseUploadInBrowser(file, period = null) {
+// 예전 방식: 선택한 열(use)을 모두 rawCount 하나에 더한다
+export const applyColumns = (result, use) =>
+  applyMapping(result, [{ variable: 'rawCount', label: DEFAULT_INPUTS[0].label, columns: use.map((u, i) => (u ? i : -1)).filter((i) => i >= 0) }]);
+
+// period = { from, to } ('YYYY-MM-DD'). 없으면 기간으로 거르지 않는다.
+// skill 을 주면(해석한 skill.md: variables 원문·inputs) 그 업무의 실적 입력 변수에 수치 열을 연결한다(서버의 taskCode 와 같다)
+export async function parseUploadInBrowser(file, period = null, skill = null) {
   let sheets;
   try {
     const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellNF: true });
@@ -374,6 +441,12 @@ export async function parseUploadInBrowser(file, period = null) {
     );
   }
   const { rows, name: sheetName } = sheets[layout.sheet];
+  const inputs = skill?.inputs?.length ? skill.inputs : DEFAULT_INPUTS;
+  const variables = skill?.variables ? parseVariables(skill.variables) : LEGACY_VARIABLES;
+  const columns =
+    layout.dateSource === 'HEADER'
+      ? layout.valueColumns.map((c) => ({ ...c, variable: inputs[0].name }))
+      : suggestMapping(layout.valueColumns.map((c) => ({ ...c, use: false, variable: null })), inputs);
   const read = readRows(rows, layout, period?.from && period?.to ? period : null);
   const values = activeInstitutions()
     .filter((i) => read.sums.has(i.id))
@@ -397,7 +470,7 @@ export async function parseUploadInBrowser(file, period = null) {
       dateHeader,
       dateUnit: read.units.size === 0 ? null : read.units.size > 1 ? 'MIXED' : [...read.units][0],
     },
-    columns: layout.valueColumns,
+    columns,
     values,
     excluded: [...read.excluded.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([date, e]) => ({ date, rows: e.rows, values: e.values })),
     unreadableRows: read.unreadableRows,
@@ -405,5 +478,5 @@ export async function parseUploadInBrowser(file, period = null) {
     includedDates: [...read.included].sort(),
     analysis: { mode: 'RULE', model: null, note: null, reason: null },
   };
-  return applyColumns(result, layout.valueColumns.map((c) => c.use));
+  return applyMapping(result, mappingOf(columns, inputs), variables);
 }
