@@ -9,6 +9,7 @@
 - [대용] `day01-daeyong-fee-calculator/` 금융정보업무 회비 산출 v4 완료(통합 요구사항): 업무별 설정, 분기 배분 방식 A/B, 균등회비 방식 A/B, 실적 인정 항목, 우체국 10원 처리, 엑셀 열 매핑·검증·미리보기, 기관별 산출 근거·검증, 단일 HTML 프로그램 + claude.ai 웹 페이지. 확인 필요 기본값 목록은 `docs/DESIGN.md` 7장. 공통 규칙 초안 `docs/COMMON_RULES_DRAFT.md`(R-1~R-15, D-1~D-15)
 - [대용] `day02-daeyong-fee-rules-proto/` 공통 규칙 초안만 보고 다시 쓴 두 번째 구현 + 병행검증(화면 7탭, v4 결과 엑셀 비교, `npm run crosscheck` 무작위 500건 일치). 단일 HTML `release/fee-rules-proto.html`
 - [대용] `day03-daeyong-final-pitch/` 최종 심사용 발표 시나리오(2분 30초 키노트 문법, 심사 기준별 핵심 포인트, 내레이션)와 시연 영상 v1(1080p, 카드 4장 + 실제 화면 7비트, 자막/무자막) — `docs/scenario.md`, `video/`. 영상은 로컬에서 띄운 main 코드를 Playwright로 녹화(AI 키 없어 "규칙 기반" 배지), 피드백 후 2차본 예정
+- [공통] `day05-common-demo-video/` 사내 공모전용 시연 영상 제작 파이프라인(Playwright 녹화 → 카드·자막·줌 합성 → 배경음 → 더빙 문장 단위 배치). 완성본 mp4·srt·대본은 프로젝트 Library `demo-video/` (저장소엔 스크립트만). 실적 파일은 CD공동망·오픈뱅킹 테스트 데이터(미등록 기관 울릉도 포함)
 - [대용] `day01-gyeongsik-fee-calculator/` 에 "AI 가 1번 비즈니스 규칙을 읽고 변수·SpEL 생성" 반영(경식 폴더, John 승인): 업무별 수식 패턴 제거, AI 가 규칙에서 실적 입력·상수·합계·파생 변수(3번 ```variables 블록)를 스스로 정의하고 그 변수로 수식 작성(서버 `SkillVariables` 엔진 + 브라우저 동일 엔진), 실적 엑셀의 여러 건수 열을 실적 항목별로 골라 연결(AI 판독 + 머리글 규칙 + 화면 칩), 항목별 건수로 산출·대사 엑셀. 검증: 서버 테스트 70건, 가짜 AI 서버 E2E `e2e/`
 - [우성] `day01-woosung-fee-ai/` 회비자동산출 AI툴 1차 구현 완료 (분담기준 AI 학습·버전 관리, xlsx/csv/hwp/hwpx 실적 업로드, 기관별 산출·Excel 다운로드)
 - [석용] `day04-seokyong-demo-video/` 시연 영상 v2 + 모듈형 제작 체계: 모듈 11개(카드 4 + 화면 7), 모듈별 `module.js`(앱 조작·스포트라이트) + `captions.json`(자막·효과 코멘트), `record.js`(모듈 단위 녹화)·`assemble.py`(크로스페이드 조립 + ASS 자막 패널). `video/시연영상_v2_자막.mp4`·`무자막.mp4`, `video/modules/`. 앞으로 영상 수정은 이 모듈 단위로 한다
@@ -29,6 +30,11 @@
 - 공개 배포는 Vercel Git 연결로 한다 (Root Directory `day01-gyeongsik-fee-calculator`, Production Branch `main`). 토큰·GitHub Actions 배포는 쓰지 않는다
 
 ## 세션 로그
+### 2026-10-29 (공통, 시연 영상 3차 — 오픈뱅킹 데이터 교체·최신 main 재녹화)
+- John 요청: 오픈뱅킹 테스트 데이터를 새 파일로 교체(우체국 → 미등록 기관 '울릉도', 나머지 150행 동일)하고 관리자 계정으로 중요 기능 시연 영상을 다시 제작(애플 문법, 2:30~3:00, 자막/나레이션, 평가 기준 ① 엑셀 → 자동 산출 ② 모든 부서·담당자 사용)
+- 작업 환경이 vercel.app·onrender.com 을 막아 최신 main(10/28 AI 변수 생성 #56 포함)을 로컬(jar + vite preview)로 띄워 전 장면 재녹화. 오픈뱅킹 장면에 미등록 기관 감지("기관을 찾지 못해 제외한 1곳: 울릉도") → 관리자 설정 › 기관 관리에서 울릉도(U001) 등록 → 파일 다시 올려 50개 기관 매칭 → 조회성 API 열 제외 → 산출·엑셀 2종 흐름 추가. 다른 장면은 속도를 올려 총 2분 54초
+- 나레이션은 10/29 오전 John 이 보낸 더빙 mp3(22줄 대본, 28문장)를 무음 구간으로 잘라 새 시각에 다시 배치(대본 변경 없음, 등록 구간 2문장은 자막만). 산출물 `day05-common-demo-video/`(스크립트·README), 완성본은 Library `demo-video/`
+- 1·2차(10/27·10/29 오전) 이력: 자막+배경음 버전 → John 더빙 추가. CD공동망 첨부 파일은 날짜가 없어 제목 행 '2026년 3분기 이용실적'을 넣은 가공본으로 업로드(가공본·실적 파일은 커밋하지 않음)
 ### 2026-10-28 (대용, AI 변수 생성 SpEL)
 - `day01-gyeongsik-fee-calculator/`: 3번 정산 수식에 ```variables 블록 도입 — `name = input("설명")`(기관별 실적 입력), 상수, `sum(#x)`, 파생 수식. 예약 변수 deductedCount·finalCount·totalCount·institutionCount·periodScale, `rawCount` 는 입력이 하나면 자동, 여럿이면 파생 수식으로 정의
 - AI 계산식 빌더: 패턴 매칭 생성기 삭제, AI 전용(키 없으면 400). AI 답(JSON variables+formula)을 서버가 파싱 → 구문·미정의 변수·기관 8곳 시험 계산 2벌 검증, 실패 시 오류를 알려 1회 재요청, 그래도 실패면 초안을 화면에 불러와 직접 수정
