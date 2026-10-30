@@ -1,3 +1,7 @@
 out/
 work/
+rec/
+rec_prev/
+shots/
 __pycache__/
+*.bak*
