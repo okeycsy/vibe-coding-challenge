@@ -76,6 +76,8 @@ def main():
     track = np.zeros(int(dur * SR) + SR, np.float32)
     report = []
     for ln in lines:
+        if ln.get('skip'):
+            continue
         x = tone(ln['text']) if a.test else trim(synth(ln['text'], a.voice, a.rate, key))
         win = ln['until'] - ln['at']
         d = len(x) / SR

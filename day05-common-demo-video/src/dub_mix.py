@@ -58,6 +58,10 @@ def main():
     track = np.zeros(int(dur * SR) + SR, np.float32)
     k = 0
     for ln, c in zip(lines, counts):
+        if ln.get('skip'):  # 대본에는 있으나 영상에 넣지 않는 줄: 더빙 문장은 건너뛴다
+            k += c
+            print(f'  skip        {ln["text"]}')
+            continue
         a, b = sents[k][0], sents[k + c - 1][1]
         k += c
         clip = x[max(0, int((a - 0.04) * SR)): int((b + 0.12) * SR)].copy()
